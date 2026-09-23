@@ -115,12 +115,12 @@ svg { display: block; }
 [dir="rtl"] .totals-row { direction: rtl; }
 
 /* ------------------------------------------------------------ Bottom nav */
-/* Shown only on the 4 screens the tabs actually lead to (Home/Favorites/
-   Orders/Profile) -- a "drill-down" screen (a restaurant's menu, the
-   cart, Smart Lunch's form) hides it in favor of the screen-header's own
-   back button, the same pattern the reference design itself uses (its
-   Menu/Filters/Item-detail/Cart/Smart-Lunch mockups don't show the tab
-   bar either). See render()'s BOTTOM_NAV_SCREENS set. */
+/* Always visible, on every screen -- including a drill-down screen (a
+   restaurant's menu, the cart, Smart Lunch's form), which also keeps its
+   own screen-header back button for going back one step. See
+   static/app.js's BOTTOM_NAV_TABS/renderBottomNav(). #app's universal
+   120px bottom padding already clears this bar's height on every
+   screen; .summary-bar sits above it, not under it. */
 
 #bottom-nav {
   position: fixed;
@@ -481,7 +481,9 @@ svg { display: block; }
   position: fixed;
   left: 50%;
   transform: translateX(-50%);
-  bottom: calc(var(--space-3) + env(safe-area-inset-bottom));
+  /* The bottom nav is now always visible (never hidden on a drill-down
+     screen, see BOTTOM_NAV_TABS's comment) -- sits above it, not under it. */
+  bottom: calc(var(--bottom-nav-height) + var(--space-3) + env(safe-area-inset-bottom));
   width: calc(100% - 2 * var(--space-3));
   max-width: 560px;
   z-index: 30;
@@ -540,6 +542,19 @@ svg { display: block; }
 .favorite-row .name { font-weight: 700; margin: 0 0 2px; }
 .favorite-row .restaurant { font-size: 0.85rem; color: var(--color-text-muted); margin: 0 0 4px; }
 .favorite-row .status-line { font-size: 0.85rem; font-style: italic; color: var(--color-text-muted); margin: 0; }
+.order-now-btn {
+  flex: 0 0 auto;
+  align-self: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 
 /* --------------------------------------------------------- Order history */
 

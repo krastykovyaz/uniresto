@@ -604,11 +604,13 @@ function openLanguageSheet(trigger) {
 }
 
 // Root-level tab destinations, matching the reference design's bottom
-// tab bar. A "drill-down" screen (a restaurant's menu, the cart, Smart
-// Lunch's form) is NOT in this set and hides the bar in favor of its own
-// screen-header back button -- the same pattern the reference itself
-// uses (its Menu/Filters/Item-detail/Cart/Smart-Lunch mockups don't show
-// the tab bar either).
+// tab bar. Shown on EVERY screen (not just these 4) so navigation is
+// always one tap away, even from a drill-down screen (a restaurant's
+// menu, the cart, Smart Lunch's form) -- those keep their own
+// screen-header back button for going back ONE step, alongside the tab
+// bar for jumping straight to a root screen. None of the 4 tabs shows
+// as "active" while on a drill-down screen, since none of them
+// literally is the current screen -- that's honest, not a bug.
 const BOTTOM_NAV_TABS = [
   { screen: "restaurants", labelKey: "home", iconName: "home", go: () => goTo("restaurants") },
   { screen: "favorites", labelKey: "favorites", iconName: "heart", go: () => openFavorites() },
@@ -618,7 +620,6 @@ const BOTTOM_NAV_TABS = [
 
 function renderBottomNav() {
   bottomNav.innerHTML = "";
-  if (!BOTTOM_NAV_TABS.some((t) => t.screen === state.screen)) return;
 
   for (const tab of BOTTOM_NAV_TABS) {
     const isActive = state.screen === tab.screen;
@@ -875,6 +876,32 @@ async function goToFavoriteToday(slug, restaurantName, dateInfo) {
   await selectDate(dateInfo);
 }
 
+// One tap from Favorites straight to a ready-to-confirm cart: loads
+// today's menu for this favorite's restaurant (via selectDate() itself,
+// so the cart is correctly scoped/reset to THIS restaurant+date, same
+// as any other date selection -- see selectDate()'s own reset logic),
+// re-finds the dish fresh on that live menu by (category, name) rather
+// than trusting the possibly-stale liveItem snapshot Favorites already
+// had cached, adds one, and jumps to the review screen. Falls back to a
+// toast (never a silent no-op) if the dish turns out not to be on
+// today's menu after all -- e.g. the live data changed between opening
+// Favorites and tapping this.
+async function orderFavoriteNow(fav, dateInfo) {
+  state.slug = fav.slug;
+  state.restaurantName = fav.restaurantName;
+  await selectDate(dateInfo);
+
+  const item = state.menu && state.menu.items.find((it) => cartItemKey(it) === cartItemKey(fav));
+  if (!item) {
+    showToast(tr("favoriteNotOnTodayMenu"));
+    return;
+  }
+  state.selection.push({ menuItemId: item.id, quantity: 1 });
+  state.serverQuote = null;
+  saveCart();
+  goTo("review");
+}
+
 // Checks TODAY's live availability for every restaurant that has at
 // least one favorite -- never assumes a saved favorite is still
 // orderable. Per-restaurant: closed/no_menu/ordering_closed/etc. is
@@ -950,6 +977,7 @@ function renderFavorites() {
               : `<p class="status-line">${escapeHtml(restaurantStatus === "available" ? tr("favoriteNotOnTodayMenu") : dateStatusLabel(restaurantStatus))}</p>`
           }
         </div>
+        ${liveItem ? `<button type="button" class="order-now-btn" aria-label="${escapeHtml(tr("orderNow"))}: ${escapeHtml(fav.name)}">${icon("plus", 18)}</button>` : ""}
       </article>
     `);
 
@@ -971,6 +999,13 @@ function renderFavorites() {
           e.preventDefault();
           go();
         }
+      });
+      // Skips straight to a ready cart instead of just opening today's
+      // menu (which the row itself, and Enter/Space on it, still do --
+      // useful for adding a side/starter alongside it first).
+      row.querySelector(".order-now-btn").addEventListener("click", (e) => {
+        e.stopPropagation();
+        orderFavoriteNow(fav, data.status);
       });
     }
 
