@@ -5,7 +5,6 @@
 
 import { clampQuantity, computeOrderTotals } from "./order-math.js";
 import {
-  CATEGORY_PRICES,
   DESSERT_CATEGORIES,
   INCLUDED_SIDE_CATEGORIES,
   MAIN_CATEGORIES,
@@ -2017,29 +2016,22 @@ function localizedWeightValue(value, unit) {
 // Restopolis's OWN reservation flow (verified live, screenshots
 // compared 2026-09-24) never shows a per-item price either -- it only
 // shows the student's wallet balance, deducted at pickup, no number per
-// dish anywhere in its own "New reservation" screen. So a bare "€6.00"
-// on our card could misleadingly read as if it were pulled from
-// Restopolis; every price we DO show is explicitly labeled "Canteen
-// Price" instead, making clear it's OUR OWN course pricing (Part 18/26),
-// supplied directly, not a Restopolis number. Where we have no number
-// at all, "Canteen Price" is shown alone (no euro amount) rather than
-// the more clinical-sounding "Price not available" -- matching how
-// Restopolis's own UI simply doesn't surface one either, rather than
-// implying something is missing/broken.
+// dish anywhere in its own "New reservation" screen. This mirrors that
+// exactly: the card shows the words "Canteen Price" only, never a euro
+// amount, for anything not bundled free -- the actual number (still OUR
+// OWN real course pricing, Part 18/26, computed the same as ever) only
+// shows up once it matters, in the cart/review/confirmation totals.
 function priceText(item) {
-  if (item.price != null) return `${tr("canteenPrice")} €${item.price.toFixed(2)}`;
   if (INCLUDED_SIDE_CATEGORIES.has(item.category)) return tr("included");
-  if (MAIN_CATEGORIES.has(item.category)) return `${tr("canteenPrice")} €${CATEGORY_PRICES.main.toFixed(2)}`;
-  if (STARTER_CATEGORIES.has(item.category)) return `${tr("canteenPrice")} €${CATEGORY_PRICES.starter.toFixed(2)}`;
-  if (DESSERT_CATEGORIES.has(item.category)) return `${tr("canteenPrice")} €${CATEGORY_PRICES.dessert.toFixed(2)}`;
-  if (SANDWICH_CATEGORIES.has(item.category)) return `${tr("canteenPrice")} €${CATEGORY_PRICES.sandwich.toFixed(2)}`;
   return tr("canteenPrice");
 }
 
 // The ".is-unspecified" muted/italic styling is meant for a price that's
-// genuinely missing -- a real €X.XX (Restopolis's own, or now OUR
-// per-course price) must never look like a placeholder just because
-// item.price itself (Restopolis's, always null) is null.
+// genuinely missing. priceText() shows the same words ("Canteen Price")
+// either way now, so this is the only remaining signal distinguishing
+// "we know the real number, just not showing it on the card" (bold,
+// main/starter/dessert/sandwich/a real Restopolis price) from "we
+// genuinely have no price at all" (muted -- most Constant Products).
 function priceIsUnspecified(item) {
   if (item.price != null) return false;
   if (
