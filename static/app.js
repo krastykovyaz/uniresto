@@ -1437,8 +1437,26 @@ function updateCategoryNavHighlight() {
     const rect = sec.getBoundingClientRect();
     if (rect.top - baseTop <= 120) activeCat = sec.dataset.cat;
   }
+  let activeBtn = null;
+  let justBecameActive = false;
   for (const btn of nav.querySelectorAll("button")) {
-    btn.classList.toggle("is-active", btn.dataset.cat === activeCat);
+    const isActive = btn.dataset.cat === activeCat;
+    if (isActive) {
+      activeBtn = btn;
+      if (!btn.classList.contains("is-active")) justBecameActive = true;
+    }
+    btn.classList.toggle("is-active", isActive);
+  }
+  // Keeps the horizontal category-chip row moving in sync with vertical
+  // dish scrolling -- e.g. scrolling down from "Starter" into "Dessert"
+  // auto-scrolls the row right so the Dessert chip stays in view, the
+  // same synced-tabs pattern most food delivery apps use, instead of
+  // the active chip silently scrolling out of sight. Only scrolls the
+  // row when the active category actually just changed (not on every
+  // scroll tick), so it never fights the user's own manual left/right
+  // drag on the row itself.
+  if (activeBtn && justBecameActive) {
+    activeBtn.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
   }
 }
 
