@@ -183,6 +183,27 @@ test("building-label strings spot-check in a few languages", () => {
   assert.equal(t("lb", "buildingJfk"), "JFK-Gebai");
 });
 
+// ---------------------------------------------------------------------------
+// Registered email (Part 25) -- Profile-only, separate from per-order
+// customerEmail (Part 23)
+// ---------------------------------------------------------------------------
+
+test("registered-email strings exist for every configured language", () => {
+  for (const lang of LANGUAGES) {
+    for (const key of ["registeredEmail", "registeredEmailHint", "removeEmail", "notSet", "save"]) {
+      const value = t(lang.code, key);
+      assert.ok(value && value !== key, `${lang.code}.${key} should resolve to real text, got ${JSON.stringify(value)}`);
+    }
+  }
+});
+
+test("registered-email strings spot-check in a few languages", () => {
+  assert.equal(t("en", "registeredEmail"), "Email");
+  assert.equal(t("en", "notSet"), "Not set");
+  assert.equal(t("en", "save"), "Save");
+  assert.equal(t("ru", "removeEmail"), "Удалить");
+});
+
 test("intlLocale uses the declared locale, or Luxembourgish's German fallback", () => {
   assert.equal(intlLocale("en"), "en-US");
   // lb-LU where the runtime's Intl data has it; de-LU on runtimes (some

@@ -57,6 +57,13 @@ function offScroll(handler) {
 // at that point. See loadFavorites()'s own comment for the real bug
 // this ordering caused before it was moved here.
 const FAVORITES_STORAGE_KEY = "uniresto.favorites.v1";
+// Same TDZ hazard as FAVORITES_STORAGE_KEY's comment above -- loadRegisteredEmail()
+// runs synchronously as part of constructing `state` below, so this const
+// must exist before that point.
+const EMAIL_STORAGE_KEY = "uniresto.email.v1";
+// Same reason -- loadRegisteredEmail() calls isAllowedUniLuEmail() (further
+// down the file, but hoisted since it's a `function`), which reads this.
+const ALLOWED_EMAIL_DOMAINS = ["@uni.lu", "@student.uni.lu"];
 
 const state = {
   screen: "restaurants",
@@ -75,11 +82,16 @@ const state = {
   selection: [], // [{ menuItemId, quantity }]
   deliveryLocation: "",
   // Optional -- only sent if filled in, so the confirmed order can be
-  // emailed (Part 23). Never persisted anywhere (no account system,
-  // see saveCart()'s docstring); reset like deliveryLocation is, i.e.
-  // it isn't -- both simply carry over across browsing within one
-  // session, same existing pattern.
-  customerEmail: "",
+  // emailed (Part 23). Starts pre-filled from the Profile-registered
+  // email (Part 25) if one was saved, so a returning user doesn't have
+  // to retype it every order; editing it here for one order does NOT
+  // change what's registered (only Profile's own save does that -- see
+  // registeredEmail below and openEmailSheet()).
+  customerEmail: loadRegisteredEmail() || "",
+  // The Profile-registered default itself (Part 25) -- kept separate
+  // from customerEmail (above) specifically so it always reflects
+  // exactly what's saved, regardless of any per-order edit.
+  registeredEmail: loadRegisteredEmail(),
   confirmedOrder: null,
   serverQuote: null,
   favorites: loadFavorites(), // [{ slug, restaurantName, category, name }]
@@ -211,6 +223,45 @@ function saveFavorites() {
     localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(state.favorites));
   } catch {
     /* localStorage unavailable (private mode, quota, ...) -- favorites just won't persist */
+  }
+}
+
+// -------------------------------------------------------- Registered email
+//
+// Set once, deliberately, from the Profile screen (openEmailSheet(),
+// Part 25) -- distinct from state.customerEmail's per-order value on the
+// Review screen (Part 23), which starts pre-filled from this but can be
+// edited for one order without changing what's registered. Persisted in
+// localStorage (unlike the cart, see CART_STORAGE_KEY's docstring): this
+// is a genuine, long-lived setting the user explicitly chose to save,
+// not something that should ever auto-resume a screen on its own (Part
+// 21's reasoning doesn't apply here -- nothing about loading this value
+// navigates anywhere).
+function loadRegisteredEmail() {
+  try {
+    const raw = localStorage.getItem(EMAIL_STORAGE_KEY);
+    // A value that somehow fails today's domain check (e.g. hand-edited
+    // in devtools, or the rule changes later) is treated as unset rather
+    // than trusted/surfaced as-is.
+    return raw && isAllowedUniLuEmail(raw) ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveRegisteredEmail(email) {
+  try {
+    localStorage.setItem(EMAIL_STORAGE_KEY, email);
+  } catch {
+    /* localStorage unavailable (private mode, quota, ...) -- just won't persist */
+  }
+}
+
+function clearRegisteredEmail() {
+  try {
+    localStorage.removeItem(EMAIL_STORAGE_KEY);
+  } catch {
+    /* ignore */
   }
 }
 
@@ -431,9 +482,16 @@ function localizedPriceSummary(totals) {
 // so a bad address is caught with a clear, translated message before a
 // round trip, instead of Flask's generic HTML-only abort() response,
 // which the frontend can't extract a specific reason string from; see
-// README.md Part 23).
-const ALLOWED_EMAIL_DOMAINS = ["@uni.lu", "@student.uni.lu"];
-
+// README.md Part 23). ALLOWED_EMAIL_DOMAINS itself is declared up near
+// FAVORITES_STORAGE_KEY/EMAIL_STORAGE_KEY, not here -- this function is
+// called (via loadRegisteredEmail()) synchronously while `state` itself
+// is being constructed, and a `const` declared this far down would
+// still be in its temporal-dead-zone at that point, throwing a
+// ReferenceError that loadRegisteredEmail()'s own defensive catch{}
+// would silently swallow as "localStorage unavailable" -- the exact
+// same load-order hazard FAVORITES_STORAGE_KEY's own comment describes,
+// and a real bug this caught live: a saved email always read back as
+// "Not set" after a reload despite being correctly persisted.
 function isAllowedUniLuEmail(email) {
   const normalized = email.trim().toLowerCase();
   if ((normalized.match(/@/g) || []).length !== 1 || normalized.startsWith("@")) return false;
@@ -481,6 +539,7 @@ const ICON_PATHS = {
   info: '<circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M12 11v5.5M12 8v.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>',
   globe: '<circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M3 12h18M12 3c2.4 2.6 3.7 5.6 3.7 9s-1.3 6.4-3.7 9c-2.4-2.6-3.7-5.6-3.7-9S9.6 5.6 12 3z" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/>',
   chevron: '<path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
+  mail: '<rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M3.5 6.5L12 13l8.5-6.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
 };
 
 function icon(name, size = 24) {
@@ -601,6 +660,85 @@ function openLanguageSheet(trigger) {
   overlay.append(sheet);
   deviceScreen.append(overlay);
   (list.querySelector(".is-active") || list.firstElementChild).focus();
+}
+
+// ------------------------------------------------------------ Registered email
+
+// Same bottom-sheet shell as openLanguageSheet() above. Saving an empty
+// field clears the registration (equivalent to tapping Remove) rather
+// than being rejected -- an explicit "I don't want this saved anymore"
+// is exactly as valid as setting one. A non-empty value is validated
+// against the same @uni.lu/@student.uni.lu rule as checkout (Part 23)
+// before being saved; the input stays open with a toast otherwise, so a
+// typo never silently registers an unreachable address.
+function openEmailSheet(trigger) {
+  const overlay = el(`<div class="sheet-overlay"></div>`);
+  const sheet = el(`
+    <div class="lang-sheet" role="dialog" aria-modal="true" aria-label="${escapeHtml(tr("registeredEmail"))}">
+      <div class="sheet-grabber" aria-hidden="true"></div>
+      <div class="lang-sheet-header">
+        <p class="screen-title">${escapeHtml(tr("registeredEmail"))}</p>
+        <button type="button" class="filter-close" aria-label="${escapeHtml(tr("back"))}">${icon("close", 20)}</button>
+      </div>
+      <p class="email-sheet-hint">${escapeHtml(tr("registeredEmailHint"))}</p>
+      <div class="field-block">
+        <input type="email" inputmode="email" class="email-sheet-input" placeholder="${escapeHtml(tr("customerEmailPlaceholder"))}" value="${escapeHtml(state.registeredEmail || "")}">
+      </div>
+      <button type="button" class="primary-button email-sheet-save">${escapeHtml(tr("save"))}</button>
+      ${state.registeredEmail ? `<button type="button" class="secondary-button email-sheet-remove">${escapeHtml(tr("removeEmail"))}</button>` : ""}
+    </div>
+  `);
+  const input = sheet.querySelector(".email-sheet-input");
+
+  function close() {
+    document.removeEventListener("keydown", onKey);
+    overlay.remove();
+  }
+  function onKey(e) {
+    if (e.key === "Escape") {
+      close();
+      trigger?.focus();
+    }
+  }
+  function commit(email) {
+    state.registeredEmail = email;
+    state.customerEmail = email || "";
+    if (email) saveRegisteredEmail(email);
+    else clearRegisteredEmail();
+    close();
+    document.querySelector(".profile-row-email")?.focus();
+    renderProfile();
+  }
+
+  sheet.querySelector(".email-sheet-save").addEventListener("click", () => {
+    const value = input.value.trim();
+    if (!value) {
+      commit(null);
+      return;
+    }
+    if (!isAllowedUniLuEmail(value)) {
+      showToast(tr("invalidUniLuEmail"));
+      return;
+    }
+    commit(value);
+  });
+  sheet.querySelector(".email-sheet-remove")?.addEventListener("click", () => commit(null));
+
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) {
+      close();
+      trigger?.focus();
+    }
+  });
+  sheet.querySelector(".filter-close").addEventListener("click", () => {
+    close();
+    trigger?.focus();
+  });
+  document.addEventListener("keydown", onKey);
+
+  overlay.append(sheet);
+  deviceScreen.append(overlay);
+  input.focus();
 }
 
 // Root-level tab destinations, matching the reference design's bottom
@@ -1153,6 +1291,17 @@ function renderProfile() {
   `);
   langRow.addEventListener("click", () => openLanguageSheet(langRow));
   rows.append(langRow);
+
+  const emailRow = el(`
+    <button type="button" class="profile-row profile-row-email" aria-haspopup="dialog">
+      <span class="profile-row-icon">${icon("mail", 20)}</span>
+      <span class="profile-row-label">${escapeHtml(tr("registeredEmail"))}</span>
+      <span class="profile-row-count">${state.registeredEmail ? escapeHtml(state.registeredEmail) : escapeHtml(tr("notSet"))}</span>
+      <span class="profile-row-chevron">${icon("chevron", 16)}</span>
+    </button>
+  `);
+  emailRow.addEventListener("click", () => openEmailSheet(emailRow));
+  rows.append(emailRow);
 
   app.append(rows);
 
