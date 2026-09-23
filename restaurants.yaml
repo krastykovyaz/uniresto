@@ -1,0 +1,31 @@
+# Restaurant configuration for the Restopolis menu collector.
+#
+# Every id below was verified against the live site on 2026-09-23 by:
+#   1. Loading https://ssl.education.lu/eRestauration/CustomerServices/Menu
+#   2. Finding the restaurant's link in the restaurant picker, e.g.
+#      <a class="restaurant-name" data-site="30354"
+#         href="/eRestauration/CustomerServices/Menu/BtnChangeRestaurant?pRestaurantSelection=164">
+#         UDL-CKB - Altius - Restaurant</a>
+#      -> restaurant_id is the `pRestaurantSelection` query value.
+#   3. Selecting the restaurant and reading the
+#      CustomerServices.Restopolis.SelectedService cookie that the server
+#      sets, and the `data-service-id` attribute on the (single) service tab
+#      -> service_id.
+#
+# Run `python scraper.py discover` to re-verify these values against the
+# live site if Restopolis ever renumbers a restaurant.
+
+restaurants:
+  - code: UDL-CKB-ALTIUS
+    name: "UDL-CKB - Altius - Restaurant"
+    site_name: "Université de Luxembourg Campus Kirchberg"
+    site_id: 30354
+    restaurant_id: 164
+    service_id: 1183
+
+  - code: UDL-CKB-BRASSERIE-JOHNS
+    name: "UDL-CKB - Brasserie John's - Restaurant"
+    site_name: "Université de Luxembourg Campus Kirchberg"
+    site_id: 30354
+    restaurant_id: 160
+    service_id: 178

@@ -1,0 +1,4054 @@
+{
+  "generated_at": "2026-09-23T13:01:15.076651+00:00",
+  "restaurants": [
+    {
+      "code": "UDL-CKB-ALTIUS",
+      "name": "UDL-CKB - Altius - Restaurant",
+      "menus": [
+        {
+          "date": "2026-09-24",
+          "service": "Menu",
+          "service_time": "11:00-14:30",
+          "source_url": "https://ssl.education.lu/eRestauration/CustomerServices/Menu",
+          "items": [
+            {
+              "category": "Entrée",
+              "name": "Salad'bar",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 3,
+                  "name": "Œufs",
+                  "detail": null
+                },
+                {
+                  "code": 6,
+                  "name": "Soja",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 9,
+                  "name": "Céleri",
+                  "detail": null
+                },
+                {
+                  "code": 10,
+                  "name": "Moutarde",
+                  "detail": null
+                },
+                {
+                  "code": 12,
+                  "name": "Anhydride sulfureux et sulfites",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "vegetarian",
+                "non_vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "Entrée",
+              "name": "Soupe de pommes de terre",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 6,
+                  "name": "Soja",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 9,
+                  "name": "Céleri",
+                  "detail": null
+                },
+                {
+                  "code": 12,
+                  "name": "Anhydride sulfureux et sulfites",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "vegetarian",
+                "gluten_free"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "Végétarien",
+              "name": "Aloo palak au tofu",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 6,
+                  "name": "Soja",
+                  "detail": null
+                },
+                {
+                  "code": 12,
+                  "name": "Anhydride sulfureux et sulfites",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "vegetarian",
+                "gluten_free"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "Végan",
+              "name": "Aloo Palak au tofu",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 6,
+                  "name": "Soja",
+                  "detail": null
+                },
+                {
+                  "code": 12,
+                  "name": "Anhydride sulfureux et sulfites",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "vegan",
+                "gluten_free"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "Non-végétarien",
+              "name": "Rôti de porc Orloff, jus lié",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé"
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 12,
+                  "name": "Anhydride sulfureux et sulfites",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "non_vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "Féculents",
+              "name": "Pommes de terre grenailles rôties",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "vegetarian",
+                "gluten_free"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "Légumes",
+              "name": "Carottes persillées",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 6,
+                  "name": "Soja",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 9,
+                  "name": "Céleri",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "vegetarian",
+                "gluten_free"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "Dessert",
+              "name": "Paris - Brest",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé"
+                },
+                {
+                  "code": 3,
+                  "name": "Œufs",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 8,
+                  "name": "Fruits à coque",
+                  "detail": "Amandes, Noisettes"
+                }
+              ],
+              "dietary": [
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "Snack à emporter",
+              "name": "Salade aux mezzés variés",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Seigle, Orge"
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 11,
+                  "name": "Graines de sésame",
+                  "detail": null
+                },
+                {
+                  "code": 12,
+                  "name": "Anhydride sulfureux et sulfites",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "Snack à emporter",
+              "name": "Salade campagnarde",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé"
+                },
+                {
+                  "code": 3,
+                  "name": "Œufs",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 10,
+                  "name": "Moutarde",
+                  "detail": null
+                },
+                {
+                  "code": 12,
+                  "name": "Anhydride sulfureux et sulfites",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "non_vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "Snack à emporter",
+              "name": "Wrap aux falafels",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé"
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 12,
+                  "name": "Anhydride sulfureux et sulfites",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "Snack à emporter",
+              "name": "Wrap façon croque monsieur",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé"
+                },
+                {
+                  "code": 3,
+                  "name": "Œufs",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 12,
+                  "name": "Anhydride sulfureux et sulfites",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "non_vegetarian"
+              ],
+              "source": "Restopolis"
+            }
+          ]
+        },
+        {
+          "date": "2026-09-24",
+          "service": "Constant products",
+          "service_time": null,
+          "source_url": "https://ssl.education.lu/eRestauration/CustomerServices/Menu",
+          "items": [
+            {
+              "category": "01.1 Sandwiches végétariens",
+              "name": "1/2 Levain fromage",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Orge, Épeautre"
+                },
+                {
+                  "code": 3,
+                  "name": "Œufs",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.1 Sandwiches végétariens",
+              "name": "1/2 Levain Parmigiana Sandwich",
+              "description": "(01 avril - 30 juin)",
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Orge, Épeautre"
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.1 Sandwiches végétariens",
+              "name": "1/2 Levain The ultimate egg Sandwich",
+              "description": "(01 juillet - 30 septembre)",
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Orge, Épeautre"
+                },
+                {
+                  "code": 3,
+                  "name": "Œufs",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 10,
+                  "name": "Moutarde",
+                  "detail": null
+                }
+              ],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.1 Sandwiches végétariens",
+              "name": "1/2 Levain Tortilla Olé",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Orge, Épeautre"
+                },
+                {
+                  "code": 3,
+                  "name": "Œufs",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.1 Sandwiches végétariens",
+              "name": "Ciabatta tomate-mozzarella et pesto",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Seigle, Orge, Avoine"
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.1 Sandwiches végétariens",
+              "name": "Petit pain blanc fromage",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Seigle"
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.2 Sandwiches végans",
+              "name": "1/2 Levain Humi (houmous aux légumes locaux grillés)",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Orge, Épeautre"
+                }
+              ],
+              "dietary": [
+                "vegan"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.2 Sandwiches végans",
+              "name": "1/2 tranche de pain",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Seigle, Orge, Avoine"
+                },
+                {
+                  "code": 11,
+                  "name": "Graines de sésame",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "organic",
+                "luxembourg",
+                "vegan"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.2 Sandwiches végans",
+              "name": "Petit pain blanc \"Schockelasbotter végan\"",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Seigle"
+                },
+                {
+                  "code": 8,
+                  "name": "Fruits à coque",
+                  "detail": "Noisettes"
+                }
+              ],
+              "dietary": [
+                "vegan"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.2 Sandwiches végans",
+              "name": "Petit pain blanc nature",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Seigle"
+                }
+              ],
+              "dietary": [
+                "vegan"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.3 Sandwiches non-végétariens",
+              "name": "1/2 Levain \"Great César\"",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Orge, Épeautre"
+                },
+                {
+                  "code": 3,
+                  "name": "Œufs",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 10,
+                  "name": "Moutarde",
+                  "detail": null
+                },
+                {
+                  "code": 12,
+                  "name": "Anhydride sulfureux et sulfites",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "non_vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.3 Sandwiches non-végétariens",
+              "name": "1/2 Levain \"Pastrami\"",
+              "description": "(01 avril - 31 octobre)",
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Orge, Épeautre"
+                },
+                {
+                  "code": 3,
+                  "name": "Œufs",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "non_vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.3 Sandwiches non-végétariens",
+              "name": "1/2 Levain jambon cuit",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Orge, Épeautre"
+                },
+                {
+                  "code": 3,
+                  "name": "Œufs",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "non_vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.3 Sandwiches non-végétariens",
+              "name": "1/2 Levain salami",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Orge, Épeautre"
+                },
+                {
+                  "code": 3,
+                  "name": "Œufs",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 10,
+                  "name": "Moutarde",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "non_vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.3 Sandwiches non-végétariens",
+              "name": "Petit pain blanc jambon cuit",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Seigle"
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "non_vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.3 Sandwiches non-végétariens",
+              "name": "Petit pain blanc salami",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Seigle"
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 10,
+                  "name": "Moutarde",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "non_vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.4 Sandwiches sans gluten",
+              "name": "Mini baguette sans gluten \"Schockelasbotter végan\"",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 8,
+                  "name": "Fruits à coque",
+                  "detail": "Noisettes"
+                }
+              ],
+              "dietary": [
+                "vegan",
+                "gluten_free"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.4 Sandwiches sans gluten",
+              "name": "Mini baguette sans gluten fromage",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "vegetarian",
+                "gluten_free"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.4 Sandwiches sans gluten",
+              "name": "Mini baguette sans gluten jambon cuit",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "non_vegetarian",
+                "gluten_free"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.4 Sandwiches sans gluten",
+              "name": "Mini baguette sans gluten salami",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 10,
+                  "name": "Moutarde",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "non_vegetarian",
+                "gluten_free"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "02. Viennoiseries",
+              "name": "Bretzel salé 80 g",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé"
+                }
+              ],
+              "dietary": [
+                "luxembourg",
+                "vegan"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "02. Viennoiseries",
+              "name": "Croissant 50 g",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé"
+                },
+                {
+                  "code": 3,
+                  "name": "Œufs",
+                  "detail": null
+                },
+                {
+                  "code": 6,
+                  "name": "Soja",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "luxembourg",
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "02. Viennoiseries",
+              "name": "Croissant fourré 70 g",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé"
+                },
+                {
+                  "code": 6,
+                  "name": "Soja",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 8,
+                  "name": "Fruits à coque",
+                  "detail": "Amandes, Noisettes"
+                }
+              ],
+              "dietary": [
+                "luxembourg",
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "02. Viennoiseries",
+              "name": "Huit 80 g",
+              "description": "(01 septembre - 31 décembre)",
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé"
+                },
+                {
+                  "code": 3,
+                  "name": "Œufs",
+                  "detail": null
+                },
+                {
+                  "code": 6,
+                  "name": "Soja",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "luxembourg",
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "02. Viennoiseries",
+              "name": "Pain au chocolat 70 g",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé"
+                },
+                {
+                  "code": 3,
+                  "name": "Œufs",
+                  "detail": null
+                },
+                {
+                  "code": 6,
+                  "name": "Soja",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "luxembourg",
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "02. Viennoiseries",
+              "name": "Poche aux pommes 80 g",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé"
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "luxembourg",
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "02. Viennoiseries",
+              "name": "Streusel 80 g",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé"
+                },
+                {
+                  "code": 3,
+                  "name": "Œufs",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "03. Gâteaux et cookies maison",
+              "name": "Crispy Apple",
+              "description": "(01 septembre - 31 décembre)",
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé"
+                },
+                {
+                  "code": 3,
+                  "name": "Œufs",
+                  "detail": null
+                },
+                {
+                  "code": 5,
+                  "name": "Arachides",
+                  "detail": null
+                },
+                {
+                  "code": 8,
+                  "name": "Fruits à coque",
+                  "detail": "Amandes, Noisettes"
+                }
+              ],
+              "dietary": [
+                "sugar_free"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "03. Gâteaux et cookies maison",
+              "name": "Nutchy",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 5,
+                  "name": "Arachides",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 8,
+                  "name": "Fruits à coque",
+                  "detail": "Amandes, Noisettes"
+                }
+              ],
+              "dietary": [
+                "sugar_free"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "03. Gâteaux et cookies maison",
+              "name": "Tasty Crunchy",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé"
+                },
+                {
+                  "code": 3,
+                  "name": "Œufs",
+                  "detail": null
+                },
+                {
+                  "code": 5,
+                  "name": "Arachides",
+                  "detail": null
+                },
+                {
+                  "code": 8,
+                  "name": "Fruits à coque",
+                  "detail": "Noisettes"
+                }
+              ],
+              "dietary": [
+                "sugar_free"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "04. Vitamines à emporter",
+              "name": "Mini salades 150 g",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "04. Vitamines à emporter",
+              "name": "Petit bol de potage",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "05. Laitages",
+              "name": "Lait chocolaté Luxlait 0,25 l Tétra Pack",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "luxembourg",
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "05. Laitages",
+              "name": "Lait Luxlait BIO 0,25 l Tétra Pack",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "organic",
+                "luxembourg",
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "05. Laitages",
+              "name": "Lait Luxlait BIO 0,25 l Tétra Pack (gratuit)",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "organic",
+                "luxembourg",
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "05. Laitages",
+              "name": "Mini fromage frais avec coulis de fruits de saison 150 g",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "05. Laitages",
+              "name": "Mini muesli maison \"Douceur d'automne\" 150 g",
+              "description": "(01 septembre - 30 novembre)",
+              "price": null,
+              "allergens": [
+                {
+                  "code": 6,
+                  "name": "Soja",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 8,
+                  "name": "Fruits à coque",
+                  "detail": "Noisettes"
+                }
+              ],
+              "dietary": [
+                "vegetarian",
+                "gluten_free"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "05. Laitages",
+              "name": "Yaourt aux fruits Luxlait 125 g",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "05. Laitages",
+              "name": "Yaourt nature Luxlait 125 g",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "06. Fruits",
+              "name": "Banane \"commerce équitable\"",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "fairtrade",
+                "vegan"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "06. Fruits",
+              "name": "Fruit frais entier",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "vegan"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "06. Fruits",
+              "name": "Mini fruits découpés mélangés/non-mélangés 150 g",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "vegan"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "07. Glaces",
+              "name": "Cornet Luxlait 130 ml (Chocolat, Fraise, Vanille, Praliné, Mocca-vanille)",
+              "description": "(01 avril - 31 octobre)",
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé"
+                },
+                {
+                  "code": 6,
+                  "name": "Soja",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 8,
+                  "name": "Fruits à coque",
+                  "detail": "Noisettes"
+                }
+              ],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "07. Glaces",
+              "name": "Dame Blanche Luxlait 200 ml",
+              "description": "(01 avril - 31 octobre)",
+              "price": null,
+              "allergens": [
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "07. Glaces",
+              "name": "Glace miniature Luxlait 100 ml (Framboise, Praliné, Vanille)",
+              "description": "(01 avril - 31 octobre)",
+              "price": null,
+              "allergens": [
+                {
+                  "code": 6,
+                  "name": "Soja",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 8,
+                  "name": "Fruits à coque",
+                  "detail": "Noisettes"
+                }
+              ],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "08. Pâtisserie",
+              "name": "Dessert du Jour",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.1 Boissons froides - Eau minérale et pétillante",
+              "name": "Lodyss fine pétillante 0,25 l btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.1 Boissons froides - Eau minérale et pétillante",
+              "name": "Lodyss plate 0,25 l btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.1 Boissons froides - Eau minérale et pétillante",
+              "name": "Rosport Blue 0,25 l btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.1 Boissons froides - Eau minérale et pétillante",
+              "name": "Rosport Blue 0,50 l btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.1 Boissons froides - Eau minérale et pétillante",
+              "name": "Rosport Blue 0,50 l non consigné",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.1 Boissons froides - Eau minérale et pétillante",
+              "name": "Rosport Blue 1,00 l btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.1 Boissons froides - Eau minérale et pétillante",
+              "name": "Rosport mat Menthe 0,50 l non consigné",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.1 Boissons froides - Eau minérale et pétillante",
+              "name": "Rosport mat Zitroun 0,50 l non consigné",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.1 Boissons froides - Eau minérale et pétillante",
+              "name": "Viva 0,25 l btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.1 Boissons froides - Eau minérale et pétillante",
+              "name": "Viva 0,50 l btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.1 Boissons froides - Eau minérale et pétillante",
+              "name": "Viva 0,50 l non consigné",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.1 Boissons froides - Eau minérale et pétillante",
+              "name": "Viva 1,00 l btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.2 Boissons froides - Jus",
+              "name": "Lëtzbuerger Drauwejus 0,25 l btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.2 Boissons froides - Jus",
+              "name": "Ramborn Apple & Quince Juice 0,33 l btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.2 Boissons froides - Jus",
+              "name": "Ramborn Apple Juice 0,33 btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.2 Boissons froides - Jus",
+              "name": "Ramborn Apple Soda 0,33 l btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.2 Boissons froides - Jus",
+              "name": "Ramborn Pear Apple Juice 0,33 l btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.2 Boissons froides - Jus",
+              "name": "Rosport Sunny Citron-Citron vert 0,50 l non consigné",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.2 Boissons froides - Jus",
+              "name": "Rosport Sunny Pêche 0,50 l non consigné",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.3 Boissons froides - Sodas",
+              "name": "Coca Cola 0,20 l btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.3 Boissons froides - Sodas",
+              "name": "Coca Cola 0,50 l non consigné",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.3 Boissons froides - Sodas",
+              "name": "Fuze Tea - Black Tea Pêche/Hibiscus 0,20 l btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.3 Boissons froides - Sodas",
+              "name": "Fuze Tea - Black Tea Pêche/Hibiscus 0,40 l non consigné",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.3 Boissons froides - Sodas",
+              "name": "Lët'z kola 0,33 btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.3 Boissons froides - Sodas",
+              "name": "Lët'z limo lemon & lime 0,33 btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.3 Boissons froides - Sodas",
+              "name": "Lët'z limo orange 0,33 btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.3 Boissons froides - Sodas",
+              "name": "Rosport Pom's 0,50 l non consigné",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.3 Boissons froides - Sodas",
+              "name": "Rosport Wave 0,50 l non-consigné",
+              "description": "à partir du 01/09/26",
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "11. Boissons chaudes",
+              "name": "Café \"commerce équitable\"",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "fairtrade"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "11. Boissons chaudes",
+              "name": "Cappuccino",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "11. Boissons chaudes",
+              "name": "Chocolat chaud \"Commerce équitable\"",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 6,
+                  "name": "Soja",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "fairtrade"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "11. Boissons chaudes",
+              "name": "Espresso",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "11. Boissons chaudes",
+              "name": "Espresso double",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "11. Boissons chaudes",
+              "name": "Thé \"commerce équitable\"",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "fairtrade"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "11. Boissons chaudes",
+              "name": "Thermo Café 1,00 l",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "11. Boissons chaudes",
+              "name": "Thermo Café 1,50 l",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "11. Boissons chaudes",
+              "name": "Tisane",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "vegan"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.1 Emballages et articles réutilisables",
+              "name": "Consigne ECOBOX (1000 ml)",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.1 Emballages et articles réutilisables",
+              "name": "Consigne ECOBOX (500 ml)",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.1 Emballages et articles réutilisables",
+              "name": "myBento",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.1 Emballages et articles réutilisables",
+              "name": "myBowl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.1 Emballages et articles réutilisables",
+              "name": "myCan",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.1 Emballages et articles réutilisables",
+              "name": "myFrupstut",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.1 Emballages et articles réutilisables",
+              "name": "myKit",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.1 Emballages et articles réutilisables",
+              "name": "myMiniBowl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.1 Emballages et articles réutilisables",
+              "name": "myMug",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.1 Emballages et articles réutilisables",
+              "name": "myNapkin",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "fairtrade"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.1 Emballages et articles réutilisables",
+              "name": "Remboursement Consigne ECOBOX (1000 ml)",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.1 Emballages et articles réutilisables",
+              "name": "Remboursement Consigne ECOBOX (500 ml)",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.2 Emballages et articles à usage unique",
+              "name": "Barquette pour pâtes/salades à emporter",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.2 Emballages et articles à usage unique",
+              "name": "Couvercle pour barquette à emporter",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.2 Emballages et articles à usage unique",
+              "name": "Cuillère comestible",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Avoine"
+                }
+              ],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.2 Emballages et articles à usage unique",
+              "name": "Fourchette en bois",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.2 Emballages et articles à usage unique",
+              "name": "Gobelet comestible 220 ml",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Avoine"
+                }
+              ],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.2 Emballages et articles à usage unique",
+              "name": "Sachet pour sandwiches",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.2 Emballages et articles à usage unique",
+              "name": "Serviette en papier (à partir de la 2e serviette)",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "UDL-CKB-BRASSERIE-JOHNS",
+      "name": "UDL-CKB - Brasserie John's - Restaurant",
+      "menus": [
+        {
+          "date": "2026-09-24",
+          "service": "Menu",
+          "service_time": "11:00-14:30",
+          "source_url": "https://ssl.education.lu/eRestauration/CustomerServices/Menu",
+          "items": [
+            {
+              "category": "Entrée",
+              "name": "Salad'bar",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 3,
+                  "name": "Œufs",
+                  "detail": null
+                },
+                {
+                  "code": 6,
+                  "name": "Soja",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 9,
+                  "name": "Céleri",
+                  "detail": null
+                },
+                {
+                  "code": 10,
+                  "name": "Moutarde",
+                  "detail": null
+                },
+                {
+                  "code": 12,
+                  "name": "Anhydride sulfureux et sulfites",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "vegetarian",
+                "non_vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "Entrée",
+              "name": "Soupe de pommes de terre",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 6,
+                  "name": "Soja",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 9,
+                  "name": "Céleri",
+                  "detail": null
+                },
+                {
+                  "code": 12,
+                  "name": "Anhydride sulfureux et sulfites",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "vegetarian",
+                "gluten_free"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "Végétarien",
+              "name": "Aloo palak au tofu",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 6,
+                  "name": "Soja",
+                  "detail": null
+                },
+                {
+                  "code": 12,
+                  "name": "Anhydride sulfureux et sulfites",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "vegetarian",
+                "gluten_free"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "Végan",
+              "name": "Aloo Palak au tofu",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 6,
+                  "name": "Soja",
+                  "detail": null
+                },
+                {
+                  "code": 12,
+                  "name": "Anhydride sulfureux et sulfites",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "vegan",
+                "gluten_free"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "Non-végétarien",
+              "name": "Faux-filet de boeuf grillé sauce Béarnaise",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 3,
+                  "name": "Œufs",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 12,
+                  "name": "Anhydride sulfureux et sulfites",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "non_vegetarian",
+                "gluten_free"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "Non-végétarien",
+              "name": "Rôti de porc Orloff, jus lié",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé"
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 12,
+                  "name": "Anhydride sulfureux et sulfites",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "non_vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "Féculents",
+              "name": "Pommes de terre grenailles rôties",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "vegetarian",
+                "gluten_free"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "Féculents",
+              "name": "Steakhouse fries",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "Légumes",
+              "name": "Carottes persillées",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 6,
+                  "name": "Soja",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 9,
+                  "name": "Céleri",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "vegetarian",
+                "gluten_free"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "Dessert",
+              "name": "Paris - Brest",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé"
+                },
+                {
+                  "code": 3,
+                  "name": "Œufs",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 8,
+                  "name": "Fruits à coque",
+                  "detail": "Amandes, Noisettes"
+                }
+              ],
+              "dietary": [
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "Snack à emporter",
+              "name": "Salade aux mezzés variés",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Seigle, Orge"
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 11,
+                  "name": "Graines de sésame",
+                  "detail": null
+                },
+                {
+                  "code": 12,
+                  "name": "Anhydride sulfureux et sulfites",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "Snack à emporter",
+              "name": "Salade campagnarde",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé"
+                },
+                {
+                  "code": 3,
+                  "name": "Œufs",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 10,
+                  "name": "Moutarde",
+                  "detail": null
+                },
+                {
+                  "code": 12,
+                  "name": "Anhydride sulfureux et sulfites",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "non_vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "Snack à emporter",
+              "name": "Wrap aux falafels",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé"
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 12,
+                  "name": "Anhydride sulfureux et sulfites",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "Snack à emporter",
+              "name": "Wrap façon croque monsieur",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé"
+                },
+                {
+                  "code": 3,
+                  "name": "Œufs",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 12,
+                  "name": "Anhydride sulfureux et sulfites",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "non_vegetarian"
+              ],
+              "source": "Restopolis"
+            }
+          ]
+        },
+        {
+          "date": "2026-09-24",
+          "service": "Constant products",
+          "service_time": null,
+          "source_url": "https://ssl.education.lu/eRestauration/CustomerServices/Menu",
+          "items": [
+            {
+              "category": "01.1 Sandwiches végétariens",
+              "name": "1/2 Levain fromage",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Orge, Épeautre"
+                },
+                {
+                  "code": 3,
+                  "name": "Œufs",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.1 Sandwiches végétariens",
+              "name": "1/2 Levain Parmigiana Sandwich",
+              "description": "(01 avril - 30 juin)",
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Orge, Épeautre"
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.1 Sandwiches végétariens",
+              "name": "1/2 Levain The ultimate egg Sandwich",
+              "description": "(01 juillet - 30 septembre)",
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Orge, Épeautre"
+                },
+                {
+                  "code": 3,
+                  "name": "Œufs",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 10,
+                  "name": "Moutarde",
+                  "detail": null
+                }
+              ],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.1 Sandwiches végétariens",
+              "name": "1/2 Levain Tortilla Olé",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Orge, Épeautre"
+                },
+                {
+                  "code": 3,
+                  "name": "Œufs",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.1 Sandwiches végétariens",
+              "name": "Ciabatta tomate-mozzarella et pesto",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Seigle, Orge, Avoine"
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.1 Sandwiches végétariens",
+              "name": "Petit pain blanc fromage",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Seigle"
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.2 Sandwiches végans",
+              "name": "1/2 Levain Humi (houmous aux légumes locaux grillés)",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Orge, Épeautre"
+                }
+              ],
+              "dietary": [
+                "vegan"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.2 Sandwiches végans",
+              "name": "1/2 tranche de pain",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Seigle, Orge, Avoine"
+                },
+                {
+                  "code": 11,
+                  "name": "Graines de sésame",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "organic",
+                "luxembourg",
+                "vegan"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.2 Sandwiches végans",
+              "name": "Petit pain blanc \"Schockelasbotter végan\"",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Seigle"
+                },
+                {
+                  "code": 8,
+                  "name": "Fruits à coque",
+                  "detail": "Noisettes"
+                }
+              ],
+              "dietary": [
+                "vegan"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.2 Sandwiches végans",
+              "name": "Petit pain blanc nature",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Seigle"
+                }
+              ],
+              "dietary": [
+                "vegan"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.3 Sandwiches non-végétariens",
+              "name": "1/2 Levain \"Great César\"",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Orge, Épeautre"
+                },
+                {
+                  "code": 3,
+                  "name": "Œufs",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 10,
+                  "name": "Moutarde",
+                  "detail": null
+                },
+                {
+                  "code": 12,
+                  "name": "Anhydride sulfureux et sulfites",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "non_vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.3 Sandwiches non-végétariens",
+              "name": "1/2 Levain \"Pastrami\"",
+              "description": "(01 avril - 31 octobre)",
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Orge, Épeautre"
+                },
+                {
+                  "code": 3,
+                  "name": "Œufs",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "non_vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.3 Sandwiches non-végétariens",
+              "name": "1/2 Levain jambon cuit",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Orge, Épeautre"
+                },
+                {
+                  "code": 3,
+                  "name": "Œufs",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "non_vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.3 Sandwiches non-végétariens",
+              "name": "1/2 Levain salami",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Orge, Épeautre"
+                },
+                {
+                  "code": 3,
+                  "name": "Œufs",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 10,
+                  "name": "Moutarde",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "non_vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.3 Sandwiches non-végétariens",
+              "name": "Petit pain blanc jambon cuit",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Seigle"
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "non_vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.3 Sandwiches non-végétariens",
+              "name": "Petit pain blanc salami",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Seigle"
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 10,
+                  "name": "Moutarde",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "non_vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.4 Sandwiches sans gluten",
+              "name": "Mini baguette sans gluten \"Schockelasbotter végan\"",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 8,
+                  "name": "Fruits à coque",
+                  "detail": "Noisettes"
+                }
+              ],
+              "dietary": [
+                "vegan",
+                "gluten_free"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.4 Sandwiches sans gluten",
+              "name": "Mini baguette sans gluten fromage",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "vegetarian",
+                "gluten_free"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.4 Sandwiches sans gluten",
+              "name": "Mini baguette sans gluten jambon cuit",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "non_vegetarian",
+                "gluten_free"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "01.4 Sandwiches sans gluten",
+              "name": "Mini baguette sans gluten salami",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 10,
+                  "name": "Moutarde",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "non_vegetarian",
+                "gluten_free"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "02. Viennoiseries",
+              "name": "Bretzel salé 80 g",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé"
+                }
+              ],
+              "dietary": [
+                "luxembourg",
+                "vegan"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "02. Viennoiseries",
+              "name": "Croissant 50 g",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé"
+                },
+                {
+                  "code": 3,
+                  "name": "Œufs",
+                  "detail": null
+                },
+                {
+                  "code": 6,
+                  "name": "Soja",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "luxembourg",
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "02. Viennoiseries",
+              "name": "Croissant fourré 70 g",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé"
+                },
+                {
+                  "code": 6,
+                  "name": "Soja",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 8,
+                  "name": "Fruits à coque",
+                  "detail": "Amandes, Noisettes"
+                }
+              ],
+              "dietary": [
+                "luxembourg",
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "02. Viennoiseries",
+              "name": "Huit 80 g",
+              "description": "(01 septembre - 31 décembre)",
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé"
+                },
+                {
+                  "code": 3,
+                  "name": "Œufs",
+                  "detail": null
+                },
+                {
+                  "code": 6,
+                  "name": "Soja",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "luxembourg",
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "02. Viennoiseries",
+              "name": "Pain au chocolat 70 g",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé"
+                },
+                {
+                  "code": 3,
+                  "name": "Œufs",
+                  "detail": null
+                },
+                {
+                  "code": 6,
+                  "name": "Soja",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "luxembourg",
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "02. Viennoiseries",
+              "name": "Poche aux pommes 80 g",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé"
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "luxembourg",
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "02. Viennoiseries",
+              "name": "Streusel 80 g",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé"
+                },
+                {
+                  "code": 3,
+                  "name": "Œufs",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "03. Gâteaux et cookies maison",
+              "name": "Crispy Apple",
+              "description": "(01 septembre - 31 décembre)",
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé"
+                },
+                {
+                  "code": 3,
+                  "name": "Œufs",
+                  "detail": null
+                },
+                {
+                  "code": 5,
+                  "name": "Arachides",
+                  "detail": null
+                },
+                {
+                  "code": 8,
+                  "name": "Fruits à coque",
+                  "detail": "Amandes, Noisettes"
+                }
+              ],
+              "dietary": [
+                "sugar_free"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "03. Gâteaux et cookies maison",
+              "name": "Nutchy",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 5,
+                  "name": "Arachides",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 8,
+                  "name": "Fruits à coque",
+                  "detail": "Amandes, Noisettes"
+                }
+              ],
+              "dietary": [
+                "sugar_free"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "03. Gâteaux et cookies maison",
+              "name": "Tasty Crunchy",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé"
+                },
+                {
+                  "code": 3,
+                  "name": "Œufs",
+                  "detail": null
+                },
+                {
+                  "code": 5,
+                  "name": "Arachides",
+                  "detail": null
+                },
+                {
+                  "code": 8,
+                  "name": "Fruits à coque",
+                  "detail": "Noisettes"
+                }
+              ],
+              "dietary": [
+                "sugar_free"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "04. Vitamines à emporter",
+              "name": "Mini salades 150 g",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "04. Vitamines à emporter",
+              "name": "Petit bol de potage",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "05. Laitages",
+              "name": "Lait chocolaté Luxlait 0,25 l Tétra Pack",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "luxembourg",
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "05. Laitages",
+              "name": "Lait Luxlait BIO 0,25 l Tétra Pack",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "organic",
+                "luxembourg",
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "05. Laitages",
+              "name": "Lait Luxlait BIO 0,25 l Tétra Pack (gratuit)",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "organic",
+                "luxembourg",
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "05. Laitages",
+              "name": "Mini fromage frais avec coulis de fruits de saison 150 g",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "05. Laitages",
+              "name": "Mini muesli maison \"Douceur d'automne\" 150 g",
+              "description": "(01 septembre - 30 novembre)",
+              "price": null,
+              "allergens": [
+                {
+                  "code": 6,
+                  "name": "Soja",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 8,
+                  "name": "Fruits à coque",
+                  "detail": "Noisettes"
+                }
+              ],
+              "dietary": [
+                "vegetarian",
+                "gluten_free"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "05. Laitages",
+              "name": "Yaourt aux fruits Luxlait 125 g",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "05. Laitages",
+              "name": "Yaourt nature Luxlait 125 g",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "06. Fruits",
+              "name": "Banane \"commerce équitable\"",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "fairtrade",
+                "vegan"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "06. Fruits",
+              "name": "Fruit frais entier",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "vegan"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "06. Fruits",
+              "name": "Mini fruits découpés mélangés/non-mélangés 150 g",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "vegan"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "07. Glaces",
+              "name": "Cornet Luxlait 130 ml (Chocolat, Fraise, Vanille, Praliné, Mocca-vanille)",
+              "description": "(01 avril - 31 octobre)",
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé"
+                },
+                {
+                  "code": 6,
+                  "name": "Soja",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 8,
+                  "name": "Fruits à coque",
+                  "detail": "Noisettes"
+                }
+              ],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "07. Glaces",
+              "name": "Dame Blanche Luxlait 200 ml",
+              "description": "(01 avril - 31 octobre)",
+              "price": null,
+              "allergens": [
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "07. Glaces",
+              "name": "Glace miniature Luxlait 100 ml (Framboise, Praliné, Vanille)",
+              "description": "(01 avril - 31 octobre)",
+              "price": null,
+              "allergens": [
+                {
+                  "code": 6,
+                  "name": "Soja",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                },
+                {
+                  "code": 8,
+                  "name": "Fruits à coque",
+                  "detail": "Noisettes"
+                }
+              ],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "08. Pâtisserie",
+              "name": "Dessert du Jour",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "vegetarian"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.1 Boissons froides - Eau minérale et pétillante",
+              "name": "Lodyss fine pétillante 0,25 l btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.1 Boissons froides - Eau minérale et pétillante",
+              "name": "Lodyss plate 0,25 l btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.1 Boissons froides - Eau minérale et pétillante",
+              "name": "Rosport Blue 0,25 l btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.1 Boissons froides - Eau minérale et pétillante",
+              "name": "Rosport Blue 0,50 l btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.1 Boissons froides - Eau minérale et pétillante",
+              "name": "Rosport Blue 0,50 l non consigné",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.1 Boissons froides - Eau minérale et pétillante",
+              "name": "Rosport Blue 1,00 l btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.1 Boissons froides - Eau minérale et pétillante",
+              "name": "Rosport mat Menthe 0,50 l non consigné",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.1 Boissons froides - Eau minérale et pétillante",
+              "name": "Rosport mat Zitroun 0,50 l non consigné",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.1 Boissons froides - Eau minérale et pétillante",
+              "name": "Viva 0,25 l btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.1 Boissons froides - Eau minérale et pétillante",
+              "name": "Viva 0,50 l btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.1 Boissons froides - Eau minérale et pétillante",
+              "name": "Viva 0,50 l non consigné",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.1 Boissons froides - Eau minérale et pétillante",
+              "name": "Viva 1,00 l btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.2 Boissons froides - Jus",
+              "name": "Lëtzbuerger Drauwejus 0,25 l btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.2 Boissons froides - Jus",
+              "name": "Ramborn Apple & Quince Juice 0,33 l btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.2 Boissons froides - Jus",
+              "name": "Ramborn Apple Juice 0,33 btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.2 Boissons froides - Jus",
+              "name": "Ramborn Apple Soda 0,33 l btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.2 Boissons froides - Jus",
+              "name": "Ramborn Pear Apple Juice 0,33 l btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.2 Boissons froides - Jus",
+              "name": "Rosport Sunny Citron-Citron vert 0,50 l non consigné",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.2 Boissons froides - Jus",
+              "name": "Rosport Sunny Pêche 0,50 l non consigné",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.3 Boissons froides - Sodas",
+              "name": "Coca Cola 0,20 l btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.3 Boissons froides - Sodas",
+              "name": "Coca Cola 0,50 l non consigné",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.3 Boissons froides - Sodas",
+              "name": "Fuze Tea - Black Tea Pêche/Hibiscus 0,20 l btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.3 Boissons froides - Sodas",
+              "name": "Fuze Tea - Black Tea Pêche/Hibiscus 0,40 l non consigné",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.3 Boissons froides - Sodas",
+              "name": "Lët'z kola 0,33 btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.3 Boissons froides - Sodas",
+              "name": "Lët'z limo lemon & lime 0,33 btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.3 Boissons froides - Sodas",
+              "name": "Lët'z limo orange 0,33 btl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.3 Boissons froides - Sodas",
+              "name": "Rosport Pom's 0,50 l non consigné",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "luxembourg"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "10.3 Boissons froides - Sodas",
+              "name": "Rosport Wave 0,50 l non-consigné",
+              "description": "à partir du 01/09/26",
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "11. Boissons chaudes",
+              "name": "Café \"commerce équitable\"",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "fairtrade"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "11. Boissons chaudes",
+              "name": "Cappuccino",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "11. Boissons chaudes",
+              "name": "Chocolat chaud \"Commerce équitable\"",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 6,
+                  "name": "Soja",
+                  "detail": null
+                },
+                {
+                  "code": 7,
+                  "name": "Lait",
+                  "detail": null
+                }
+              ],
+              "dietary": [
+                "fairtrade"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "11. Boissons chaudes",
+              "name": "Espresso",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "11. Boissons chaudes",
+              "name": "Espresso double",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "11. Boissons chaudes",
+              "name": "Thé \"commerce équitable\"",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "fairtrade"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "11. Boissons chaudes",
+              "name": "Thermo Café 1,00 l",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "11. Boissons chaudes",
+              "name": "Thermo Café 1,50 l",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "11. Boissons chaudes",
+              "name": "Tisane",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "vegan"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.1 Emballages et articles réutilisables",
+              "name": "Consigne ECOBOX (1000 ml)",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.1 Emballages et articles réutilisables",
+              "name": "Consigne ECOBOX (500 ml)",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.1 Emballages et articles réutilisables",
+              "name": "myBento",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.1 Emballages et articles réutilisables",
+              "name": "myBowl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.1 Emballages et articles réutilisables",
+              "name": "myCan",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.1 Emballages et articles réutilisables",
+              "name": "myFrupstut",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.1 Emballages et articles réutilisables",
+              "name": "myKit",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.1 Emballages et articles réutilisables",
+              "name": "myMiniBowl",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.1 Emballages et articles réutilisables",
+              "name": "myMug",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.1 Emballages et articles réutilisables",
+              "name": "myNapkin",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [
+                "fairtrade"
+              ],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.1 Emballages et articles réutilisables",
+              "name": "Remboursement Consigne ECOBOX (1000 ml)",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.1 Emballages et articles réutilisables",
+              "name": "Remboursement Consigne ECOBOX (500 ml)",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.2 Emballages et articles à usage unique",
+              "name": "Barquette pour pâtes/salades à emporter",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.2 Emballages et articles à usage unique",
+              "name": "Couvercle pour barquette à emporter",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.2 Emballages et articles à usage unique",
+              "name": "Cuillère comestible",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Avoine"
+                }
+              ],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.2 Emballages et articles à usage unique",
+              "name": "Fourchette en bois",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.2 Emballages et articles à usage unique",
+              "name": "Gobelet comestible 220 ml",
+              "description": null,
+              "price": null,
+              "allergens": [
+                {
+                  "code": 1,
+                  "name": "Céréales contenant du gluten",
+                  "detail": "Blé, Avoine"
+                }
+              ],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.2 Emballages et articles à usage unique",
+              "name": "Sachet pour sandwiches",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            },
+            {
+              "category": "12.2 Emballages et articles à usage unique",
+              "name": "Serviette en papier (à partir de la 2e serviette)",
+              "description": null,
+              "price": null,
+              "allergens": [],
+              "dietary": [],
+              "source": "Restopolis"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

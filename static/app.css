@@ -1,0 +1,1104 @@
+:root {
+  --color-bg: #f7f8fa;
+  --color-surface: #ffffff;
+  --color-border: #edeef1;
+  --color-text: #14171a;
+  --color-text-muted: #6b7280;
+  --color-primary: #1aa860;
+  --color-primary-dark: #128248;
+  --color-primary-bg: #e6f7ee;
+  --color-primary-contrast: #ffffff;
+  --color-available: #1aa860;
+  --color-available-bg: #e6f7ee;
+  --color-closed: #e0393f;
+  --color-closed-bg: #fdeaea;
+  --color-unknown: #b17a00;
+  --color-unknown-bg: #fcf3d9;
+  /* Category accent colors -- purely a visual grouping cue (which icon a
+     dish gets), never a claim about the dish itself beyond its own real
+     category/dietary flags already in the data. See categoryIconFor() in
+     static/app.js. */
+  --color-cat-meat: #e0393f;
+  --color-cat-meat-bg: #fdeaea;
+  --color-cat-veg: #1aa860;
+  --color-cat-veg-bg: #e6f7ee;
+  --color-cat-other: #e8813a;
+  --color-cat-other-bg: #fdf0e4;
+  --color-cat-drink: #2b8fd6;
+  --color-cat-drink-bg: #e7f3fb;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 22px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --touch-target: 44px;
+  --max-content-width: 720px;
+  --bottom-nav-height: 64px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  /* clip, not hidden: `hidden` silently turns <body> into a scroll
+     container that never actually scrolls (the window does), which makes
+     every position:sticky header/category bar inside it scroll away
+     instead of pinning. `clip` prevents horizontal overflow the same way
+     without creating a scroll container. */
+  overflow-x: clip;
+}
+
+/* Landscape on a Pro Max puts the Dynamic Island on a side edge. */
+body {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+#app {
+  max-width: var(--max-content-width);
+  margin: 0 auto;
+  /* room for the floating order bar and/or the tab bar + home indicator */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: calc(120px + env(safe-area-inset-bottom));
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  color: inherit;
+}
+
+/* iOS Safari zooms the page when focusing a field under 16px. */
+input, select, textarea { font-size: 16px; font-family: inherit; }
+
+/* Pressed feedback in place of the (disabled) grey tap highlight. */
+.restaurant-card, .food-card, .date-card, .primary-button, .secondary-button,
+.chip, .filter-button, .profile-row, .history-reorder-btn, .nav-tab {
+  transition: transform 0.12s ease, background-color 0.12s ease;
+}
+.restaurant-card:active, .date-card:active, .primary-button:active,
+.secondary-button:active, .chip:active, .filter-button:active,
+.history-reorder-btn:active { transform: scale(0.97); }
+.food-card:active { transform: scale(0.99); }
+.profile-row:active { background: var(--color-bg); }
+
+.large-title {
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  margin: var(--space-1) var(--space-4) var(--space-3);
+}
+
+a { color: inherit; }
+
+svg { display: block; }
+
+[dir="rtl"] .select-check { right: auto; left: var(--space-3); }
+[dir="rtl"] .heart-btn { right: auto; left: 46px; }
+[dir="rtl"] .quantity-row { justify-content: flex-start; }
+[dir="rtl"] .summary-bar,
+[dir="rtl"] .review-line,
+[dir="rtl"] .totals-row { direction: rtl; }
+
+/* ------------------------------------------------------------ Bottom nav */
+/* Shown only on the 4 screens the tabs actually lead to (Home/Favorites/
+   Orders/Profile) -- a "drill-down" screen (a restaurant's menu, the
+   cart, Smart Lunch's form) hides it in favor of the screen-header's own
+   back button, the same pattern the reference design itself uses (its
+   Menu/Filters/Item-detail/Cart/Smart-Lunch mockups don't show the tab
+   bar either). See render()'s BOTTOM_NAV_SCREENS set. */
+
+#bottom-nav {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  z-index: 25;
+  max-width: var(--max-content-width);
+  margin: 0 auto;
+  display: flex;
+  /* iOS-style translucent material over whatever scrolls beneath it */
+  background: rgba(255, 255, 255, 0.82);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  border-top: 0.5px solid rgba(0, 0, 0, 0.12);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+#bottom-nav .nav-tab {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: var(--bottom-nav-height);
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  position: relative;
+}
+#bottom-nav .nav-tab.is-active { color: var(--color-primary); }
+#bottom-nav .nav-tab .nav-tab-label { font-size: 0.68rem; font-weight: 600; }
+#bottom-nav .nav-tab .nav-tab-badge {
+  position: absolute;
+  top: 2px;
+  right: calc(50% - 22px);
+  background: var(--color-closed);
+  color: #fff;
+  border-radius: 999px;
+  min-width: 16px;
+  height: 16px;
+  font-size: 0.62rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+}
+[dir="rtl"] #bottom-nav .nav-tab .nav-tab-badge { right: auto; left: calc(50% - 22px); }
+
+/* ---------------------------------------------------------------- Header */
+
+.screen-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: rgba(247, 248, 250, 0.85);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  padding: var(--space-4) var(--space-4) var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.back-button {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  width: var(--touch-target);
+  height: var(--touch-target);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text);
+  flex-shrink: 0;
+}
+[dir="rtl"] .back-button svg,
+[dir="rtl"] .link-button svg,
+[dir="rtl"] .profile-row-chevron svg { transform: scaleX(-1); }
+
+.screen-title { font-size: 1.15rem; font-weight: 700; margin: 0; }
+.screen-subtitle { font-size: 0.9rem; color: var(--color-text-muted); margin: 0; }
+
+.eyebrow {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+  margin: 0 var(--space-4) var(--space-1);
+}
+
+/* ------------------------------------------------------------ Restaurant */
+
+.restaurant-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4) var(--space-4);
+}
+
+@media (min-width: 640px) {
+  .restaurant-grid { grid-template-columns: 1fr 1fr; }
+}
+
+.restaurant-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+}
+
+.restaurant-card .restaurant-card-main { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
+.restaurant-card .icon-avatar { flex: 0 0 auto; }
+.restaurant-card h2 { margin: 0; font-size: 1.1rem; letter-spacing: 0.01em; }
+.restaurant-card .kind { margin: 0; color: var(--color-text-muted); font-size: 0.85rem; }
+
+.icon-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.icon-avatar.is-meat { background: var(--color-cat-meat-bg); color: var(--color-cat-meat); }
+.icon-avatar.is-veg { background: var(--color-cat-veg-bg); color: var(--color-cat-veg); }
+.icon-avatar.is-drink { background: var(--color-cat-drink-bg); color: var(--color-cat-drink); }
+.icon-avatar.is-other { background: var(--color-cat-other-bg); color: var(--color-cat-other); }
+
+/* ----------------------------------------------------------------- Chips */
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  width: fit-content;
+}
+.status-chip.available { color: var(--color-available); background: var(--color-available-bg); }
+.status-chip.closed, .status-chip.no_menu, .status-chip.ordering_closed, .status-chip.past_date {
+  color: var(--color-closed); background: var(--color-closed-bg);
+}
+.status-chip.unknown { color: var(--color-unknown); background: var(--color-unknown-bg); }
+
+/* ----------------------------------------------------------- Date picker */
+
+.date-scroller {
+  display: flex;
+  gap: var(--space-3);
+  overflow-x: auto;
+  padding: var(--space-2) var(--space-4) var(--space-4);
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.date-scroller::-webkit-scrollbar { display: none; }
+
+.date-card {
+  scroll-snap-align: start;
+  flex: 0 0 auto;
+  width: 128px;
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  text-align: center;
+  min-height: var(--touch-target);
+}
+
+.date-card.is-selected { border-color: var(--color-primary); background: #f1f1f6; }
+.date-card.is-disabled { opacity: 0.5; }
+
+.date-card .dow { font-size: 0.75rem; text-transform: uppercase; color: var(--color-text-muted); }
+.date-card .dom { font-size: 1.1rem; font-weight: 700; margin: 2px 0 6px; }
+.date-card .deadline { font-size: 0.7rem; color: var(--color-text-muted); margin-top: 4px; }
+
+/* --------------------------------------------------------- Category nav */
+
+.category-nav {
+  position: sticky;
+  top: 60px;
+  z-index: 15;
+  background: rgba(247, 248, 250, 0.85);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  display: flex;
+  gap: var(--space-2);
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  -webkit-overflow-scrolling: touch;
+}
+.category-nav::-webkit-scrollbar { display: none; }
+
+.category-nav button {
+  flex: 0 0 auto;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 0.85rem;
+  min-height: 36px;
+  white-space: nowrap;
+}
+.category-nav button.is-active { background: var(--color-primary); color: var(--color-primary-contrast); border-color: var(--color-primary); }
+
+/* --------------------------------------------------------------- Header */
+
+.menu-header {
+  padding: var(--space-2) var(--space-4) var(--space-3);
+}
+.menu-header .service-time { font-size: 1.05rem; font-weight: 600; margin: var(--space-1) 0; }
+.menu-header .deadline-line { font-size: 0.85rem; color: var(--color-text-muted); }
+
+.category-section { padding: var(--space-4) var(--space-4) var(--space-1); }
+.category-section h3 { margin: 0 0 var(--space-2); font-size: 1.05rem; }
+
+/* ---------------------------------------------------------------- Cards */
+
+.food-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-3);
+  padding: 0 var(--space-4) var(--space-2);
+}
+
+@media (min-width: 640px) {
+  .food-grid { grid-template-columns: 1fr 1fr; }
+}
+
+.food-card {
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  text-align: left;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  position: relative;
+}
+
+.food-card.is-selected { border-color: var(--color-primary); box-shadow: 0 0 0 1px var(--color-primary); }
+
+.food-card .card-head { display: flex; align-items: flex-start; gap: var(--space-3); padding-right: 78px; }
+[dir="rtl"] .food-card .card-head { padding-right: 0; padding-left: 78px; }
+.food-card .card-head .icon-avatar { width: 36px; height: 36px; }
+.food-card .name { font-size: 1.02rem; font-weight: 700; line-height: 1.3; margin: 0; }
+.food-card .description { font-size: 0.85rem; color: var(--color-text-muted); margin: 0; }
+
+.weight-price-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: 0.95rem;
+}
+.weight-price-row .weight { font-weight: 700; }
+.weight-price-row .price { font-weight: 700; }
+.weight-price-row .price.is-unspecified { font-weight: 400; font-style: italic; color: var(--color-text-muted); font-size: 0.85rem; }
+.weight-price-row .calories { font-weight: 400; color: var(--color-text-muted); font-size: 0.85rem; }
+.weight-price-row .dot { color: var(--color-text-muted); }
+
+.badge-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--color-available-bg);
+  color: var(--color-available);
+}
+
+.allergen-line { font-size: 0.78rem; color: var(--color-text-muted); }
+
+.select-check {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1.5px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-primary);
+  background: var(--color-surface);
+}
+.food-card.is-selected .select-check { background: var(--color-primary); color: var(--color-primary-contrast); border-color: var(--color-primary); }
+
+/* Sits beside .select-check (both top-right) rather than the top-left,
+   which the card's leading category icon-avatar now occupies -- see
+   .food-card .card-head. */
+.heart-btn {
+  position: absolute;
+  top: var(--space-3);
+  right: 46px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  color: var(--color-text-muted);
+  z-index: 1;
+}
+.heart-btn.is-favorite { color: var(--color-closed); }
+
+.quantity-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-1);
+}
+.quantity-stepper { display: flex; align-items: center; gap: var(--space-3); }
+.quantity-stepper button {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.quantity-stepper .quantity-value { min-width: 20px; text-align: center; font-weight: 700; }
+
+.portion-list { display: flex; flex-direction: column; gap: 6px; margin-top: var(--space-1); }
+.portion-option {
+  display: flex; align-items: center; gap: var(--space-2);
+  border: 1px solid var(--color-border); border-radius: var(--radius-md);
+  padding: 8px 10px; font-size: 0.9rem; width: 100%; text-align: left; background: var(--color-surface);
+  min-height: var(--touch-target);
+}
+.portion-option.is-selected { border-color: var(--color-primary); background: #f1f1f6; }
+
+/* --------------------------------------------------------- Summary bar */
+
+/* A floating rounded bar above the home indicator, like iOS's own
+   floating action bars, rather than a full-bleed strip. */
+.summary-bar {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(var(--space-3) + env(safe-area-inset-bottom));
+  width: calc(100% - 2 * var(--space-3));
+  max-width: 560px;
+  z-index: 30;
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 10px 30px rgba(18, 130, 72, 0.35), 0 2px 6px rgba(0, 0, 0, 0.08);
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.summary-bar .summary-text { font-size: 0.85rem; line-height: 1.35; }
+.summary-bar .summary-text strong { font-size: 1rem; display: block; }
+.summary-bar button {
+  background: white;
+  color: var(--color-primary);
+  border: none;
+  border-radius: 999px;
+  padding: 0 var(--space-4);
+  height: var(--touch-target);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------- Review */
+
+.review-line {
+  border-bottom: 1px solid var(--color-border);
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+.review-line .details { flex: 1; }
+.review-line .name { font-weight: 700; margin: 0 0 2px; }
+.review-line .meta { font-size: 0.85rem; color: var(--color-text-muted); }
+.review-line .line-actions { display: flex; align-items: center; gap: var(--space-2); }
+.review-line .remove-btn {
+  border: none; background: none; color: var(--color-closed); font-size: 0.85rem; min-height: var(--touch-target);
+}
+
+/* ------------------------------------------------------------ Favorites */
+
+.favorite-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+.favorite-row.is-clickable { cursor: pointer; }
+.favorite-row .heart-btn { position: static; flex: 0 0 auto; }
+.favorite-row .favorite-info { flex: 1; min-width: 0; }
+.favorite-row .name { font-weight: 700; margin: 0 0 2px; }
+.favorite-row .restaurant { font-size: 0.85rem; color: var(--color-text-muted); margin: 0 0 4px; }
+.favorite-row .status-line { font-size: 0.85rem; font-style: italic; color: var(--color-text-muted); margin: 0; }
+
+/* --------------------------------------------------------- Order history */
+
+.history-row {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+.history-row .restaurant { font-weight: 700; margin: 0 0 2px; }
+.history-row .items-summary { font-size: 0.9rem; margin: 0 0 4px; }
+.history-row .meta { font-size: 0.8rem; color: var(--color-text-muted); margin: 0 0 2px; }
+.history-reorder-btn {
+  margin-top: var(--space-2);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  min-height: 36px;
+}
+
+.totals-box {
+  margin: var(--space-3) var(--space-4);
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+}
+.totals-box .totals-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 0.95rem; }
+/* flex-wrap so a long unpriced-reason sentence (e.g. "Select a main dish
+   to see the meal price") wraps onto its own line instead of being
+   squeezed flush against the "Total" label with no visible gap. */
+.totals-box .totals-row.grand {
+  font-weight: 700; font-size: 1.1rem; border-top: 1px solid var(--color-border);
+  margin-top: var(--space-2); padding-top: var(--space-3);
+  flex-wrap: wrap; column-gap: var(--space-2); row-gap: 2px;
+}
+.totals-box .totals-row.grand span:first-child { white-space: nowrap; }
+.totals-box .totals-row.grand span:last-child { text-align: end; }
+.totals-box.is-unverified { border-style: dashed; }
+.totals-box .verifying-badge { margin: var(--space-2) 0 0; font-size: 0.75rem; font-style: italic; color: var(--color-text-muted); text-align: end; }
+
+.field-block { padding: 0 var(--space-4) var(--space-4); }
+.field-block label { font-size: 0.85rem; color: var(--color-text-muted); display: block; margin-bottom: 4px; }
+.field-block input {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  font-size: 16px;
+  min-height: var(--touch-target);
+}
+
+.primary-button {
+  display: block;
+  width: calc(100% - 2 * var(--space-4));
+  margin: var(--space-4);
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
+  border: none;
+  border-radius: var(--radius-md);
+  min-height: var(--touch-target);
+  font-weight: 700;
+  font-size: 1rem;
+}
+.primary-button:disabled { opacity: 0.5; }
+
+.secondary-button {
+  display: block;
+  width: calc(100% - 2 * var(--space-4));
+  margin: 0 var(--space-4) var(--space-4);
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  min-height: var(--touch-target);
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+/* ----------------------------------------------------------- Empty state */
+
+.empty-state {
+  margin: var(--space-6) var(--space-4);
+  text-align: center;
+  color: var(--color-text-muted);
+}
+.empty-state .icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto var(--space-3);
+  border-radius: 50%;
+  background: var(--color-primary-bg);
+  color: var(--color-primary);
+}
+.empty-state h3 { color: var(--color-text); margin: 0 0 var(--space-1); }
+
+.loading-state { padding: var(--space-6); text-align: center; color: var(--color-text-muted); }
+
+/* --------------------------------------------------------------- Toast */
+
+.toast {
+  position: fixed;
+  bottom: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--color-text);
+  color: white;
+  padding: 10px 16px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  z-index: 40;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap; border: 0;
+}
+
+/* --------------------------------------------------------------- Search */
+
+.search-bar {
+  position: relative;
+  padding: 0 var(--space-4) var(--space-2);
+}
+.search-input {
+  width: 100%;
+  min-height: var(--touch-target);
+  padding: 0 40px 0 var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  font-size: 16px;
+  color: var(--color-text);
+}
+.search-input::-webkit-search-cancel-button { display: none; }
+.search-clear {
+  position: absolute;
+  top: 0;
+  inset-inline-end: var(--space-4);
+  width: var(--touch-target);
+  height: var(--touch-target);
+  background: none;
+  border: none;
+  font-size: 1.3rem;
+  line-height: 1;
+  color: var(--color-text-muted);
+}
+
+/* -------------------------------------------------------------- Filters */
+
+.filter-bar { display: flex; gap: var(--space-2); padding: 0 var(--space-4) var(--space-2); flex-wrap: wrap; }
+.filter-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  min-height: 40px;
+}
+.filter-count {
+  background: var(--color-primary);
+  color: var(--color-primary-contrast);
+  border-radius: 999px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  font-size: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Bottom sheet: same treatment at every viewport width, since #app is a
+   single centered column at any width (--max-content-width) -- there is
+   no wide-screen split-pane shell yet for a persistent sidebar variant
+   to attach to (see filterSheet()'s comment in static/app.js). */
+.filter-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 50;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.filter-sheet {
+  width: 100%;
+  max-width: var(--max-content-width);
+  max-height: 85vh;
+  background: var(--color-bg);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.filter-sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  flex: 0 0 auto;
+}
+.filter-sheet-header .screen-title { margin: 0; }
+.filter-close {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  line-height: 1;
+  width: var(--touch-target);
+  height: var(--touch-target);
+  color: var(--color-text-muted);
+}
+.filter-sheet-body {
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-4) var(--space-4);
+  flex: 1 1 auto;
+}
+.filter-section { padding: var(--space-3) 0; border-bottom: 1px solid var(--color-border); }
+.filter-section:last-child { border-bottom: none; }
+.filter-section h4 { margin: 0 0 var(--space-2); font-size: 0.9rem; }
+.filter-note { margin: var(--space-2) 0 0; font-size: 0.8rem; font-style: italic; color: var(--color-text-muted); }
+
+.chip-row { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.chip {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 0.85rem;
+  min-height: 36px;
+}
+.chip.is-active { background: var(--color-primary); color: var(--color-primary-contrast); border-color: var(--color-primary); }
+
+.filter-sheet-footer {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--color-border);
+  background: var(--color-bg);
+  flex: 0 0 auto;
+}
+.filter-sheet-footer button { margin: 0; flex: 1; }
+
+/* ----------------------------------------------------------- Smart Lunch */
+
+.smart-lunch-form { padding: 0 var(--space-4); }
+.smart-lunch-form .filter-section:first-child { padding-top: 0; }
+
+.link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  color: var(--color-primary);
+  font-weight: 600;
+  font-size: 0.9rem;
+  min-height: var(--touch-target);
+  padding: 0;
+}
+.smart-lunch-edit-row { padding: 0 var(--space-4); }
+
+.smart-lunch-option {
+  margin: var(--space-3) var(--space-4);
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+.smart-lunch-option .option-label { font-weight: 700; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.04em; color: var(--color-text-muted); margin: 0 0 var(--space-2); }
+.smart-lunch-items { display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: var(--space-2); }
+.smart-lunch-item .name { font-weight: 600; margin: 0; }
+.smart-lunch-item .meta { font-size: 0.85rem; color: var(--color-text-muted); margin: 0; }
+.smart-lunch-option .option-totals { border-top: 1px solid var(--color-border); padding-top: var(--space-2); margin: 0 0 var(--space-3); font-size: 0.95rem; }
+.smart-lunch-option .secondary-button { width: 100%; margin: 0; }
+
+.smart-lunch-summary { margin: var(--space-2) var(--space-4) var(--space-4); }
+.constraint-note { font-size: 0.8rem; color: var(--color-text-muted); margin: 0 0 var(--space-1); }
+.constraint-note.is-unavailable { font-style: italic; }
+
+/* ------------------------------------------------------------- Profile */
+
+.profile-rows {
+  margin: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.profile-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: none;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  text-align: left;
+  min-height: var(--touch-target);
+}
+.profile-rows .profile-row:last-child { border-bottom: none; }
+.profile-row-icon { flex: 0 0 auto; color: var(--color-primary); display: flex; }
+.profile-row-label { flex: 1; font-weight: 600; font-size: 0.95rem; }
+.profile-row-count { color: var(--color-text-muted); font-size: 0.9rem; }
+[dir="rtl"] .profile-row { text-align: right; }
+
+.profile-about { margin: var(--space-3) var(--space-4); }
+.profile-about h4 { margin: 0 0 var(--space-1); font-size: 0.9rem; }
+.profile-about p { margin: 0; font-size: 0.85rem; color: var(--color-text-muted); line-height: 1.5; }
+
+/* =========================================================== Device frame */
+
+/* Phones: these wrappers are layout-neutral and the page scrolls natively,
+   so on an actual iPhone the app simply IS the screen. */
+.device, .device-screen, .scroller { display: contents; }
+.device-statusbar, .device-btn { display: none; }
+
+/* Desktop-width browsers: draw the app on the inner screen of an open,
+   book-style foldable phone. A stylized frame, not a replica of any
+   specific device, and deliberately without manufacturer branding.
+
+   .device-screen is a transformed box, which makes it the containing
+   block for every position:fixed element inside it (tab bar, order bar,
+   toast, Filters sheet) -- so they sit on the phone's screen instead of
+   the browser window -- and #scroller is what scrolls. Keep this
+   breakpoint in sync with FRAMED in static/app.js. */
+@media (min-width: 1024px) {
+  :root {
+    --max-content-width: none;
+    --fold-h: min(860px, calc(100vh - 64px));
+    --fold-w: min(calc(var(--fold-h) * 1.1), calc(100vw - 96px));
+  }
+
+  html, body { height: 100%; overflow: hidden; }
+
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background:
+      radial-gradient(1100px 620px at 50% -12%, #dff3e7 0%, rgba(223, 243, 231, 0) 60%),
+      radial-gradient(900px 520px at 50% 115%, #e4e9f2 0%, rgba(228, 233, 242, 0) 60%),
+      #eef1f4;
+  }
+
+  .device {
+    display: block;
+    position: relative;
+    padding: 12px;
+    border-radius: 48px;
+    background: linear-gradient(150deg, #4a4d52 0%, #232427 38%, #1a1b1d 62%, #3b3e43 100%);
+    box-shadow:
+      0 0 0 1px #0b0b0c,
+      inset 0 0 0 1.5px rgba(255, 255, 255, 0.10),
+      0 40px 90px -20px rgba(20, 30, 45, 0.45),
+      0 18px 36px -18px rgba(20, 30, 45, 0.35);
+  }
+
+  /* Hinge caps where the two halves meet. */
+  .device::before, .device::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    width: 64px;
+    height: 5px;
+    transform: translateX(-50%);
+    background: linear-gradient(90deg, #111, #2c2e31 50%, #111);
+    border-radius: 3px;
+  }
+  .device::before { top: 3px; }
+  .device::after { bottom: 3px; }
+
+  .device-btn {
+    display: block;
+    position: absolute;
+    top: -3px;
+    height: 4px;
+    border-radius: 2px 2px 0 0;
+    background: #2a2c2f;
+  }
+  .device-btn--power { right: 18%; width: 48px; }
+  .device-btn--volume { right: 30%; width: 72px; }
+
+  .device-screen {
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    transform: translateZ(0);
+    width: var(--fold-w);
+    height: var(--fold-h);
+    border-radius: 36px;
+    overflow: hidden;
+    background: var(--color-bg);
+  }
+
+  /* The fold crease: a faint shadow-highlight-shadow line down the middle.
+     Part of the glass, not the UI -- drawn above everything but never
+     intercepting a click. */
+  .device-screen::after {
+    content: "";
+    position: absolute;
+    top: 0; bottom: 0; left: 50%;
+    width: 24px;
+    transform: translateX(-50%);
+    pointer-events: none;
+    z-index: 100;
+    background: linear-gradient(90deg,
+      rgba(0, 0, 0, 0) 0%,
+      rgba(0, 0, 0, 0.05) 36%,
+      rgba(255, 255, 255, 0.6) 50%,
+      rgba(0, 0, 0, 0.05) 64%,
+      rgba(0, 0, 0, 0) 100%);
+  }
+
+  .device-statusbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex: 0 0 auto;
+    height: 40px;
+    padding: 0 28px;
+    font-size: 15px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text);
+    background: var(--color-bg);
+    position: relative;
+    z-index: 40;
+  }
+  .sb-icons { display: flex; align-items: center; gap: 6px; }
+
+  .scroller {
+    display: block;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+  }
+  .scroller::-webkit-scrollbar { display: none; }
+
+  #app { min-height: 0; }
+
+  /* One food column per half of the unfolded screen. */
+  .food-grid { grid-template-columns: 1fr 1fr; }
+
+  /* iPad-style centered tab bar and sheet instead of edge-to-edge. */
+  #bottom-nav { justify-content: center; }
+  #bottom-nav .nav-tab { max-width: 150px; }
+  .filter-sheet { max-width: 600px; }
+}
+
+/* -------------------------------------------------------- Language sheet */
+/* The only language picker in the app (Profile screen). */
+
+.profile-row-chevron { display: flex; color: #c4c7cc; }
+
+.sheet-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+  animation: sheet-fade 0.18s ease;
+}
+.lang-sheet {
+  width: 100%;
+  max-width: 560px;
+  max-height: 82%;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  padding-bottom: env(safe-area-inset-bottom);
+  box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+  animation: sheet-rise 0.24s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+.sheet-grabber {
+  width: 36px;
+  height: 5px;
+  border-radius: 3px;
+  background: #d4d6da;
+  margin: 8px auto 0;
+  flex: 0 0 auto;
+}
+.lang-sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-5);
+  flex: 0 0 auto;
+}
+[dir="rtl"] .lang-sheet-header { padding: var(--space-2) var(--space-5) var(--space-2) var(--space-2); }
+.lang-list {
+  /* min-height: 0 lets this flex child shrink below its content height,
+     so the list scrolls inside the sheet instead of spilling past it. */
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0 var(--space-4) var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+.lang-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 10px var(--space-4);
+  min-height: 56px;
+  border: none;
+  border-bottom: 1px solid var(--color-border);
+  background: none;
+  text-align: start;
+}
+.lang-option:last-child { border-bottom: none; }
+.lang-option:active { background: var(--color-bg); }
+.lang-option:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
+.lang-badge {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--color-text-muted);
+  background: var(--color-bg);
+}
+.lang-option.is-active .lang-badge { background: var(--color-primary-bg); color: var(--color-primary); }
+.lang-names { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; }
+.lang-native { font-size: 1rem; font-weight: 600; color: var(--color-text); text-align: start; }
+.lang-in-ui { font-size: 0.8rem; color: var(--color-text-muted); }
+.lang-check { flex: 0 0 auto; width: 18px; color: var(--color-primary); }
+
+@keyframes sheet-fade { from { opacity: 0; } }
+@keyframes sheet-rise { from { transform: translateY(100%); } }
+@media (prefers-reduced-motion: reduce) {
+  .sheet-overlay, .lang-sheet { animation: none; }
+}

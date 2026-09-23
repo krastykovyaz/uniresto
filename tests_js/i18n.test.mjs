@@ -1,0 +1,150 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { ALLERGEN_LABELS, CATEGORY_LABELS, LANGUAGES, allergenLabel, categoryLabel, intlLocale, langInfo, t, translations } from "../static/i18n.js";
+
+test("11 languages are configured: the 10 most-spoken plus Luxembourgish", () => {
+  assert.equal(LANGUAGES.length, 11);
+  assert.ok(LANGUAGES.some((l) => l.code === "lb"));
+});
+
+test("every language has a full translation dictionary with matching keys", () => {
+  const englishKeys = Object.keys(translations.en).sort();
+  for (const lang of LANGUAGES) {
+    const dict = translations[lang.code];
+    assert.ok(dict, `missing translations for ${lang.code}`);
+    assert.deepEqual(Object.keys(dict).sort(), englishKeys, `key mismatch for ${lang.code}`);
+  }
+});
+
+test("t() returns the translated string for a known key", () => {
+  assert.equal(t("fr", "confirmOrder"), "Confirmer la commande");
+  assert.equal(t("ar", "back"), "رجوع");
+});
+
+test("t() falls back to English for an unknown language code", () => {
+  assert.equal(t("xx", "confirmOrder"), translations.en.confirmOrder);
+});
+
+test("t() falls back to the key itself if missing from every dictionary", () => {
+  assert.equal(t("en", "thisKeyDoesNotExist"), "thisKeyDoesNotExist");
+});
+
+test("t() substitutes {placeholder} variables", () => {
+  const result = t("en", "selectItem", { name: "Salad'bar" });
+  assert.equal(result, "Select Salad'bar");
+});
+
+test("t() does not translate the dish name passed as a variable", () => {
+  // The dish name itself must survive untouched even in a non-Latin-script UI.
+  const result = t("zh", "selectItem", { name: "Salad'bar" });
+  assert.match(result, /Salad'bar/);
+});
+
+test("t() singular/plural split picks the right form", () => {
+  assert.equal(t("en", "itemCount", { n: 1 }), "1 item");
+  assert.equal(t("en", "itemCount", { n: 3 }), "3 items");
+  assert.equal(t("es", "itemCount", { n: 1 }), "1 artículo");
+  assert.equal(t("es", "itemCount", { n: 3 }), "3 artículos");
+});
+
+test("langInfo marks Arabic and Urdu as RTL, English as not", () => {
+  assert.equal(langInfo("ar").rtl, true);
+  assert.equal(langInfo("ur").rtl, true);
+  assert.equal(langInfo("en").rtl, undefined);
+});
+
+test("langInfo falls back to English for an unknown code", () => {
+  assert.equal(langInfo("zz").code, "en");
+});
+
+// ---------------------------------------------------------------------------
+// categoryLabel / CATEGORY_LABELS
+// ---------------------------------------------------------------------------
+
+test("exactly the 25 verified real Restopolis categories are covered", () => {
+  // See README.md Part 5: confirmed identical across both restaurants'
+  // real fixtures. A count check catches an accidental typo'd/duplicate
+  // key that Object.keys wouldn't otherwise surface.
+  assert.equal(Object.keys(CATEGORY_LABELS).length, 25);
+});
+
+test("every category has a translation in every configured language", () => {
+  const langCodes = LANGUAGES.map((l) => l.code).sort();
+  for (const [category, dict] of Object.entries(CATEGORY_LABELS)) {
+    assert.deepEqual(Object.keys(dict).sort(), langCodes, `incomplete translations for category "${category}"`);
+  }
+});
+
+test("categoryLabel translates a known category", () => {
+  assert.equal(categoryLabel("Végétarien", "en"), "Vegetarian");
+  assert.equal(categoryLabel("Végétarien", "zh"), "素食");
+});
+
+test("categoryLabel falls back to the raw string for an unknown category", () => {
+  assert.equal(categoryLabel("Some Future Category Restopolis Adds", "fr"), "Some Future Category Restopolis Adds");
+});
+
+test("categoryLabel in French returns the category unchanged (already French)", () => {
+  for (const category of Object.keys(CATEGORY_LABELS)) {
+    assert.equal(categoryLabel(category, "fr"), category);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// allergenLabel / ALLERGEN_LABELS
+// ---------------------------------------------------------------------------
+
+test("all 14 EU 1169/2011 allergen codes are covered", () => {
+  assert.equal(Object.keys(ALLERGEN_LABELS).length, 14);
+});
+
+test("every allergen code has a translation in every configured language", () => {
+  const langCodes = LANGUAGES.map((l) => l.code).sort();
+  for (const [code, dict] of Object.entries(ALLERGEN_LABELS)) {
+    assert.deepEqual(Object.keys(dict).sort(), langCodes, `incomplete translations for allergen code ${code}`);
+  }
+});
+
+test("allergenLabel translates a known code", () => {
+  assert.equal(allergenLabel({ code: 7, name: "Lait" }, "en"), "Milk");
+  assert.equal(allergenLabel({ code: 7, name: "Lait" }, "ar"), "حليب");
+});
+
+test("allergenLabel falls back to Restopolis's own name for an unmapped code", () => {
+  assert.equal(allergenLabel({ code: 99, name: "Something New" }, "en"), "Something New");
+});
+
+test("allergenLabel falls back to 'code N' when neither a mapping nor a name exists", () => {
+  assert.equal(allergenLabel({ code: 99, name: null }, "en"), "code 99");
+});
+
+test("allergenLabel never translates the dish-specific detail text", () => {
+  // detail (e.g. "Blé, Orge, Épeautre") is intentionally not part of
+  // allergenLabel's contract at all -- it's rendered separately, raw,
+  // by the caller. This just documents that allergenLabel's return value
+  // never includes it.
+  const entry = { code: 1, name: "Céréales contenant du gluten", detail: "Blé, Orge, Épeautre" };
+  const label = allergenLabel(entry, "en");
+  assert.equal(label, "Gluten-containing cereals");
+  assert.ok(!label.includes("Blé"));
+});
+
+// ---------------------------------------------------------------------------
+// Luxembourgish
+// ---------------------------------------------------------------------------
+
+test("Luxembourgish UI strings, plurals, categories and allergens resolve", () => {
+  assert.equal(t("lb", "confirmOrder"), "Bestellung confirméieren");
+  assert.equal(t("lb", "itemCount", { n: 1 }), "1 Artikel");
+  assert.equal(t("lb", "itemCount", { n: 3 }), "3 Artikelen");
+  assert.equal(categoryLabel("Légumes", "lb"), "Geméis");
+  assert.equal(allergenLabel({ code: 7, name: "Lait" }, "lb"), "Mëllech");
+  assert.equal(langInfo("lb").rtl, undefined);
+});
+
+test("intlLocale uses the declared locale, or Luxembourgish's German fallback", () => {
+  assert.equal(intlLocale("en"), "en-US");
+  // lb-LU where the runtime's Intl data has it; de-LU on runtimes (some
+  // Chromium builds) that ship without Luxembourgish.
+  assert.ok(["lb-LU", "de-LU"].includes(intlLocale("lb")));
+});

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#f7f8fa">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="UniResto">
+    <title>UniResto</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+    <!--
+      On a phone, .device/.device-screen/.scroller are layout-neutral
+      (display: contents) and the page scrolls natively. On a desktop-width
+      browser they become a foldable-phone frame whose screen is its own
+      scroll container -- see the "Device frame" section of app.css and
+      scrollRoot() in app.js.
+    -->
+    <div class="device">
+        <span class="device-btn device-btn--power" aria-hidden="true"></span>
+        <span class="device-btn device-btn--volume" aria-hidden="true"></span>
+        <div class="device-screen" id="device-screen">
+            <div class="device-statusbar" aria-hidden="true">
+                <span class="sb-time" id="sb-time"></span>
+                <span class="sb-icons">
+                    <svg width="18" height="12" viewBox="0 0 18 12"><rect x="0" y="8" width="3" height="4" rx="1" fill="currentColor"/><rect x="5" y="5.5" width="3" height="6.5" rx="1" fill="currentColor"/><rect x="10" y="3" width="3" height="9" rx="1" fill="currentColor"/><rect x="15" y="0" width="3" height="12" rx="1" fill="currentColor"/></svg>
+                    <svg width="16" height="12" viewBox="0 0 16 12"><path d="M8 11.5l2.2-2.6a3.2 3.2 0 0 0-4.4 0L8 11.5z" fill="currentColor"/><path d="M3.4 6.5a6.6 6.6 0 0 1 9.2 0l1.5-1.8a9 9 0 0 0-12.2 0l1.5 1.8z" fill="currentColor"/><path d="M.4 3a11 11 0 0 1 15.2 0L16 2.5A11.7 11.7 0 0 0 0 2.5L.4 3z" fill="currentColor"/></svg>
+                    <svg width="27" height="13" viewBox="0 0 27 13"><rect x="0.5" y="0.5" width="23" height="12" rx="3.5" stroke="currentColor" stroke-opacity="0.4" fill="none"/><rect x="2" y="2" width="20" height="9" rx="2" fill="currentColor"/><path d="M25 4.5v4c.8-.3 1.5-1 1.5-2s-.7-1.7-1.5-2z" fill="currentColor" fill-opacity="0.4"/></svg>
+                </span>
+            </div>
+            <div class="scroller" id="scroller">
+                <div id="app" role="main"></div>
+            </div>
+            <nav id="bottom-nav" aria-label="Main navigation"></nav>
+            <div id="toast" role="status" aria-live="polite" class="toast" hidden></div>
+        </div>
+    </div>
+    <script type="module" src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Admin: orderability{% endblock %}
+{% block content %}
+<h1>Admin &mdash; Orderability debug</h1>
+<p class="muted">Live Restopolis signals vs. our own delivery rule, for each restaurant over the next few days.</p>
+<table>
+    <thead>
+        <tr>
+            <th>Restaurant</th><th>Date</th>
+            <th>Open</th><th>Menu</th><th>Ordering</th>
+            <th>Restopolis deadline</th><th>Our deadline</th>
+            <th>Final</th><th>Last checked</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for r in rows %}
+        <tr>
+            <td>{{ r.restaurant_name }}</td>
+            <td>{{ r.target_date.strftime('%a %d %b') }}</td>
+            <td>{{ 'YES' if r.restaurant_open else ('NO' if r.restaurant_open is not none else '?') }}</td>
+            <td>{{ 'YES' if r.menu_available else ('NO' if r.menu_available is not none else '?') }}</td>
+            <td>{{ 'YES' if r.ordering_available else ('NO' if r.ordering_available is not none else '?') }}</td>
+            <td>{{ r.order_deadline or 'not exposed' }}</td>
+            <td>{{ r.our_delivery.deadline.strftime('%d %b %H:%M') if r.our_delivery.deadline else '-' }}</td>
+            <td><span class="status-badge {{ r.status }}">{{ r.status.upper() }}</span></td>
+            <td class="muted">{{ r.checked_at.strftime('%H:%M:%S') }}{{ ' (cache)' if r.from_cache else '' }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

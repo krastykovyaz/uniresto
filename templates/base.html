@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>{% block title %}UniResto{% endblock %}</title>
+    <style>
+        :root {
+            --available: #1e7e34;
+            --closed: #b02a37;
+            --unknown: #856404;
+            --border: #ddd;
+            --bg: #f7f7f8;
+        }
+        body { font-family: -apple-system, Helvetica, Arial, sans-serif; margin: 0; background: var(--bg); color: #222; }
+        header { background: #1a1a2e; color: white; padding: 1rem 1.5rem; }
+        header a { color: white; text-decoration: none; font-weight: 600; }
+        main { max-width: 900px; margin: 2rem auto; padding: 0 1rem; }
+        h1 { font-size: 1.4rem; }
+        .card { background: white; border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 0.75rem; }
+        .card.status-available { border-left: 5px solid var(--available); }
+        .card.status-closed, .card.status-ordering_closed, .card.status-no_menu, .card.status-past_date { border-left: 5px solid var(--closed); }
+        .card.status-unknown { border-left: 5px solid var(--unknown); }
+        .status-badge { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 4px; font-size: 0.8rem; font-weight: 700; color: white; }
+        .status-badge.available { background: var(--available); }
+        .status-badge.closed, .status-badge.ordering_closed, .status-badge.no_menu, .status-badge.past_date { background: var(--closed); }
+        .status-badge.unknown { background: var(--unknown); }
+        .muted { color: #666; font-size: 0.9rem; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0.75rem; }
+        a.button, button { display: inline-block; background: #1a1a2e; color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; text-decoration: none; cursor: pointer; font-size: 0.95rem; }
+        a.button.disabled { background: #999; pointer-events: none; }
+        table { border-collapse: collapse; width: 100%; background: white; }
+        th, td { border: 1px solid var(--border); padding: 0.5rem 0.75rem; text-align: left; font-size: 0.9rem; }
+        th { background: #f0f0f2; }
+        .item-row { padding: 0.5rem 0; border-bottom: 1px solid #eee; }
+        .item-row:last-child { border-bottom: none; }
+        code { background: #eee; padding: 0.1rem 0.3rem; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <header><a href="/">UniResto &mdash; Campus Kirchberg</a></header>
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>
