@@ -1,4 +1,5 @@
 import datetime
+from unittest.mock import patch
 
 import pytest
 
@@ -183,6 +184,96 @@ def test_create_order_ignores_any_price_client_tries_to_send(client):
     )
     body = resp.get_json()
     assert body["items"][0]["price"] is None
+
+
+def test_create_order_with_uni_lu_email_sends_confirmation(client):
+    with patch("app.send_order_confirmation", return_value=(True, None)) as mock_send:
+        resp = client.post(
+            "/api/orders",
+            json={
+                "restaurant": "altius",
+                "date": "2026-09-24",
+                "items": [{"id": SALAD_BAR_ID, "quantity": 1}],
+                "customer_email": "student@uni.lu",
+            },
+        )
+    assert resp.status_code == 201
+    body = resp.get_json()
+    assert body["email_sent"] is True
+    assert body["email_error"] is None
+    mock_send.assert_called_once()
+    assert mock_send.call_args[0][0] == "student@uni.lu"
+
+
+def test_create_order_with_student_uni_lu_email_is_also_allowed(client):
+    with patch("app.send_order_confirmation", return_value=(True, None)):
+        resp = client.post(
+            "/api/orders",
+            json={
+                "restaurant": "altius",
+                "date": "2026-09-24",
+                "items": [{"id": SALAD_BAR_ID, "quantity": 1}],
+                "customer_email": "student@student.uni.lu",
+            },
+        )
+    assert resp.status_code == 201
+
+
+def test_create_order_with_non_uni_lu_email_is_400(client):
+    resp = client.post(
+        "/api/orders",
+        json={
+            "restaurant": "altius",
+            "date": "2026-09-24",
+            "items": [{"id": SALAD_BAR_ID, "quantity": 1}],
+            "customer_email": "student@gmail.com",
+        },
+    )
+    assert resp.status_code == 400
+
+
+def test_create_order_with_malformed_email_is_400(client):
+    resp = client.post(
+        "/api/orders",
+        json={
+            "restaurant": "altius",
+            "date": "2026-09-24",
+            "items": [{"id": SALAD_BAR_ID, "quantity": 1}],
+            "customer_email": "not-an-email@uni.lu@uni.lu",
+        },
+    )
+    assert resp.status_code == 400
+
+
+def test_create_order_without_email_never_attempts_to_send_and_has_no_email_fields(client):
+    with patch("app.send_order_confirmation") as mock_send:
+        resp = client.post(
+            "/api/orders",
+            json={"restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}]},
+        )
+    assert resp.status_code == 201
+    body = resp.get_json()
+    assert "email_sent" not in body
+    assert "email_error" not in body
+    mock_send.assert_not_called()
+
+
+def test_create_order_still_succeeds_even_when_sending_the_email_fails(client):
+    # A flaky mail server must never turn a successful order into a 500.
+    with patch("app.send_order_confirmation", return_value=(False, "connection refused")):
+        resp = client.post(
+            "/api/orders",
+            json={
+                "restaurant": "altius",
+                "date": "2026-09-24",
+                "items": [{"id": SALAD_BAR_ID, "quantity": 1}],
+                "customer_email": "student@uni.lu",
+            },
+        )
+    assert resp.status_code == 201
+    body = resp.get_json()
+    assert body["email_sent"] is False
+    assert body["email_error"] == "connection refused"
 
 
 def test_create_order_for_unavailable_date_is_409(client):

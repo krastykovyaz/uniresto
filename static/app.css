@@ -593,6 +593,9 @@ svg { display: block; }
   min-height: var(--touch-target);
 }
 
+.email-status { font-size: 0.85rem; color: var(--color-available); }
+.email-status.is-error { color: var(--color-closed); }
+
 .primary-button {
   display: block;
   width: calc(100% - 2 * var(--space-4));

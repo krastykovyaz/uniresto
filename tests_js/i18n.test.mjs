@@ -142,6 +142,26 @@ test("Luxembourgish UI strings, plurals, categories and allergens resolve", () =
   assert.equal(langInfo("lb").rtl, undefined);
 });
 
+// ---------------------------------------------------------------------------
+// Order-confirmation email (Part 23)
+// ---------------------------------------------------------------------------
+
+test("customer-email checkout strings exist for every configured language", () => {
+  for (const lang of LANGUAGES) {
+    for (const key of ["customerEmail", "customerEmailPlaceholder", "invalidUniLuEmail", "confirmationEmailSent", "confirmationEmailFailed"]) {
+      const value = t(lang.code, key);
+      assert.ok(value && value !== key, `${lang.code}.${key} should resolve to real text, got ${JSON.stringify(value)}`);
+    }
+  }
+});
+
+test("customer-email strings spot-check in a few languages", () => {
+  assert.equal(t("en", "customerEmail"), "Email (optional, for a confirmation)");
+  assert.equal(t("en", "confirmationEmailSent"), "Confirmation email sent");
+  assert.equal(t("lb", "customerEmailPlaceholder"), "du@uni.lu");
+  assert.equal(t("ar", "confirmationEmailFailed"), "تعذر إرسال بريد التأكيد");
+});
+
 test("intlLocale uses the declared locale, or Luxembourgish's German fallback", () => {
   assert.equal(intlLocale("en"), "en-US");
   // lb-LU where the runtime's Intl data has it; de-LU on runtimes (some

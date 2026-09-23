@@ -9,9 +9,11 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 
+from dotenv import load_dotenv
 from flask import Flask, abort, jsonify, render_template, request
 
 from orderability_engine.cache import OrderabilityCache
+from orderability_engine.mailer import send_order_confirmation
 from orderability_engine.menu_service import flatten_menu_items, get_customer_menu
 from orderability_engine.models import STATUS_VALUES, TZINFO
 from orderability_engine.orders import MAX_QUANTITY, OrderStore, OrderValidationError, recalculate_order
@@ -20,9 +22,30 @@ from orderability_engine.smart_lunch import TIER_ORDER, find_smart_lunch
 from restopolis.config import load_restaurants
 from scraper import slug_for
 
+# Loads SMTP_USER/SMTP_PASSWORD/etc from a git-ignored .env file in the
+# working directory (see orderability_engine/mailer.py's docstring and
+# README.md Part 23) -- a no-op if .env doesn't exist (local dev with no
+# email configured yet) or if the real values already came from the
+# environment directly (systemd's EnvironmentFile in production; dotenv
+# never overrides an already-set var).
+load_dotenv()
+
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 
 ADMIN_LOOKAHEAD_DAYS = 10
+
+# Campus-only audience: the checkout email field (Part 23) must be a
+# University of Luxembourg address. Both domains Restopolis itself is
+# scoped to (student and staff/general uni.lu accounts) -- not derived
+# from any Restopolis data, this is OUR OWN validation rule.
+ALLOWED_EMAIL_DOMAINS = ("@uni.lu", "@student.uni.lu")
+
+
+def _is_allowed_customer_email(email: str) -> bool:
+    normalized = email.strip().lower()
+    if normalized.count("@") != 1 or normalized.startswith("@"):
+        return False
+    return normalized.endswith(ALLOWED_EMAIL_DOMAINS)
 
 
 def create_app(service: OrderabilityService | None = None, order_store: OrderStore | None = None) -> Flask:
@@ -150,9 +173,16 @@ def create_app(service: OrderabilityService | None = None, order_store: OrderSto
         date_str = body.get("date")
         selection = body.get("items") or []
         delivery_location = body.get("delivery_location")
+        # Optional (Part 23): only sent when the customer filled in the
+        # checkout email field. No account system, so this is never
+        # persisted -- it's used once, right here, to send the
+        # confirmation, then discarded (see mailer.py).
+        customer_email = (body.get("customer_email") or "").strip() or None
 
         if not slug or not date_str or not selection:
             abort(400, description="Body must include 'restaurant', 'date', and a non-empty 'items' list of {id, quantity}")
+        if customer_email is not None and not _is_allowed_customer_email(customer_email):
+            abort(400, description=f"'customer_email' must be a valid address ending in {' or '.join(ALLOWED_EMAIL_DOMAINS)}")
 
         restaurant = get_restaurant_or_404(slug)
         d = parse_date_arg(date_str)
@@ -170,7 +200,19 @@ def create_app(service: OrderabilityService | None = None, order_store: OrderSto
             return jsonify({"error": "invalid_selection", "message": str(exc)}), 400
 
         order_id = store().create_order(restaurant.code, restaurant.name, d, quote["items"], delivery_location)
-        return jsonify(store().get_order(order_id)), 201
+        order = store().get_order(order_id)
+
+        # Best-effort, never fails the order itself: a flaky mail server
+        # or unset SMTP_USER/SMTP_PASSWORD must never turn a successful
+        # order into a 500 (see mailer.py's module docstring). Only
+        # attempted when an email was actually given -- most orders in
+        # this dev-only app won't have one.
+        if customer_email is not None:
+            sent, error = send_order_confirmation(customer_email, order)
+            order["email_sent"] = sent
+            order["email_error"] = error
+
+        return jsonify(order), 201
 
     @app.get("/api/orders/<int:order_id>")
     def api_get_order(order_id):

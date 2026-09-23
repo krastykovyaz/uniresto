@@ -73,6 +73,12 @@ const state = {
   searchQuery: "",
   selection: [], // [{ menuItemId, quantity }]
   deliveryLocation: "",
+  // Optional -- only sent if filled in, so the confirmed order can be
+  // emailed (Part 23). Never persisted anywhere (no account system,
+  // see saveCart()'s docstring); reset like deliveryLocation is, i.e.
+  // it isn't -- both simply carry over across browsing within one
+  // session, same existing pattern.
+  customerEmail: "",
   confirmedOrder: null,
   serverQuote: null,
   favorites: loadFavorites(), // [{ slug, restaurantName, category, name }]
@@ -417,6 +423,20 @@ function localizedPriceSummary(totals) {
   if (otherUnknownPortions > 0) parts.push(`${otherUnknownPortions} ${tr("unpriced")}`);
 
   return parts.length ? parts.join(" + ") : tr("priceNotAvailable");
+}
+
+// Mirrors app.py's ALLOWED_EMAIL_DOMAINS/_is_allowed_customer_email
+// exactly -- the server is still the actual authority (this only exists
+// so a bad address is caught with a clear, translated message before a
+// round trip, instead of Flask's generic HTML-only abort() response,
+// which the frontend can't extract a specific reason string from; see
+// README.md Part 23).
+const ALLOWED_EMAIL_DOMAINS = ["@uni.lu", "@student.uni.lu"];
+
+function isAllowedUniLuEmail(email) {
+  const normalized = email.trim().toLowerCase();
+  if ((normalized.match(/@/g) || []).length !== 1 || normalized.startsWith("@")) return false;
+  return ALLOWED_EMAIL_DOMAINS.some((d) => normalized.endsWith(d));
 }
 
 function el(html) {
@@ -2050,6 +2070,21 @@ async function renderReview() {
   });
   app.append(fieldBlock);
 
+  // Optional -- only used to email the confirmation (Part 23). Campus-
+  // only audience, so it's validated against a uni.lu address, same as
+  // the backend re-validates on submit (never trusted from the client
+  // alone).
+  const emailBlock = el(`
+    <div class="field-block">
+      <label for="customer-email">${escapeHtml(tr("customerEmail"))}</label>
+      <input id="customer-email" type="email" inputmode="email" placeholder="${escapeHtml(tr("customerEmailPlaceholder"))}" value="${escapeHtml(state.customerEmail)}">
+    </div>
+  `);
+  emailBlock.querySelector("input").addEventListener("input", (e) => {
+    state.customerEmail = e.target.value;
+  });
+  app.append(emailBlock);
+
   const confirmBtn = el(`<button type="button" class="primary-button">${escapeHtml(tr("confirmOrder"))}</button>`);
   confirmBtn.addEventListener("click", confirmOrder);
   app.append(confirmBtn);
@@ -2060,6 +2095,18 @@ async function renderReview() {
 }
 
 async function confirmOrder() {
+  const email = state.customerEmail.trim();
+  // Checked here, before the request, rather than only relying on the
+  // server's own re-validation: Flask's abort() returns an HTML body
+  // for this app's validation errors (no custom JSON error handler),
+  // which api()'s error handling can't pull a specific reason out of --
+  // this catches it locally with a real, translated message instead of
+  // falling back to a generic "Request failed (400)" toast.
+  if (email && !isAllowedUniLuEmail(email)) {
+    showToast(tr("invalidUniLuEmail"));
+    return;
+  }
+
   goTo("confirming");
   try {
     const order = await api("/api/orders", {
@@ -2071,6 +2118,7 @@ async function confirmOrder() {
         // menuItemId internally (see order-math.js). Map at the boundary.
         items: state.selection.map((s) => ({ id: s.menuItemId, quantity: s.quantity })),
         delivery_location: state.deliveryLocation || null,
+        customer_email: email || null,
       }),
     });
     state.confirmedOrder = order;
@@ -2095,6 +2143,13 @@ function renderConfirmation() {
       <p class="eyebrow" style="padding:0 0 4px">${escapeHtml(tr("order"))} #${order.id}</p>
       <p style="margin:0 0 8px"><strong>${escapeHtml(order.restaurant_name)}</strong><br>${fmtLong(order.order_date)}</p>
       ${order.delivery_location ? `<p style="margin:0 0 8px">${escapeHtml(tr("deliveryTo"))} ${escapeHtml(order.delivery_location)}</p>` : ""}
+      ${
+        order.email_sent === true
+          ? `<p style="margin:0" class="email-status">${escapeHtml(tr("confirmationEmailSent"))}</p>`
+          : order.email_sent === false
+          ? `<p style="margin:0" class="email-status is-error">${escapeHtml(tr("confirmationEmailFailed"))}</p>`
+          : ""
+      }
     </div>
   `);
   app.append(box);
