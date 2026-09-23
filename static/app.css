@@ -1078,6 +1078,17 @@ svg { display: block; }
 }
 [dir="rtl"] .lang-sheet-header { padding: var(--space-2) var(--space-5) var(--space-2) var(--space-2); }
 .email-sheet-hint { margin: 0 var(--space-4) var(--space-3); font-size: 0.85rem; color: var(--color-text-muted); }
+.email-sheet-code { text-align: center; font-size: 1.4rem; font-weight: 700; letter-spacing: 0.3em; }
+.email-sheet-change-email {
+  display: block;
+  width: 100%;
+  text-align: center;
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+  min-height: var(--touch-target);
+}
 .lang-list {
   /* min-height: 0 lets this flex child shrink below its content height,
      so the list scrolls inside the sheet instead of spilling past it. */

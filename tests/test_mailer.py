@@ -2,7 +2,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from orderability_engine.mailer import is_configured, send_order_confirmation
+from orderability_engine.mailer import generate_verification_code, is_configured, send_order_confirmation, send_verification_code
+
+
+def _plain_text(msg):
+    """Messages are multipart/alternative (plain + HTML, see mailer.py's
+    module docstring) -- msg.get_content() only works on a single-part
+    message, so tests read the plain-text part specifically."""
+    return msg.get_body(preferencelist=("plain",)).get_content()
 
 
 def _order(**overrides):
@@ -100,7 +107,7 @@ def test_email_body_never_invents_data_only_uses_the_orders_own_fields(monkeypat
     with patch("orderability_engine.mailer.smtplib.SMTP", return_value=mock_conn):
         send_order_confirmation("student@uni.lu", order)
 
-    body = captured["msg"].get_content()
+    body = _plain_text(captured["msg"])
     assert order["restaurant_name"] in body
     assert order["order_date"] in body
     assert "Rôti de porc Orloff x1" in body
@@ -108,6 +115,13 @@ def test_email_body_never_invents_data_only_uses_the_orders_own_fields(monkeypat
     assert "€8.00" in body
     assert order["delivery_location"] in body
     assert f"Order #{order['id']}" in body
+
+    # And the same real data must also appear in the HTML part -- not
+    # just the plain-text one, both are sent (see mailer.py's docstring
+    # on why: multipart is itself a small anti-spam signal).
+    html = captured["msg"].get_body(preferencelist=("html",)).get_content()
+    assert order["restaurant_name"] in html
+    assert "€8.00" in html
 
 
 def test_email_omits_total_line_when_formula_has_no_price(monkeypatch):
@@ -122,4 +136,61 @@ def test_email_omits_total_line_when_formula_has_no_price(monkeypatch):
     with patch("orderability_engine.mailer.smtplib.SMTP", return_value=mock_conn):
         send_order_confirmation("student@uni.lu", order)
 
-    assert "Total:" not in captured["msg"].get_content()
+    assert "Total:" not in _plain_text(captured["msg"])
+
+
+# ---------------------------------------------------------------------------
+# Verification codes (Part 27)
+# ---------------------------------------------------------------------------
+
+
+def test_generate_verification_code_is_six_digits():
+    for _ in range(20):  # a handful of samples, not just one -- catches an off-by-one in the zero-padding
+        code = generate_verification_code()
+        assert len(code) == 6
+        assert code.isdigit()
+
+
+def test_generate_verification_code_pads_leading_zeros():
+    # secrets.randbelow(1_000_000) can return e.g. 42 -- must still come
+    # back as "000042", not "42", or the code the user types would never
+    # match what was actually issued.
+    with patch("orderability_engine.mailer.secrets.randbelow", return_value=42):
+        assert generate_verification_code() == "000042"
+
+
+def test_send_verification_code_returns_not_sent_when_unconfigured():
+    sent, error = send_verification_code("student@uni.lu", "123456")
+    assert sent is False
+    assert "not configured" in error
+
+
+def test_send_verification_code_never_raises_on_smtp_failure(monkeypatch):
+    monkeypatch.setenv("SMTP_USER", "uniresto@gmail.com")
+    monkeypatch.setenv("SMTP_PASSWORD", "app-password-placeholder")
+    with patch("orderability_engine.mailer.smtplib.SMTP") as mock_smtp:
+        mock_smtp.side_effect = OSError("connection refused")
+        sent, error = send_verification_code("student@uni.lu", "123456")
+    assert sent is False
+    assert "connection refused" in error
+
+
+def test_send_verification_code_succeeds_and_includes_the_code_in_both_parts(monkeypatch):
+    monkeypatch.setenv("SMTP_USER", "uniresto@gmail.com")
+    monkeypatch.setenv("SMTP_PASSWORD", "app-password-placeholder")
+
+    captured = {}
+    mock_conn = MagicMock()
+    mock_conn.__enter__.return_value = mock_conn
+    mock_conn.send_message.side_effect = lambda msg: captured.update(msg=msg)
+    with patch("orderability_engine.mailer.smtplib.SMTP", return_value=mock_conn):
+        sent, error = send_verification_code("student@uni.lu", "654321")
+
+    assert sent is True
+    assert error is None
+    assert captured["msg"]["To"] == "student@uni.lu"
+    assert "654321" in _plain_text(captured["msg"])
+    assert "654321" in captured["msg"].get_body(preferencelist=("html",)).get_content()
+    # Subject is short and plainly states its purpose -- see mailer.py's
+    # module docstring on avoiding clickbait-y subject lines.
+    assert "verification code" in captured["msg"]["Subject"].lower()

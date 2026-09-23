@@ -13,7 +13,8 @@ from dotenv import load_dotenv
 from flask import Flask, abort, jsonify, render_template, request
 
 from orderability_engine.cache import OrderabilityCache
-from orderability_engine.mailer import send_order_confirmation
+from orderability_engine.email_verification import EmailVerificationStore
+from orderability_engine.mailer import generate_verification_code, send_order_confirmation, send_verification_code
 from orderability_engine.menu_service import flatten_menu_items, get_customer_menu
 from orderability_engine.models import STATUS_VALUES, TZINFO
 from orderability_engine.orders import MAX_QUANTITY, OrderStore, OrderValidationError, recalculate_order
@@ -48,7 +49,11 @@ def _is_allowed_customer_email(email: str) -> bool:
     return normalized.endswith(ALLOWED_EMAIL_DOMAINS)
 
 
-def create_app(service: OrderabilityService | None = None, order_store: OrderStore | None = None) -> Flask:
+def create_app(
+    service: OrderabilityService | None = None,
+    order_store: OrderStore | None = None,
+    email_verification_store: EmailVerificationStore | None = None,
+) -> Flask:
     app = Flask(__name__)
 
     restaurants = load_restaurants()
@@ -58,6 +63,7 @@ def create_app(service: OrderabilityService | None = None, order_store: OrderSto
         cache=OrderabilityCache("orderability.db"), restaurants=restaurants
     )
     app.config["ORDER_STORE"] = order_store or OrderStore("orders.db")
+    app.config["EMAIL_VERIFICATION_STORE"] = email_verification_store or EmailVerificationStore()
     app.config["RESTAURANTS_BY_SLUG"] = by_slug
 
     def svc() -> OrderabilityService:
@@ -65,6 +71,9 @@ def create_app(service: OrderabilityService | None = None, order_store: OrderSto
 
     def store() -> OrderStore:
         return app.config["ORDER_STORE"]
+
+    def email_verification() -> EmailVerificationStore:
+        return app.config["EMAIL_VERIFICATION_STORE"]
 
     def get_restaurant_or_404(slug: str):
         restaurant = by_slug.get(slug)
@@ -226,6 +235,45 @@ def create_app(service: OrderabilityService | None = None, order_store: OrderSto
         if order is None:
             abort(404, description=f"No order with id {order_id}")
         return jsonify(order)
+
+    # ------------------------------------------------------ Email verification
+
+    @app.post("/api/email/send-code")
+    def api_email_send_code():
+        """Sends a fresh 6-digit code to `email` (Part 27) -- issued/
+        stored ONLY if the send itself actually succeeded, so a delivery
+        failure never leaves a code silently un-sendable-but-verifiable,
+        and never blocks an immediate retry either (see
+        EmailVerificationStore.issue()'s docstring)."""
+        body = request.get_json(force=True, silent=True) or {}
+        email = (body.get("email") or "").strip()
+        if not email:
+            abort(400, description="Body must include 'email'")
+        if not _is_allowed_customer_email(email):
+            abort(400, description=f"'email' must be a valid address ending in {' or '.join(ALLOWED_EMAIL_DOMAINS)}")
+
+        remaining = email_verification().seconds_until_resend_allowed(email)
+        if remaining > 0:
+            return jsonify({"sent": False, "error": "rate_limited", "retry_after_seconds": remaining}), 429
+
+        code = generate_verification_code()
+        sent, error = send_verification_code(email, code)
+        if sent:
+            email_verification().issue(email, code)
+        return jsonify({"sent": sent, "error": error})
+
+    @app.post("/api/email/verify-code")
+    def api_email_verify_code():
+        """Checks `code` against whatever was last issued to `email` (see
+        EmailVerificationStore.verify()) -- a one-time check: correct or
+        not, the entry is consumed/invalidated so it can't be replayed."""
+        body = request.get_json(force=True, silent=True) or {}
+        email = (body.get("email") or "").strip()
+        code = (body.get("code") or "").strip()
+        if not email or not code:
+            abort(400, description="Body must include 'email' and 'code'")
+        verified, reason = email_verification().verify(email, code)
+        return jsonify({"verified": verified, "reason": reason})
 
     @app.post("/api/smart-lunch")
     def api_smart_lunch():

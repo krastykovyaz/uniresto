@@ -204,6 +204,55 @@ test("registered-email strings spot-check in a few languages", () => {
   assert.equal(t("ru", "removeEmail"), "Удалить");
 });
 
+// ---------------------------------------------------------------------------
+// Email verification code (Part 27) + registered phone number (Part 28)
+// ---------------------------------------------------------------------------
+
+test("email-verification strings exist for every configured language", () => {
+  for (const lang of LANGUAGES) {
+    for (const key of [
+      "sendCode",
+      "sending",
+      "verifyEmailTitle",
+      "codeSentHint",
+      "confirmCode",
+      "resendCode",
+      "changeEmail",
+      "invalidCode",
+      "codeExpired",
+      "tooManyAttempts",
+      "verificationFailed",
+      "verificationSendFailed",
+      "resendCooldown",
+    ]) {
+      const value = t(lang.code, key);
+      assert.ok(value && value !== key, `${lang.code}.${key} should resolve to real text, got ${JSON.stringify(value)}`);
+    }
+  }
+});
+
+test("email-verification strings spot-check, including the spam-folder hint", () => {
+  assert.equal(t("en", "sendCode"), "Send code");
+  assert.equal(t("en", "codeSentHint", { email: "x@uni.lu" }), "We sent a 6-digit code to x@uni.lu. It can take a minute to arrive — check your spam or junk folder too.");
+  assert.equal(t("fr", "confirmCode"), "Confirmer");
+  assert.equal(t("lb", "resendCode"), "Code nach eng Kéier schécken");
+});
+
+test("phone-number strings exist for every configured language", () => {
+  for (const lang of LANGUAGES) {
+    for (const key of ["phoneNumber", "phoneNumberHint", "phoneNumberPlaceholder", "invalidPhoneNumber", "removePhoneNumber"]) {
+      const value = t(lang.code, key);
+      assert.ok(value && value !== key, `${lang.code}.${key} should resolve to real text, got ${JSON.stringify(value)}`);
+    }
+  }
+});
+
+test("phone-number strings spot-check in a few languages", () => {
+  assert.equal(t("en", "phoneNumber"), "Phone number");
+  assert.equal(t("es", "removePhoneNumber"), "Eliminar");
+  assert.equal(t("ar", "invalidPhoneNumber"), "أدخل رقم هاتف صالح");
+});
+
 test("intlLocale uses the declared locale, or Luxembourgish's German fallback", () => {
   assert.equal(intlLocale("en"), "en-US");
   // lb-LU where the runtime's Intl data has it; de-LU on runtimes (some

@@ -382,6 +382,99 @@ def test_smart_lunch_min_weight_relaxed_on_real_data(client):
 
 
 # ---------------------------------------------------------------------------
+# Email verification (Part 27)
+# ---------------------------------------------------------------------------
+
+
+def test_send_code_rejects_non_uni_lu_email(client):
+    resp = client.post("/api/email/send-code", json={"email": "student@gmail.com"})
+    assert resp.status_code == 400
+
+
+def test_send_code_rejects_missing_email(client):
+    resp = client.post("/api/email/send-code", json={})
+    assert resp.status_code == 400
+
+
+def test_send_code_success_issues_and_sends(client):
+    with patch("app.send_verification_code", return_value=(True, None)) as mock_send:
+        resp = client.post("/api/email/send-code", json={"email": "student@uni.lu"})
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["sent"] is True
+    assert body["error"] is None
+    mock_send.assert_called_once()
+    assert mock_send.call_args[0][0] == "student@uni.lu"
+
+
+def test_send_code_reports_failure_without_erroring_the_request(client):
+    with patch("app.send_verification_code", return_value=(False, "connection refused")):
+        resp = client.post("/api/email/send-code", json={"email": "student@uni.lu"})
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["sent"] is False
+    assert body["error"] == "connection refused"
+
+
+def test_send_code_a_second_time_immediately_is_rate_limited(client):
+    with patch("app.send_verification_code", return_value=(True, None)):
+        client.post("/api/email/send-code", json={"email": "student@uni.lu"})
+        resp = client.post("/api/email/send-code", json={"email": "student@uni.lu"})
+    assert resp.status_code == 429
+    body = resp.get_json()
+    assert body["sent"] is False
+    assert body["error"] == "rate_limited"
+    assert body["retry_after_seconds"] > 0
+
+
+def test_send_code_failure_does_not_trigger_the_resend_cooldown(client):
+    # A delivery failure must never lock the user out of retrying
+    # immediately -- only a genuinely successful send starts the cooldown.
+    with patch("app.send_verification_code", return_value=(False, "connection refused")):
+        client.post("/api/email/send-code", json={"email": "student@uni.lu"})
+    with patch("app.send_verification_code", return_value=(True, None)):
+        resp = client.post("/api/email/send-code", json={"email": "student@uni.lu"})
+    assert resp.status_code == 200
+    assert resp.get_json()["sent"] is True
+
+
+def test_verify_code_with_no_code_requested_fails(client):
+    resp = client.post("/api/email/verify-code", json={"email": "student@uni.lu", "code": "123456"})
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["verified"] is False
+    assert body["reason"] == "no_code_requested"
+
+
+def test_verify_code_end_to_end_with_the_real_code(client):
+    with patch("app.generate_verification_code", return_value="654321"), patch(
+        "app.send_verification_code", return_value=(True, None)
+    ):
+        client.post("/api/email/send-code", json={"email": "student@uni.lu"})
+    resp = client.post("/api/email/verify-code", json={"email": "student@uni.lu", "code": "654321"})
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["verified"] is True
+    assert body["reason"] is None
+
+
+def test_verify_code_with_wrong_code_fails(client):
+    with patch("app.generate_verification_code", return_value="654321"), patch(
+        "app.send_verification_code", return_value=(True, None)
+    ):
+        client.post("/api/email/send-code", json={"email": "student@uni.lu"})
+    resp = client.post("/api/email/verify-code", json={"email": "student@uni.lu", "code": "000000"})
+    body = resp.get_json()
+    assert body["verified"] is False
+    assert body["reason"] == "incorrect_code"
+
+
+def test_verify_code_missing_fields_is_400(client):
+    assert client.post("/api/email/verify-code", json={"email": "student@uni.lu"}).status_code == 400
+    assert client.post("/api/email/verify-code", json={"code": "123456"}).status_code == 400
+
+
+# ---------------------------------------------------------------------------
 # Mobile SPA shell + admin
 # ---------------------------------------------------------------------------
 

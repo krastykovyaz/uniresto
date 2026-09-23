@@ -65,6 +65,9 @@ const EMAIL_STORAGE_KEY = "uniresto.email.v1";
 // Same reason -- loadRegisteredEmail() calls isAllowedUniLuEmail() (further
 // down the file, but hoisted since it's a `function`), which reads this.
 const ALLOWED_EMAIL_DOMAINS = ["@uni.lu", "@student.uni.lu"];
+// Same TDZ hazard again -- loadRegisteredPhone() also runs synchronously
+// while constructing `state` below.
+const PHONE_STORAGE_KEY = "uniresto.phone.v1";
 
 const state = {
   screen: "restaurants",
@@ -93,6 +96,9 @@ const state = {
   // from customerEmail (above) specifically so it always reflects
   // exactly what's saved, regardless of any per-order edit.
   registeredEmail: loadRegisteredEmail(),
+  // Profile-registered phone number (Part 28) -- optional, no
+  // verification (see loadRegisteredPhone()'s docstring).
+  registeredPhone: loadRegisteredPhone(),
   confirmedOrder: null,
   serverQuote: null,
   favorites: loadFavorites(), // [{ slug, restaurantName, category, name }]
@@ -261,6 +267,50 @@ function saveRegisteredEmail(email) {
 function clearRegisteredEmail() {
   try {
     localStorage.removeItem(EMAIL_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+// -------------------------------------------------------- Registered phone
+//
+// Optional (Part 28), same Profile-only pattern as the registered email
+// above, but with NO verification step -- there's no SMS provider wired
+// up to prove ownership of a phone number the way send-code/verify-code
+// does for email (Part 27), so this is deliberately just a plain saved
+// contact detail, not a verified credential. Not wired into checkout or
+// the confirmation email; purely a Profile-level convenience for now.
+function isValidPhoneNumber(phone) {
+  const trimmed = phone.trim();
+  // Loose on purpose -- international formats vary widely (spaces,
+  // dashes, parentheses, a leading +) and this app has no reason to
+  // pick one convention. Just enough to reject obvious garbage: only
+  // digits/space/+/-/() characters, and a plausible number of digits.
+  if (!/^[\d\s+()-]+$/.test(trimmed)) return false;
+  const digitCount = (trimmed.match(/\d/g) || []).length;
+  return digitCount >= 6 && digitCount <= 15;
+}
+
+function loadRegisteredPhone() {
+  try {
+    const raw = localStorage.getItem(PHONE_STORAGE_KEY);
+    return raw && isValidPhoneNumber(raw) ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveRegisteredPhone(phone) {
+  try {
+    localStorage.setItem(PHONE_STORAGE_KEY, phone);
+  } catch {
+    /* localStorage unavailable (private mode, quota, ...) -- just won't persist */
+  }
+}
+
+function clearRegisteredPhone() {
+  try {
+    localStorage.removeItem(PHONE_STORAGE_KEY);
   } catch {
     /* ignore */
   }
@@ -543,6 +593,7 @@ const ICON_PATHS = {
   globe: '<circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M3 12h18M12 3c2.4 2.6 3.7 5.6 3.7 9s-1.3 6.4-3.7 9c-2.4-2.6-3.7-5.6-3.7-9S9.6 5.6 12 3z" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/>',
   chevron: '<path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
   mail: '<rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M3.5 6.5L12 13l8.5-6.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
+  phone: '<path d="M6.6 10.8c1.4 2.8 3.8 5.2 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.3 21 3 13.7 3 4.9c0-.6.4-1 1-1h3.4c.6 0 1 .4 1 1 0 1.2.2 2.4.6 3.6.1.4 0 .8-.2 1L6.6 10.8z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" fill="none"/>',
 };
 
 function icon(name, size = 24) {
@@ -667,31 +718,19 @@ function openLanguageSheet(trigger) {
 
 // ------------------------------------------------------------ Registered email
 
-// Same bottom-sheet shell as openLanguageSheet() above. Saving an empty
-// field clears the registration (equivalent to tapping Remove) rather
-// than being rejected -- an explicit "I don't want this saved anymore"
-// is exactly as valid as setting one. A non-empty value is validated
-// against the same @uni.lu/@student.uni.lu rule as checkout (Part 23)
-// before being saved; the input stays open with a toast otherwise, so a
-// typo never silently registers an unreachable address.
+// Two-step flow (Part 27): "enter" (type an address, request a code) ->
+// "verify" (type the 6-digit code that arrived by email). Registering a
+// NEW address requires verification (proves the user can actually read
+// mail sent there, via POST /api/email/send-code + verify-code);
+// removing an already-registered one needs no proof, since that's just
+// clearing local state, not asserting ownership of anything. Same
+// bottom-sheet shell as openLanguageSheet() above, but its content is
+// swapped in place between the two steps rather than closing/reopening.
 function openEmailSheet(trigger) {
   const overlay = el(`<div class="sheet-overlay"></div>`);
-  const sheet = el(`
-    <div class="lang-sheet" role="dialog" aria-modal="true" aria-label="${escapeHtml(tr("registeredEmail"))}">
-      <div class="sheet-grabber" aria-hidden="true"></div>
-      <div class="lang-sheet-header">
-        <p class="screen-title">${escapeHtml(tr("registeredEmail"))}</p>
-        <button type="button" class="filter-close" aria-label="${escapeHtml(tr("back"))}">${icon("close", 20)}</button>
-      </div>
-      <p class="email-sheet-hint">${escapeHtml(tr("registeredEmailHint"))}</p>
-      <div class="field-block">
-        <input type="email" inputmode="email" class="email-sheet-input" placeholder="${escapeHtml(tr("customerEmailPlaceholder"))}" value="${escapeHtml(state.registeredEmail || "")}">
-      </div>
-      <button type="button" class="primary-button email-sheet-save">${escapeHtml(tr("save"))}</button>
-      ${state.registeredEmail ? `<button type="button" class="secondary-button email-sheet-remove">${escapeHtml(tr("removeEmail"))}</button>` : ""}
-    </div>
-  `);
-  const input = sheet.querySelector(".email-sheet-input");
+  const sheet = el(`<div class="lang-sheet" role="dialog" aria-modal="true" aria-label="${escapeHtml(tr("registeredEmail"))}"></div>`);
+  let step = "enter";
+  let pendingEmail = "";
 
   function close() {
     document.removeEventListener("keydown", onKey);
@@ -713,19 +752,209 @@ function openEmailSheet(trigger) {
     renderProfile();
   }
 
-  sheet.querySelector(".email-sheet-save").addEventListener("click", () => {
+  // Sends (or re-sends) the code, then advances to the "verify" step --
+  // never on the SAME step a second time, since a resend still means
+  // "I'm waiting for a code", not "start over".
+  async function requestCode(email) {
+    const sendBtn = sheet.querySelector(".email-sheet-send, .email-sheet-resend");
+    if (sendBtn) {
+      sendBtn.disabled = true;
+      if (sendBtn.classList.contains("email-sheet-send")) sendBtn.textContent = tr("sending");
+    }
+    try {
+      const result = await api("/api/email/send-code", { method: "POST", body: JSON.stringify({ email }) });
+      if (!result.sent) {
+        showToast(tr("verificationSendFailed"));
+        if (sendBtn) {
+          sendBtn.disabled = false;
+          if (sendBtn.classList.contains("email-sheet-send")) sendBtn.textContent = tr("sendCode");
+        }
+        return;
+      }
+      pendingEmail = email;
+      step = "verify";
+      renderStep();
+    } catch (err) {
+      if (err.status === 429 && err.body && err.body.retry_after_seconds != null) {
+        showToast(tr("resendCooldown", { n: err.body.retry_after_seconds }));
+      } else {
+        showToast(tr("verificationSendFailed"));
+      }
+      if (sendBtn) {
+        sendBtn.disabled = false;
+        if (sendBtn.classList.contains("email-sheet-send")) sendBtn.textContent = tr("sendCode");
+      }
+    }
+  }
+
+  async function submitCode(code) {
+    const confirmBtn = sheet.querySelector(".email-sheet-confirm");
+    if (confirmBtn) confirmBtn.disabled = true;
+    try {
+      const result = await api("/api/email/verify-code", { method: "POST", body: JSON.stringify({ email: pendingEmail, code }) });
+      if (!result.verified) {
+        const reasonKey =
+          {
+            incorrect_code: "invalidCode",
+            code_expired: "codeExpired",
+            too_many_attempts: "tooManyAttempts",
+            no_code_requested: "codeExpired",
+          }[result.reason] || "verificationFailed";
+        showToast(tr(reasonKey));
+        if (confirmBtn) confirmBtn.disabled = false;
+        return;
+      }
+      commit(pendingEmail);
+    } catch {
+      showToast(tr("verificationFailed"));
+      if (confirmBtn) confirmBtn.disabled = false;
+    }
+  }
+
+  function renderStep() {
+    if (step === "enter") {
+      sheet.innerHTML = `
+        <div class="sheet-grabber" aria-hidden="true"></div>
+        <div class="lang-sheet-header">
+          <p class="screen-title">${escapeHtml(tr("registeredEmail"))}</p>
+          <button type="button" class="filter-close" aria-label="${escapeHtml(tr("back"))}">${icon("close", 20)}</button>
+        </div>
+        <p class="email-sheet-hint">${escapeHtml(tr("registeredEmailHint"))}</p>
+        <div class="field-block">
+          <input type="email" inputmode="email" class="email-sheet-input" placeholder="${escapeHtml(tr("customerEmailPlaceholder"))}" value="${escapeHtml(state.registeredEmail || "")}">
+        </div>
+        <button type="button" class="primary-button email-sheet-send">${escapeHtml(tr("sendCode"))}</button>
+        ${state.registeredEmail ? `<button type="button" class="secondary-button email-sheet-remove">${escapeHtml(tr("removeEmail"))}</button>` : ""}
+      `;
+      const input = sheet.querySelector(".email-sheet-input");
+      sheet.querySelector(".email-sheet-send").addEventListener("click", () => {
+        const value = input.value.trim();
+        if (!value) {
+          commit(null);
+          return;
+        }
+        if (!isAllowedUniLuEmail(value)) {
+          showToast(tr("invalidUniLuEmail"));
+          return;
+        }
+        requestCode(value);
+      });
+      sheet.querySelector(".email-sheet-remove")?.addEventListener("click", () => commit(null));
+      sheet.querySelector(".filter-close").addEventListener("click", () => {
+        close();
+        trigger?.focus();
+      });
+      input.focus();
+    } else {
+      sheet.innerHTML = `
+        <div class="sheet-grabber" aria-hidden="true"></div>
+        <div class="lang-sheet-header">
+          <p class="screen-title">${escapeHtml(tr("verifyEmailTitle"))}</p>
+          <button type="button" class="filter-close" aria-label="${escapeHtml(tr("back"))}">${icon("close", 20)}</button>
+        </div>
+        <p class="email-sheet-hint">${escapeHtml(tr("codeSentHint", { email: pendingEmail }))}</p>
+        <div class="field-block">
+          <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" class="email-sheet-code" placeholder="000000">
+        </div>
+        <button type="button" class="primary-button email-sheet-confirm">${escapeHtml(tr("confirmCode"))}</button>
+        <button type="button" class="secondary-button email-sheet-resend">${escapeHtml(tr("resendCode"))}</button>
+        <button type="button" class="email-sheet-change-email">${escapeHtml(tr("changeEmail"))}</button>
+      `;
+      const codeInput = sheet.querySelector(".email-sheet-code");
+      sheet.querySelector(".email-sheet-confirm").addEventListener("click", () => {
+        const code = codeInput.value.trim();
+        if (!/^\d{6}$/.test(code)) {
+          showToast(tr("invalidCode"));
+          return;
+        }
+        submitCode(code);
+      });
+      codeInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") sheet.querySelector(".email-sheet-confirm").click();
+      });
+      sheet.querySelector(".email-sheet-resend").addEventListener("click", () => requestCode(pendingEmail));
+      sheet.querySelector(".email-sheet-change-email").addEventListener("click", () => {
+        step = "enter";
+        renderStep();
+      });
+      sheet.querySelector(".filter-close").addEventListener("click", () => {
+        close();
+        trigger?.focus();
+      });
+      codeInput.focus();
+    }
+  }
+
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) {
+      close();
+      trigger?.focus();
+    }
+  });
+  document.addEventListener("keydown", onKey);
+
+  overlay.append(sheet);
+  deviceScreen.append(overlay);
+  renderStep();
+}
+
+// ------------------------------------------------------------ Registered phone
+
+// Single-step sheet (Part 28) -- no verification (see
+// loadRegisteredPhone()'s docstring for why). Same shell/behavior as
+// openEmailSheet()'s "enter" step: saving an empty field clears the
+// registration, matching the email sheet's own "empty save = remove" idiom.
+function openPhoneSheet(trigger) {
+  const overlay = el(`<div class="sheet-overlay"></div>`);
+  const sheet = el(`
+    <div class="lang-sheet" role="dialog" aria-modal="true" aria-label="${escapeHtml(tr("phoneNumber"))}">
+      <div class="sheet-grabber" aria-hidden="true"></div>
+      <div class="lang-sheet-header">
+        <p class="screen-title">${escapeHtml(tr("phoneNumber"))}</p>
+        <button type="button" class="filter-close" aria-label="${escapeHtml(tr("back"))}">${icon("close", 20)}</button>
+      </div>
+      <p class="email-sheet-hint">${escapeHtml(tr("phoneNumberHint"))}</p>
+      <div class="field-block">
+        <input type="tel" inputmode="tel" class="phone-sheet-input" placeholder="${escapeHtml(tr("phoneNumberPlaceholder"))}" value="${escapeHtml(state.registeredPhone || "")}">
+      </div>
+      <button type="button" class="primary-button phone-sheet-save">${escapeHtml(tr("save"))}</button>
+      ${state.registeredPhone ? `<button type="button" class="secondary-button phone-sheet-remove">${escapeHtml(tr("removePhoneNumber"))}</button>` : ""}
+    </div>
+  `);
+  const input = sheet.querySelector(".phone-sheet-input");
+
+  function close() {
+    document.removeEventListener("keydown", onKey);
+    overlay.remove();
+  }
+  function onKey(e) {
+    if (e.key === "Escape") {
+      close();
+      trigger?.focus();
+    }
+  }
+  function commit(phone) {
+    state.registeredPhone = phone;
+    if (phone) saveRegisteredPhone(phone);
+    else clearRegisteredPhone();
+    close();
+    document.querySelector(".profile-row-phone")?.focus();
+    renderProfile();
+  }
+
+  sheet.querySelector(".phone-sheet-save").addEventListener("click", () => {
     const value = input.value.trim();
     if (!value) {
       commit(null);
       return;
     }
-    if (!isAllowedUniLuEmail(value)) {
-      showToast(tr("invalidUniLuEmail"));
+    if (!isValidPhoneNumber(value)) {
+      showToast(tr("invalidPhoneNumber"));
       return;
     }
     commit(value);
   });
-  sheet.querySelector(".email-sheet-remove")?.addEventListener("click", () => commit(null));
+  sheet.querySelector(".phone-sheet-remove")?.addEventListener("click", () => commit(null));
 
   overlay.addEventListener("click", (e) => {
     if (e.target === overlay) {
@@ -1305,6 +1534,17 @@ function renderProfile() {
   `);
   emailRow.addEventListener("click", () => openEmailSheet(emailRow));
   rows.append(emailRow);
+
+  const phoneRow = el(`
+    <button type="button" class="profile-row profile-row-phone" aria-haspopup="dialog">
+      <span class="profile-row-icon">${icon("phone", 20)}</span>
+      <span class="profile-row-label">${escapeHtml(tr("phoneNumber"))}</span>
+      <span class="profile-row-count">${state.registeredPhone ? escapeHtml(state.registeredPhone) : escapeHtml(tr("notSet"))}</span>
+      <span class="profile-row-chevron">${icon("chevron", 16)}</span>
+    </button>
+  `);
+  phoneRow.addEventListener("click", () => openPhoneSheet(phoneRow));
+  rows.append(phoneRow);
 
   app.append(rows);
 
