@@ -9,6 +9,7 @@ import {
   DESSERT_CATEGORIES,
   INCLUDED_SIDE_CATEGORIES,
   MAIN_CATEGORIES,
+  SANDWICH_CATEGORIES,
   STARTER_CATEGORIES,
   computeFormulaTotal,
 } from "./pricing.js";
@@ -395,6 +396,7 @@ function serverPriceBreakdown(order) {
       !MAIN_CATEGORIES.has(it.category) &&
       !STARTER_CATEGORIES.has(it.category) &&
       !DESSERT_CATEGORIES.has(it.category) &&
+      !SANDWICH_CATEGORIES.has(it.category) &&
       !INCLUDED_SIDE_CATEGORIES.has(it.category)
   );
   const otherKnownTotal = otherItems.filter((it) => it.line_price != null).reduce((sum, it) => sum + it.line_price, 0);
@@ -448,6 +450,7 @@ function priceBreakdown(totals) {
       !MAIN_CATEGORIES.has(l.category) &&
       !STARTER_CATEGORIES.has(l.category) &&
       !DESSERT_CATEGORIES.has(l.category) &&
+      !SANDWICH_CATEGORIES.has(l.category) &&
       !INCLUDED_SIDE_CATEGORIES.has(l.category)
   );
   const otherKnownTotal = otherLines.filter((l) => l.lineTotal != null).reduce((sum, l) => sum + l.lineTotal, 0);
@@ -1775,14 +1778,15 @@ function priceText(item) {
   if (item.price != null) return `€${item.price.toFixed(2)}`;
   if (INCLUDED_SIDE_CATEGORIES.has(item.category)) return tr("included");
   // Restopolis itself never has a per-dish price (see static/pricing.js's
-  // module docstring), but OUR OWN flat per-course price (Part 18) DOES
-  // apply to any single main/starter/dessert item -- showing "price not
-  // available" on these specific cards would be stale now that a real
-  // price exists for them, so this surfaces it directly on the card
-  // instead of only in the cart/review totals.
+  // module docstring), but OUR OWN flat per-course price (Part 18/26)
+  // DOES apply to any single main/starter/dessert/sandwich item --
+  // showing "price not available" on these specific cards would be
+  // stale now that a real price exists for them, so this surfaces it
+  // directly on the card instead of only in the cart/review totals.
   if (MAIN_CATEGORIES.has(item.category)) return `€${CATEGORY_PRICES.main.toFixed(2)}`;
   if (STARTER_CATEGORIES.has(item.category)) return `€${CATEGORY_PRICES.starter.toFixed(2)}`;
   if (DESSERT_CATEGORIES.has(item.category)) return `€${CATEGORY_PRICES.dessert.toFixed(2)}`;
+  if (SANDWICH_CATEGORIES.has(item.category)) return `€${CATEGORY_PRICES.sandwich.toFixed(2)}`;
   return tr("priceNotAvailable");
 }
 
@@ -1792,7 +1796,13 @@ function priceText(item) {
 // item.price itself (Restopolis's, always null) is null.
 function priceIsUnspecified(item) {
   if (item.price != null) return false;
-  if (MAIN_CATEGORIES.has(item.category) || STARTER_CATEGORIES.has(item.category) || DESSERT_CATEGORIES.has(item.category)) return false;
+  if (
+    MAIN_CATEGORIES.has(item.category) ||
+    STARTER_CATEGORIES.has(item.category) ||
+    DESSERT_CATEGORIES.has(item.category) ||
+    SANDWICH_CATEGORIES.has(item.category)
+  )
+    return false;
   return true;
 }
 

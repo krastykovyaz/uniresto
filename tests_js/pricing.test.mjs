@@ -71,5 +71,39 @@ test("multiple different main categories are summed", () => {
 });
 
 test("category prices match the given values exactly", () => {
-  assert.deepEqual(CATEGORY_PRICES, { main: 6.0, starter: 2.0, dessert: 2.0 });
+  assert.deepEqual(CATEGORY_PRICES, { main: 6.0, starter: 2.0, dessert: 2.0, sandwich: 4.0 });
+});
+
+test("sandwich is priced at 4 euro", () => {
+  const r = computeFormulaTotal([line("01.1 Sandwiches végétariens")]);
+  assert.equal(r.sandwichCount, 1);
+  assert.equal(r.formulaCount, 1);
+  assert.equal(r.total, 4.0);
+  assert.equal(r.reason, null);
+});
+
+test("all four real sandwich categories are priced the same", () => {
+  const r = computeFormulaTotal([
+    line("01.1 Sandwiches végétariens"),
+    line("01.2 Sandwiches végans"),
+    line("01.3 Sandwiches non-végétariens"),
+    line("01.4 Sandwiches sans gluten"),
+  ]);
+  assert.equal(r.sandwichCount, 4);
+  assert.equal(r.total, Math.round(4.0 * 4 * 100) / 100);
+});
+
+test("sandwich combines with a main and starter", () => {
+  const r = computeFormulaTotal([line("Non-végétarien"), line("Entrée"), line("01.3 Sandwiches non-végétariens")]);
+  assert.equal(r.mainCount, 1);
+  assert.equal(r.starterCount, 1);
+  assert.equal(r.sandwichCount, 1);
+  assert.equal(r.formulaCount, 3);
+  assert.equal(r.total, Math.round((6.0 + 2.0 + 4.0) * 100) / 100);
+});
+
+test("other Constant Products besides sandwiches stay unpriced", () => {
+  const r = computeFormulaTotal([line("02. Viennoiseries"), line("10.1 Boissons froides - Eau minérale et pétillante")]);
+  assert.equal(r.formulaCount, 0);
+  assert.equal(r.total, null);
 });

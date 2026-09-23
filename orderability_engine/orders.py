@@ -142,8 +142,8 @@ def aggregate_totals(line_items: list[dict]) -> dict:
         "total_price_known": round(known_price, 2) if known_price else (0 if item_count else None),
         "price_fully_known": unknown_price_portions == 0,
         "unknown_price_portions": unknown_price_portions,
-        # OUR OWN per-course price (main/starter/dessert, each priced and
-        # summed independently), NOT from Restopolis -- see
+        # OUR OWN per-course price (main/starter/dessert/sandwich, each
+        # priced and summed independently), NOT from Restopolis -- see
         # orderability_engine/pricing.py.
         "formula": compute_formula_total(line_items),
     }
