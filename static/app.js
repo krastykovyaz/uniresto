@@ -2014,20 +2014,26 @@ function localizedWeightValue(value, unit) {
 // docstring) -- but Féculents/Légumes are KNOWN to be bundled free with
 // any main dish (our own formula rule, not a guess), so those get an
 // honest "Included" instead of a generic "price not available".
+// Restopolis's OWN reservation flow (verified live, screenshots
+// compared 2026-09-24) never shows a per-item price either -- it only
+// shows the student's wallet balance, deducted at pickup, no number per
+// dish anywhere in its own "New reservation" screen. So a bare "€6.00"
+// on our card could misleadingly read as if it were pulled from
+// Restopolis; every price we DO show is explicitly labeled "Canteen
+// Price" instead, making clear it's OUR OWN course pricing (Part 18/26),
+// supplied directly, not a Restopolis number. Where we have no number
+// at all, "Canteen Price" is shown alone (no euro amount) rather than
+// the more clinical-sounding "Price not available" -- matching how
+// Restopolis's own UI simply doesn't surface one either, rather than
+// implying something is missing/broken.
 function priceText(item) {
-  if (item.price != null) return `€${item.price.toFixed(2)}`;
+  if (item.price != null) return `${tr("canteenPrice")} €${item.price.toFixed(2)}`;
   if (INCLUDED_SIDE_CATEGORIES.has(item.category)) return tr("included");
-  // Restopolis itself never has a per-dish price (see static/pricing.js's
-  // module docstring), but OUR OWN flat per-course price (Part 18/26)
-  // DOES apply to any single main/starter/dessert/sandwich item --
-  // showing "price not available" on these specific cards would be
-  // stale now that a real price exists for them, so this surfaces it
-  // directly on the card instead of only in the cart/review totals.
-  if (MAIN_CATEGORIES.has(item.category)) return `€${CATEGORY_PRICES.main.toFixed(2)}`;
-  if (STARTER_CATEGORIES.has(item.category)) return `€${CATEGORY_PRICES.starter.toFixed(2)}`;
-  if (DESSERT_CATEGORIES.has(item.category)) return `€${CATEGORY_PRICES.dessert.toFixed(2)}`;
-  if (SANDWICH_CATEGORIES.has(item.category)) return `€${CATEGORY_PRICES.sandwich.toFixed(2)}`;
-  return tr("priceNotAvailable");
+  if (MAIN_CATEGORIES.has(item.category)) return `${tr("canteenPrice")} €${CATEGORY_PRICES.main.toFixed(2)}`;
+  if (STARTER_CATEGORIES.has(item.category)) return `${tr("canteenPrice")} €${CATEGORY_PRICES.starter.toFixed(2)}`;
+  if (DESSERT_CATEGORIES.has(item.category)) return `${tr("canteenPrice")} €${CATEGORY_PRICES.dessert.toFixed(2)}`;
+  if (SANDWICH_CATEGORIES.has(item.category)) return `${tr("canteenPrice")} €${CATEGORY_PRICES.sandwich.toFixed(2)}`;
+  return tr("canteenPrice");
 }
 
 // The ".is-unspecified" muted/italic styling is meant for a price that's

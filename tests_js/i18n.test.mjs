@@ -253,6 +253,26 @@ test("phone-number strings spot-check in a few languages", () => {
   assert.equal(t("ar", "invalidPhoneNumber"), "أدخل رقم هاتف صالح");
 });
 
+// ---------------------------------------------------------------------------
+// "Canteen Price" label (Part 29) -- replaces a bare €X.XX / "Price not
+// available" on food cards, since Restopolis's own real reservation
+// flow shows no per-item price either (verified live, screenshots
+// compared 2026-09-24)
+// ---------------------------------------------------------------------------
+
+test("canteenPrice exists for every configured language", () => {
+  for (const lang of LANGUAGES) {
+    const value = t(lang.code, "canteenPrice");
+    assert.ok(value && value !== "canteenPrice", `${lang.code}.canteenPrice should resolve to real text, got ${JSON.stringify(value)}`);
+  }
+});
+
+test("canteenPrice spot-check in a few languages", () => {
+  assert.equal(t("en", "canteenPrice"), "Canteen Price");
+  assert.equal(t("fr", "canteenPrice"), "Prix de la cantine");
+  assert.equal(t("lb", "canteenPrice"), "Kantinn-Präis");
+});
+
 test("intlLocale uses the declared locale, or Luxembourgish's German fallback", () => {
   assert.equal(intlLocale("en"), "en-US");
   // lb-LU where the runtime's Intl data has it; de-LU on runtimes (some
