@@ -5,6 +5,7 @@
 
 import { clampQuantity, computeOrderTotals } from "./order-math.js";
 import {
+  CATEGORY_PRICES,
   DESSERT_CATEGORIES,
   INCLUDED_SIDE_CATEGORIES,
   MAIN_CATEGORIES,
@@ -635,10 +636,96 @@ function renderBottomNav() {
 
 // ---------------------------------------------------------------- Nav
 
+// Remembers which SCREEN (and, for "dates"/"menu", which restaurant/date)
+// the user was browsing, purely so reloading the page (a manual browser
+// refresh) lands back where they were instead of resetting to Home.
+// sessionStorage, not localStorage: it only needs to survive a refresh
+// within the same tab, not linger and reopen a stale location days
+// later when the app is opened fresh.
+//
+// Deliberately NOT the same thing as the cart-resume behavior removed
+// in Part 21 ("app always launches on the home screen"): this never
+// restores state.selection (the cart) or jumps into "review" --
+// restoreLocation() below only ever re-enters a restaurant's date
+// picker or menu (both re-fetched live, never trusted from a cache),
+// or a simple tab (favorites/order-history/profile). Screens that
+// depend on cart state or are purely transient (review, confirmation,
+// confirming, smart-lunch, the *-loading screens) are excluded from
+// RESTORABLE_SCREENS, so refreshing from any of those simply falls back
+// to whichever restorable screen was last reached before it -- e.g.
+// refreshing mid-checkout lands back on that restaurant's menu, not on
+// the cart and not all the way back to Home.
+const LOCATION_STORAGE_KEY = "uniresto.location.v1";
+const RESTORABLE_SCREENS = new Set(["restaurants", "dates", "menu", "favorites", "order-history", "profile"]);
+
+function saveLocation() {
+  if (!RESTORABLE_SCREENS.has(state.screen)) return;
+  try {
+    sessionStorage.setItem(
+      LOCATION_STORAGE_KEY,
+      JSON.stringify({ screen: state.screen, slug: state.slug, restaurantName: state.restaurantName, targetDate: state.targetDate })
+    );
+  } catch {
+    /* sessionStorage unavailable (private mode, quota, ...) -- just won't restore */
+  }
+}
+
+// Returns true if it navigated somewhere (caller should NOT also
+// goTo("restaurants") itself), false if there was nothing to restore or
+// restoring failed (stale/removed restaurant, date no longer available,
+// etc) -- any failure here is silent and falls back to the normal Home
+// landing, never a toast/error for what's just a convenience.
+async function restoreLocation() {
+  let saved;
+  try {
+    const raw = sessionStorage.getItem(LOCATION_STORAGE_KEY);
+    saved = raw ? JSON.parse(raw) : null;
+  } catch {
+    saved = null;
+  }
+  if (!saved || !RESTORABLE_SCREENS.has(saved.screen) || saved.screen === "restaurants") return false;
+
+  if (saved.screen === "favorites") {
+    await openFavorites();
+    return true;
+  }
+  if (saved.screen === "order-history") {
+    await openOrderHistory();
+    return true;
+  }
+  if (saved.screen === "profile") {
+    goTo("profile");
+    return true;
+  }
+
+  // "dates"/"menu" both need the restaurant to still exist -- re-looked
+  // up from the just-fetched live list, never trusted from the saved copy.
+  const restaurant = state.restaurants.find((r) => r.slug === saved.slug);
+  if (!restaurant) return false;
+
+  if (saved.screen === "dates") {
+    await selectRestaurant(restaurant);
+    return true;
+  }
+  if (saved.screen === "menu" && saved.targetDate) {
+    try {
+      const dateInfo = await api(`/api/restaurants/${restaurant.slug}/status?date=${saved.targetDate}`);
+      state.slug = restaurant.slug;
+      state.restaurantName = restaurant.name;
+      await selectDate(dateInfo);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
 function goTo(screen) {
   state.screen = screen;
   render();
   scrollToTop();
+  saveLocation();
 }
 
 // ---------------------------------------------------------- Screen: restaurants
@@ -857,7 +944,7 @@ function renderFavorites() {
             liveItem
               ? `<div class="weight-price-row">
                    ${weightText(liveItem) ? `<span class="weight">${escapeHtml(weightText(liveItem))}</span><span class="dot">·</span>` : ""}
-                   <span class="price ${liveItem.price == null ? "is-unspecified" : ""}">${escapeHtml(priceText(liveItem))}</span>
+                   <span class="price ${priceIsUnspecified(liveItem) ? "is-unspecified" : ""}">${escapeHtml(priceText(liveItem))}</span>
                    ${caloriesText(liveItem) ? `<span class="dot">·</span><span class="calories">${escapeHtml(caloriesText(liveItem))}</span>` : ""}
                  </div>`
               : `<p class="status-line">${escapeHtml(restaurantStatus === "available" ? tr("favoriteNotOnTodayMenu") : dateStatusLabel(restaurantStatus))}</p>`
@@ -1490,7 +1577,26 @@ function localizedWeightValue(value, unit) {
 function priceText(item) {
   if (item.price != null) return `€${item.price.toFixed(2)}`;
   if (INCLUDED_SIDE_CATEGORIES.has(item.category)) return tr("included");
+  // Restopolis itself never has a per-dish price (see static/pricing.js's
+  // module docstring), but OUR OWN flat per-course price (Part 18) DOES
+  // apply to any single main/starter/dessert item -- showing "price not
+  // available" on these specific cards would be stale now that a real
+  // price exists for them, so this surfaces it directly on the card
+  // instead of only in the cart/review totals.
+  if (MAIN_CATEGORIES.has(item.category)) return `€${CATEGORY_PRICES.main.toFixed(2)}`;
+  if (STARTER_CATEGORIES.has(item.category)) return `€${CATEGORY_PRICES.starter.toFixed(2)}`;
+  if (DESSERT_CATEGORIES.has(item.category)) return `€${CATEGORY_PRICES.dessert.toFixed(2)}`;
   return tr("priceNotAvailable");
+}
+
+// The ".is-unspecified" muted/italic styling is meant for a price that's
+// genuinely missing -- a real €X.XX (Restopolis's own, or now OUR
+// per-course price) must never look like a placeholder just because
+// item.price itself (Restopolis's, always null) is null.
+function priceIsUnspecified(item) {
+  if (item.price != null) return false;
+  if (MAIN_CATEGORIES.has(item.category) || STARTER_CATEGORIES.has(item.category) || DESSERT_CATEGORIES.has(item.category)) return false;
+  return true;
 }
 
 // Per the confirmed calorie methodology: only ever shown for items with
@@ -1536,7 +1642,7 @@ function foodCard(item) {
       </div>
       <div class="weight-price-row">
         ${weightText(item) ? `<span class="weight">${escapeHtml(weightText(item))}</span><span class="dot">·</span>` : ""}
-        <span class="price ${item.price == null ? "is-unspecified" : ""}">${escapeHtml(priceText(item))}</span>
+        <span class="price ${priceIsUnspecified(item) ? "is-unspecified" : ""}">${escapeHtml(priceText(item))}</span>
         ${caloriesText(item) ? `<span class="dot">·</span><span class="calories">${escapeHtml(caloriesText(item))}</span>` : ""}
       </div>
       <div class="badge-row">
@@ -2315,7 +2421,8 @@ async function init() {
     return;
   }
 
-  goTo("restaurants");
+  const restored = await restoreLocation();
+  if (!restored) goTo("restaurants");
 }
 
 init();
