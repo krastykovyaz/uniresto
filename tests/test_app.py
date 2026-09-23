@@ -46,6 +46,13 @@ def test_api_restaurants(client):
     assert slugs == {"altius", "brasserie-johns"}
 
 
+def test_api_restaurants_includes_building(client):
+    resp = client.get("/api/restaurants")
+    by_slug = {r["slug"]: r for r in resp.get_json()}
+    assert by_slug["altius"]["building"] == "Main building"
+    assert by_slug["brasserie-johns"]["building"] == "JFK building"
+
+
 def test_api_status_available(client):
     resp = client.get("/api/restaurants/altius/status?date=2026-09-24")
     assert resp.status_code == 200

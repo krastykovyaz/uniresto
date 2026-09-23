@@ -85,7 +85,7 @@ def create_app(service: OrderabilityService | None = None, order_store: OrderSto
     @app.get("/api/restaurants")
     def api_restaurants():
         return jsonify(
-            [{"slug": slug, "code": r.code, "name": r.name} for slug, r in by_slug.items()]
+            [{"slug": slug, "code": r.code, "name": r.name, "building": r.building} for slug, r in by_slug.items()]
         )
 
     @app.get("/api/restaurants/<slug>/status")

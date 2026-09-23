@@ -742,6 +742,19 @@ async function loadRestaurants() {
   state.restaurants = await api("/api/restaurants");
 }
 
+// Maps the raw "building" string the API returns (restaurants.yaml's OWN
+// field, not a Restopolis one -- see RestaurantConfig.building's
+// docstring) to its translated label. An unrecognized value still shows
+// verbatim rather than silently disappearing, the same "never hide,
+// explain/show it" principle used for orderability's own raw status
+// strings.
+const BUILDING_I18N_KEYS = { "Main building": "buildingMain", "JFK building": "buildingJfk" };
+function buildingLabel(building) {
+  if (!building) return null;
+  const key = BUILDING_I18N_KEYS[building];
+  return key ? tr(key) : building;
+}
+
 function renderRestaurants() {
   app.innerHTML = "";
   app.append(el(`<p class="eyebrow" style="padding-top:28px">${escapeHtml(tr("tagline"))}</p>`));
@@ -755,7 +768,7 @@ function renderRestaurants() {
           <div class="icon-avatar is-other">${icon("fork", 20)}</div>
           <div>
             <h2>${escapeHtml(shortName(r.name))}</h2>
-            <p class="kind">${escapeHtml(tr("universityRestaurant"))}</p>
+            <p class="kind">${escapeHtml(tr("universityRestaurant"))}${r.building ? ` · ${escapeHtml(buildingLabel(r.building))}` : ""}</p>
           </div>
         </div>
       </button>

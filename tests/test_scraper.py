@@ -71,3 +71,11 @@ def test_resolve_restaurants_filters_by_slug():
     result = resolve_restaurants(argparse.Namespace(restaurant=["altius"]), all_restaurants)
     assert len(result) == 1
     assert result[0].code == "UDL-CKB-ALTIUS"
+
+
+def test_restaurants_yaml_building_field_is_loaded():
+    # NOT a Restopolis field (see RestaurantConfig.building's docstring) --
+    # confirmed directly by the user, purely a display label.
+    all_restaurants = load_restaurants()
+    assert all_restaurants["UDL-CKB-ALTIUS"].building == "Main building"
+    assert all_restaurants["UDL-CKB-BRASSERIE-JOHNS"].building == "JFK building"

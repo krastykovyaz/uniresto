@@ -162,6 +162,27 @@ test("customer-email strings spot-check in a few languages", () => {
   assert.equal(t("ar", "confirmationEmailFailed"), "تعذر إرسال بريد التأكيد");
 });
 
+// ---------------------------------------------------------------------------
+// Restaurant building labels (Part 24) -- NOT a Restopolis field, see
+// RestaurantConfig.building's docstring
+// ---------------------------------------------------------------------------
+
+test("building-label strings exist for every configured language", () => {
+  for (const lang of LANGUAGES) {
+    for (const key of ["buildingMain", "buildingJfk"]) {
+      const value = t(lang.code, key);
+      assert.ok(value && value !== key, `${lang.code}.${key} should resolve to real text, got ${JSON.stringify(value)}`);
+    }
+  }
+});
+
+test("building-label strings spot-check in a few languages", () => {
+  assert.equal(t("en", "buildingMain"), "Main building");
+  assert.equal(t("en", "buildingJfk"), "JFK building");
+  assert.equal(t("fr", "buildingMain"), "Bâtiment principal");
+  assert.equal(t("lb", "buildingJfk"), "JFK-Gebai");
+});
+
 test("intlLocale uses the declared locale, or Luxembourgish's German fallback", () => {
   assert.equal(intlLocale("en"), "en-US");
   // lb-LU where the runtime's Intl data has it; de-LU on runtimes (some

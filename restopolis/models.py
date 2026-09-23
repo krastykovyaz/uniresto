@@ -14,6 +14,14 @@ class RestaurantConfig:
     service_id: int
     site_name: str | None = None
     site_id: int | None = None
+    # Which physical building on campus this restaurant is in -- NOT a
+    # Restopolis field (its restaurant picker has no such concept, see
+    # restopolis/discovery.py), supplied directly by the university's own
+    # staff/student knowledge of the campus, the same way Part 18's
+    # per-course prices and Part 20's delivery deadline are OUR OWN data
+    # kept structurally apart from anything scraped. Purely a display
+    # label; never used for matching/identifying the restaurant.
+    building: str | None = None
 
 
 @dataclass

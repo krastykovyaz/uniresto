@@ -26,6 +26,7 @@ def load_restaurants(path: Path | str = DEFAULT_CONFIG_PATH) -> dict[str, Restau
             service_id=int(entry["service_id"]),
             site_name=entry.get("site_name"),
             site_id=entry.get("site_id"),
+            building=entry.get("building"),
         )
         restaurants[cfg.code] = cfg
     return restaurants

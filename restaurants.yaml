@@ -22,6 +22,10 @@ restaurants:
     site_id: 30354
     restaurant_id: 164
     service_id: 1183
+    # Which Kirchberg campus building this restaurant is in -- NOT a
+    # Restopolis field (see restopolis/models.py's RestaurantConfig.building
+    # docstring), confirmed directly by the user (2026-09-23), not scraped.
+    building: "Main building"
 
   - code: UDL-CKB-BRASSERIE-JOHNS
     name: "UDL-CKB - Brasserie John's - Restaurant"
@@ -29,3 +33,4 @@ restaurants:
     site_id: 30354
     restaurant_id: 160
     service_id: 178
+    building: "JFK building"
