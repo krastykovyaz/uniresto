@@ -2108,26 +2108,30 @@ function foodCard(item) {
       <button type="button" class="heart-btn ${isFav ? "is-favorite" : ""}" aria-label="${escapeHtml(tr(isFav ? "removeFavorite" : "addFavorite", { name: item.name }))}" aria-pressed="${isFav}">${icon(isFav ? "heartFilled" : "heart", 20)}</button>
       <div class="card-head">
         <div class="icon-avatar ${categoryIconClass(item)}">${icon("fork", 18)}</div>
-        <div>
+        <div class="card-title">
           <p class="name">${escapeHtml(item.name)}</p>
           ${item.description ? `<p class="description">${escapeHtml(item.description)}</p>` : ""}
         </div>
       </div>
-      <div class="weight-price-row">
-        ${weightText(item) ? `<span class="weight">${escapeHtml(weightText(item))}</span><span class="dot">·</span>` : ""}
-        <span class="price ${priceIsUnspecified(item) ? "is-unspecified" : ""}">${escapeHtml(priceText(item))}</span>
-        ${caloriesText(item) ? `<span class="dot">·</span><span class="calories">${escapeHtml(caloriesText(item))}</span>` : ""}
+      <div class="card-body">
+        <div class="weight-price-row">
+          ${weightText(item) ? `<span class="weight">${escapeHtml(weightText(item))}</span><span class="dot">·</span>` : ""}
+          <span class="price ${priceIsUnspecified(item) ? "is-unspecified" : ""}">${escapeHtml(priceText(item))}</span>
+          ${caloriesText(item) ? `<span class="dot">·</span><span class="calories">${escapeHtml(caloriesText(item))}</span>` : ""}
+        </div>
+        ${
+          item.vegan || item.vegetarian
+            ? `<div class="badge-row"><span class="badge">${escapeHtml(tr(item.vegan ? "vegan" : "vegetarian"))}</span></div>`
+            : ""
+        }
+        ${item.allergens && item.allergens.length ? `<p class="allergen-line">${escapeHtml(tr("allergens"))} ${item.allergens.map((a) => escapeHtml(allergenLabel(a, state.lang))).join(" · ")}</p>` : ""}
       </div>
-      <div class="badge-row">
-        ${item.vegan ? `<span class="badge">${escapeHtml(tr("vegan"))}</span>` : item.vegetarian ? `<span class="badge">${escapeHtml(tr("vegetarian"))}</span>` : ""}
-      </div>
-      ${item.allergens && item.allergens.length ? `<p class="allergen-line">${escapeHtml(tr("allergens"))} ${item.allergens.map((a) => escapeHtml(allergenLabel(a, state.lang))).join(" · ")}</p>` : ""}
-      <div class="quantity-row"></div>
     </article>
   `);
 
-  const qtyRow = card.querySelector(".quantity-row");
   if (isSelected) {
+    const qtyRow = el(`<div class="quantity-row"></div>`);
+    card.querySelector(".card-body").append(qtyRow);
     qtyRow.append(
       el(`
       <div class="quantity-stepper">
