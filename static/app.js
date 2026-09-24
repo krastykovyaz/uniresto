@@ -83,7 +83,8 @@ const state = {
   filterSheetOpen: false,
   searchQuery: "",
   selection: [], // [{ menuItemId, quantity }]
-  deliveryLocation: "",
+  deliveryBuilding: "", // canonical English label from DELIVERY_BUILDINGS, or ""
+  deliveryLocationText: "", // free-text detail (room/office, or a building not in the list)
   // Optional -- only sent if filled in, so the confirmed order can be
   // emailed (Part 23). Starts pre-filled from the Profile-registered
   // email (Part 25) if one was saved, so a returning user doesn't have
@@ -171,7 +172,13 @@ function saveCart() {
     }
     localStorage.setItem(
       CART_STORAGE_KEY,
-      JSON.stringify({ slug: state.slug, date: state.targetDate, deliveryLocation: state.deliveryLocation, items })
+      JSON.stringify({
+        slug: state.slug,
+        date: state.targetDate,
+        deliveryBuilding: state.deliveryBuilding,
+        deliveryLocationText: state.deliveryLocationText,
+        items,
+      })
     );
   } catch {
     /* localStorage unavailable (private mode, quota, ...) -- cart just won't persist */
@@ -1620,7 +1627,11 @@ async function reorderPastOrder(order) {
   state.searchQuery = "";
   state.selection = newSelection;
   state.serverQuote = null;
-  state.deliveryLocation = order.delivery_location || "";
+  // Can't reliably reverse-parse a past order's single combined string
+  // back into (building, details) -- it goes into the free-text field
+  // as-is, and the building select starts blank for the user to re-pick.
+  state.deliveryBuilding = "";
+  state.deliveryLocationText = order.delivery_location || "";
 
   if (droppedCount > 0) showToast(tr("reorderItemsUnavailable", { n: droppedCount }));
   saveCart();
@@ -2596,7 +2607,7 @@ function buildTotalsBox() {
 // Real Campus Kirchberg building names, supplied directly (not scraped
 // -- Restopolis has no delivery-location concept at all). `label` is
 // the canonical, always-English string actually stored in
-// state.deliveryLocation/sent to the backend, so an order's delivery
+// state.deliveryBuilding/sent to the backend, so an order's delivery
 // location reads consistently regardless of which UI language the
 // customer had active -- only the <select>'s displayed option text is
 // translated (see buildingOptionLabel below), same "display language
@@ -2615,53 +2626,56 @@ function buildingOptionLabel(building) {
   return building.suffixKey ? `${tr(building.key)} (${tr(building.suffixKey)})` : tr(building.key);
 }
 
-// Builds the <select> + (only when needed) the free-text "Other"
-// input, and wires both to state.deliveryLocation/saveCart(). A
-// standalone function (not inlined in renderReview) since the input's
-// presence itself changes on select -- rebuilding just this block is
-// simpler than diffing it against buildTotalsBox()'s "re-render the
-// whole screen" pattern used elsewhere.
-function buildDeliveryLocationField() {
-  const match = DELIVERY_BUILDINGS.find((b) => b.label === state.deliveryLocation);
-  const selectedCode = match ? match.code : state.deliveryLocation ? "other" : "";
+// Two independent fields, each its own field-block: a <select> for the
+// building (state.deliveryBuilding, the app's own custom-styled control
+// -- see .field-block select in app.css, which strips the native OS
+// chrome native <select> elements otherwise render with) and a plain
+// always-visible free-text field (state.deliveryLocationText) for a
+// room/office number or any detail the building list doesn't cover.
+// Confirmed at submit time as one combined string (see confirmOrder) --
+// the backend still only has a single delivery_location field.
+function buildDeliveryBuildingField() {
+  const selectedCode = DELIVERY_BUILDINGS.find((b) => b.label === state.deliveryBuilding)?.code || "";
 
   const block = el(`
     <div class="field-block">
-      <label for="delivery-building">${escapeHtml(tr("deliveryLocation"))}</label>
+      <label for="delivery-building">${escapeHtml(tr("deliveryBuildingLabel"))}</label>
       <select id="delivery-building">
-        <option value="" disabled ${selectedCode === "" ? "selected" : ""}>${escapeHtml(tr("deliveryBuildingPlaceholder"))}</option>
+        <option value="" ${selectedCode === "" ? "selected" : ""}>${escapeHtml(tr("deliveryBuildingPlaceholder"))}</option>
         ${DELIVERY_BUILDINGS.map(
           (b) => `<option value="${b.code}" ${selectedCode === b.code ? "selected" : ""}>${escapeHtml(buildingOptionLabel(b))}</option>`
         ).join("")}
-        <option value="other" ${selectedCode === "other" ? "selected" : ""}>${escapeHtml(tr("deliveryBuildingOther"))}</option>
       </select>
     </div>
   `);
-
-  function syncCustomInput() {
-    block.querySelector("#delivery-location-other")?.remove();
-    if (selectEl.value !== "other") return;
-    const input = el(
-      `<input id="delivery-location-other" type="text" placeholder="${escapeHtml(tr("deliveryLocationPlaceholder"))}" value="${escapeHtml(state.deliveryLocation)}">`
-    );
-    input.addEventListener("input", (e) => {
-      state.deliveryLocation = e.target.value;
-      saveCart();
-    });
-    block.append(input);
-    input.focus();
-  }
-
-  const selectEl = block.querySelector("select");
-  selectEl.addEventListener("change", () => {
-    const building = DELIVERY_BUILDINGS.find((b) => b.code === selectEl.value);
-    state.deliveryLocation = building ? building.label : "";
+  block.querySelector("select").addEventListener("change", (e) => {
+    const building = DELIVERY_BUILDINGS.find((b) => b.code === e.target.value);
+    state.deliveryBuilding = building ? building.label : "";
     saveCart();
-    syncCustomInput();
   });
-  syncCustomInput();
-
   return block;
+}
+
+function buildDeliveryLocationTextField() {
+  const block = el(`
+    <div class="field-block">
+      <label for="delivery-location">${escapeHtml(tr("deliveryLocation"))}</label>
+      <input id="delivery-location" type="text" placeholder="${escapeHtml(tr("deliveryLocationPlaceholder"))}" value="${escapeHtml(state.deliveryLocationText)}">
+    </div>
+  `);
+  block.querySelector("input").addEventListener("input", (e) => {
+    state.deliveryLocationText = e.target.value;
+    saveCart();
+  });
+  return block;
+}
+
+// The backend still only has a single delivery_location string -- joins
+// the building (if any) and the free-text detail (if any) with an
+// em-dash, e.g. "Building A (Central building) — Office 4.150". Either
+// half alone is used as-is; neither present is "" (sent as null).
+function combinedDeliveryLocation() {
+  return [state.deliveryBuilding, state.deliveryLocationText.trim()].filter(Boolean).join(" — ");
 }
 
 async function renderReview() {
@@ -2714,7 +2728,8 @@ async function renderReview() {
   app.append(buildTotalsBox());
   debouncedRefreshServerQuote();
 
-  app.append(buildDeliveryLocationField());
+  app.append(buildDeliveryBuildingField());
+  app.append(buildDeliveryLocationTextField());
 
   // Optional -- only used to email the confirmation (Part 23). Campus-
   // only audience, so it's validated against a uni.lu address, same as
@@ -2763,7 +2778,7 @@ async function confirmOrder() {
         // API selection shape is {id, quantity}; local state uses
         // menuItemId internally (see order-math.js). Map at the boundary.
         items: state.selection.map((s) => ({ id: s.menuItemId, quantity: s.quantity })),
-        delivery_location: state.deliveryLocation || null,
+        delivery_location: combinedDeliveryLocation() || null,
         customer_email: email || null,
       }),
     });

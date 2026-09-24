@@ -613,8 +613,20 @@ svg { display: block; }
   min-height: var(--touch-target);
   background: var(--color-surface);
   color: var(--color-text);
+  font-family: inherit;
 }
-.field-block select + input { margin-top: var(--space-2); }
+/* Native <select> chrome (grey fill, square corners, OS-drawn arrow)
+   otherwise overrides the rules above in most browsers unless the
+   default appearance is explicitly turned off first. */
+.field-block select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M4 6l4 4 4-4' stroke='%236b7280' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 36px;
+}
 
 .email-status { font-size: 0.85rem; color: var(--color-available); }
 .email-status.is-error { color: var(--color-closed); }
