@@ -391,13 +391,13 @@ async function api(path, options) {
   return body;
 }
 
-function showToast(message) {
+function showToast(message, durationMs = 2500) {
   toastEl.textContent = message;
   toastEl.hidden = false;
   clearTimeout(showToast._t);
   showToast._t = setTimeout(() => {
     toastEl.hidden = true;
-  }, 2500);
+  }, durationMs);
 }
 
 // -------------------------------------------------------------- Helpers
@@ -1181,6 +1181,19 @@ async function selectRestaurant(restaurant) {
 
 // --------------------------------------------------------------- Screen: dates
 
+// The one true "can you actually order on this date" check, shared by
+// the date picker's display (renderDates() below) and reorderPastOrder():
+// Restopolis's own status can still say "available" once OUR same-day
+// 08:00 cutoff has already passed (see orderability_engine/delivery_rules.py)
+// -- the two signals are reported independently by the backend on
+// purpose (never merged into one), so the frontend has to combine them
+// itself everywhere it decides orderability, not just where it happens
+// to render a badge.
+function isDateOrderable(dateInfo) {
+  const ourDeadlinePassed = dateInfo.status === "available" && dateInfo.our_delivery && dateInfo.our_delivery.available === false;
+  return dateInfo.status === "available" && !ourDeadlinePassed;
+}
+
 function dateStatusLabel(status) {
   const key = { available: "statusOpen", no_menu: "statusNoMenu", closed: "statusClosed",
     ordering_closed: "statusOrderingClosed", past_date: "statusPast", unknown: "statusUnknown" }[status];
@@ -1199,17 +1212,14 @@ function renderDates() {
   const scroller = el(`<div class="date-scroller"></div>`);
   for (const d of state.availableDates) {
     const { dow, dom } = fmtShort(d.date);
-    // Restopolis's own status can still say "available" once OUR same-day
-    // 08:00 cutoff has already passed (see orderability_engine/delivery_rules.py) --
-    // the two signals are reported independently by the backend on
-    // purpose (never merged into one), so the DISPLAY has to combine them
-    // itself: once our own deadline is passed, the card reads "Closed"
-    // regardless of what Restopolis's raw status says. The menu stays
-    // reachable either way (every card stays tappable below), matching
-    // that api_menu itself never gates on our_delivery.
-    const ourDeadlinePassed = d.status === "available" && d.our_delivery && d.our_delivery.available === false;
-    const displayStatus = ourDeadlinePassed ? "closed" : d.status;
-    const isAvailable = displayStatus === "available";
+    // Once our own deadline is passed, the card reads "Closed" regardless
+    // of what Restopolis's raw status says (see isDateOrderable). The
+    // menu stays reachable either way (every card stays tappable below),
+    // matching that api_menu itself never gates on our_delivery.
+    const isAvailable = isDateOrderable(d);
+    // Restopolis's own status is "available" but our deadline passed --
+    // the only case isDateOrderable disagrees with d.status.
+    const displayStatus = !isAvailable && d.status === "available" ? "closed" : d.status;
     const deadline = fmtDeadline(d.our_delivery && d.our_delivery.deadline);
     const ariaPrefix = isAvailable ? tr("select") : `${tr("unavailable")}:`;
     const card = el(`
@@ -1574,6 +1584,30 @@ function renderProfile() {
 // drops anything no longer on today's menu with a clear explanation,
 // and lands on the cart screen (Part 46) with a fresh, server-verifiable
 // selection -- it never re-creates the order directly.
+// Scans forward through the SAME window the date picker itself shows
+// (DATE_PICKER_DAYS), using the SAME orderability rule (isDateOrderable)
+// -- reordering must never land on a date the picker itself would show
+// as "Closed". Returns the first orderable date's status response, or
+// null if none of the next DATE_PICKER_DAYS days are orderable. A single
+// date's request failing doesn't abort the whole search -- it just
+// isn't a candidate.
+async function findNextOrderableDate(slug) {
+  const today = new Date();
+  for (let i = 0; i < DATE_PICKER_DAYS; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() + i);
+    const dateStr = d.toISOString().slice(0, 10);
+    let dateInfo;
+    try {
+      dateInfo = await api(`/api/restaurants/${slug}/status?date=${dateStr}`);
+    } catch {
+      continue;
+    }
+    if (isDateOrderable(dateInfo)) return dateInfo;
+  }
+  return null;
+}
+
 async function reorderPastOrder(order) {
   const restaurant = state.restaurants.find((r) => r.code === order.restaurant_code);
   if (!restaurant) {
@@ -1581,34 +1615,45 @@ async function reorderPastOrder(order) {
     return;
   }
 
-  const today = new Date().toISOString().slice(0, 10);
-  let dateInfo;
-  try {
-    dateInfo = await api(`/api/restaurants/${restaurant.slug}/status?date=${today}`);
-  } catch (err) {
-    showToast(err.message);
-    return;
-  }
-  if (dateInfo.status !== "available") {
-    showToast(tr("reorderNotAvailableToday", { name: shortName(restaurant.name) }));
+  const dateInfo = await findNextOrderableDate(restaurant.slug);
+  if (!dateInfo) {
+    showToast(tr("reorderNoAvailableDate", { name: shortName(restaurant.name) }));
     return;
   }
 
   let menu;
   try {
-    menu = await api(`/api/restaurants/${restaurant.slug}/menu/${today}`);
+    menu = await api(`/api/restaurants/${restaurant.slug}/menu/${dateInfo.date}`);
   } catch (err) {
     showToast(err.message);
     return;
   }
 
   const byKey = new Map(menu.items.map((it) => [cartItemKey(it), it]));
+  const usedIds = new Set();
   const newSelection = [];
+  let substitutedCount = 0;
   let droppedCount = 0;
   for (const oldItem of order.items) {
-    const liveItem = byKey.get(cartItemKey(oldItem));
-    if (liveItem) newSelection.push({ menuItemId: liveItem.id, quantity: oldItem.quantity });
-    else droppedCount++;
+    let liveItem = byKey.get(cartItemKey(oldItem));
+    let substituted = false;
+    if (!liveItem) {
+      // No exact match on the new date -- fall back to another item in
+      // the SAME category (the only real signal available; there's no
+      // cuisine/flavor data to guess a closer match from), preferring
+      // one this reorder hasn't already used, in the menu's own order.
+      // Never a guess across categories (a salad is never "similar" to
+      // a dessert).
+      liveItem = menu.items.find((it) => it.category === oldItem.category && !usedIds.has(it.id));
+      substituted = !!liveItem;
+    }
+    if (liveItem) {
+      newSelection.push({ menuItemId: liveItem.id, quantity: oldItem.quantity });
+      usedIds.add(liveItem.id);
+      if (substituted) substitutedCount++;
+    } else {
+      droppedCount++;
+    }
   }
 
   if (newSelection.length === 0) {
@@ -1618,7 +1663,7 @@ async function reorderPastOrder(order) {
 
   state.slug = restaurant.slug;
   state.restaurantName = restaurant.name;
-  state.targetDate = today;
+  state.targetDate = dateInfo.date;
   state.dateInfo = dateInfo;
   state.menu = menu;
   state.menuError = null;
@@ -1633,7 +1678,12 @@ async function reorderPastOrder(order) {
   state.deliveryBuilding = "";
   state.deliveryLocationText = order.delivery_location || "";
 
-  if (droppedCount > 0) showToast(tr("reorderItemsUnavailable", { n: droppedCount }));
+  const notices = [];
+  if (dateInfo.date !== new Date().toISOString().slice(0, 10)) notices.push(tr("reorderMovedToDate", { date: fmtLong(dateInfo.date) }));
+  if (substitutedCount > 0) notices.push(tr("reorderItemsSubstituted", { n: substitutedCount }));
+  if (droppedCount > 0) notices.push(tr("reorderItemsUnavailable", { n: droppedCount }));
+  if (notices.length > 0) showToast(notices.join(" "), 2500 + 1200 * (notices.length - 1));
+
   saveCart();
   goTo("review");
 }

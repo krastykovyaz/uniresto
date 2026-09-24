@@ -722,6 +722,9 @@ svg { display: block; }
   border-radius: 999px;
   font-size: 0.85rem;
   z-index: 40;
+  max-width: calc(100% - 2 * var(--space-4));
+  white-space: normal;
+  text-align: center;
 }
 
 .sr-only {
