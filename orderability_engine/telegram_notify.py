@@ -52,8 +52,20 @@ def _format_order_message(order: dict, admin_url: str | None, restopolis_url: st
         "",
         "Items:",
     ]
+    # Grouped by Restopolis's OWN raw category string (e.g. "02.
+    # Viennoiseries"), in the order each category first appears in the
+    # order -- the admin's own Restopolis app groups dishes by this same
+    # real taxonomy, so this is the one thing that actually helps them
+    # find the exact items, independent of whether restopolis_url below
+    # opens the website or (via the app's own link handling, outside
+    # this codebase's visibility/control) its native app instead.
+    by_category: dict[str, list[dict]] = {}
     for item in order["items"]:
-        lines.append(f"  - {item['name']} x{item['quantity']}")
+        by_category.setdefault(item.get("category") or "Other", []).append(item)
+    for category, items in by_category.items():
+        lines.append(f"  {category}:")
+        for item in items:
+            lines.append(f"    - {item['name']} x{item['quantity']}")
     if restopolis_url:
         lines.append(f"  (place these on Restopolis: {restopolis_url})")
 
@@ -90,18 +102,28 @@ def send_admin_notification(
     it.
 
     `restopolis_url` deep-links straight to this order's RESTAURANT on
-    the real Restopolis site (its BtnChangeRestaurant endpoint redirects
-    straight to a Menu page with that restaurant already selected --
-    verified live, see app.py's construction of it). It only selects the
-    restaurant, not the specific date or items: Restopolis's site has no
-    URL parameter for either (see restopolis/client.py's module
-    docstring -- date navigation is done via NextWeek/PreviousWeek
-    requests that shift a server-side pointer, not a link Restopolis
-    itself exposes), so the admin still has to pick the right day and
-    dishes once there, same as visiting Restopolis directly always
-    required. Landing on the restaurant, one tap away, is the real
-    improvement -- claiming this jumps straight to the exact order would
-    be a UI promise this app can't back with real data."""
+    the real Restopolis WEBSITE (its BtnChangeRestaurant endpoint
+    redirects straight to a Menu page with that restaurant already
+    selected -- verified live via a real HTTP request, see app.py's
+    construction of it). It only selects the restaurant, not the
+    specific date or items: Restopolis's site has no URL parameter for
+    either (see restopolis/client.py's module docstring -- date
+    navigation is done via NextWeek/PreviousWeek requests that shift a
+    server-side pointer, not a link Restopolis itself exposes).
+
+    The admin's day-to-day Restopolis use may actually be its native
+    mobile app rather than this website (confirmed by the admin, not
+    guessed) -- whether tapping this link opens that app instead (e.g.
+    via an iOS/Android universal link Restopolis's own app may or may
+    not register for this domain) is entirely governed by that app,
+    which this codebase has no visibility into or control over, so it's
+    never assumed either way. What IS guaranteed to help regardless of
+    which one opens: _format_order_message() below groups the item list
+    by each item's own real Restopolis category (e.g. "02.
+    Viennoiseries"), the same taxonomy both the website and the app
+    group dishes by -- claiming this link jumps straight to the exact
+    order would be a promise this app can't back with real data, so it
+    doesn't."""
     config = _bot_config()
     if config is None:
         return False, "Telegram not configured (TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID unset)"

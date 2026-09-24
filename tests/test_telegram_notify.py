@@ -157,6 +157,34 @@ def test_both_buttons_present_when_both_urls_given(monkeypatch):
     assert urls == {restopolis_url, reviewing_url}
 
 
+def test_items_are_grouped_by_their_real_restopolis_category(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "999")
+    order = _order(
+        items=[
+            {"name": "Croissant fourré 70 g", "quantity": 1, "category": "02. Viennoiseries"},
+            {"name": "Huit 80 g", "quantity": 1, "category": "02. Viennoiseries"},
+            {"name": "Rôti de porc Orloff", "quantity": 1, "category": "Non-végétarien"},
+        ]
+    )
+
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"ok": True}
+    with patch("orderability_engine.telegram_notify.requests.post", return_value=mock_resp) as mock_post:
+        send_admin_notification(order)
+
+    text = mock_post.call_args.kwargs["json"]["text"]
+    # Both viennoiseries items sit under ONE "02. Viennoiseries:" header,
+    # not repeated per item -- the same real category the admin's own
+    # Restopolis app groups dishes by, so this is directly matchable
+    # against it regardless of whether that's the website or the app.
+    assert text.count("02. Viennoiseries:") == 1
+    assert "Non-végétarien:" in text
+    viennoiseries_section = text.split("02. Viennoiseries:")[1].split("Non-végétarien:")[0]
+    assert "Croissant fourré 70 g x1" in viennoiseries_section
+    assert "Huit 80 g x1" in viennoiseries_section
+
+
 def test_no_reply_markup_when_neither_url_given(monkeypatch):
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "999")
