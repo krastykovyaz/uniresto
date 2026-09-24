@@ -2570,6 +2570,77 @@ function buildTotalsBox() {
   `);
 }
 
+// Real Campus Kirchberg building names, supplied directly (not scraped
+// -- Restopolis has no delivery-location concept at all). `label` is
+// the canonical, always-English string actually stored in
+// state.deliveryLocation/sent to the backend, so an order's delivery
+// location reads consistently regardless of which UI language the
+// customer had active -- only the <select>'s displayed option text is
+// translated (see buildingOptionLabel below), same "display language
+// differs from stored data" precedent as restaurant/dish names.
+const DELIVERY_BUILDINGS = [
+  { code: "building_a", key: "deliveryBuildingA", suffixKey: "deliveryBuildingCentral", label: "Building A (Central building)" },
+  { code: "building_b", key: "deliveryBuildingB", suffixKey: "deliveryBuildingCentral", label: "Building B (Central building)" },
+  { code: "building_c", key: "deliveryBuildingC", suffixKey: "deliveryBuildingCentral", label: "Building C (Central building)" },
+  { code: "building_d", key: "deliveryBuildingD", suffixKey: "deliveryBuildingCentral", label: "Building D (Central building)" },
+  { code: "building_g", key: "deliveryBuildingG", suffixKey: null, label: "Building G" },
+  { code: "jfk_building", key: "deliveryBuildingJfk", suffixKey: "deliveryBuildingNearTram", label: "JFK Building (near Tram stop)" },
+  { code: "weicker_building", key: "deliveryBuildingWeicker", suffixKey: null, label: "Weicker Building" },
+];
+
+function buildingOptionLabel(building) {
+  return building.suffixKey ? `${tr(building.key)} (${tr(building.suffixKey)})` : tr(building.key);
+}
+
+// Builds the <select> + (only when needed) the free-text "Other"
+// input, and wires both to state.deliveryLocation/saveCart(). A
+// standalone function (not inlined in renderReview) since the input's
+// presence itself changes on select -- rebuilding just this block is
+// simpler than diffing it against buildTotalsBox()'s "re-render the
+// whole screen" pattern used elsewhere.
+function buildDeliveryLocationField() {
+  const match = DELIVERY_BUILDINGS.find((b) => b.label === state.deliveryLocation);
+  const selectedCode = match ? match.code : state.deliveryLocation ? "other" : "";
+
+  const block = el(`
+    <div class="field-block">
+      <label for="delivery-building">${escapeHtml(tr("deliveryLocation"))}</label>
+      <select id="delivery-building">
+        <option value="" disabled ${selectedCode === "" ? "selected" : ""}>${escapeHtml(tr("deliveryBuildingPlaceholder"))}</option>
+        ${DELIVERY_BUILDINGS.map(
+          (b) => `<option value="${b.code}" ${selectedCode === b.code ? "selected" : ""}>${escapeHtml(buildingOptionLabel(b))}</option>`
+        ).join("")}
+        <option value="other" ${selectedCode === "other" ? "selected" : ""}>${escapeHtml(tr("deliveryBuildingOther"))}</option>
+      </select>
+    </div>
+  `);
+
+  function syncCustomInput() {
+    block.querySelector("#delivery-location-other")?.remove();
+    if (selectEl.value !== "other") return;
+    const input = el(
+      `<input id="delivery-location-other" type="text" placeholder="${escapeHtml(tr("deliveryLocationPlaceholder"))}" value="${escapeHtml(state.deliveryLocation)}">`
+    );
+    input.addEventListener("input", (e) => {
+      state.deliveryLocation = e.target.value;
+      saveCart();
+    });
+    block.append(input);
+    input.focus();
+  }
+
+  const selectEl = block.querySelector("select");
+  selectEl.addEventListener("change", () => {
+    const building = DELIVERY_BUILDINGS.find((b) => b.code === selectEl.value);
+    state.deliveryLocation = building ? building.label : "";
+    saveCart();
+    syncCustomInput();
+  });
+  syncCustomInput();
+
+  return block;
+}
+
 async function renderReview() {
   app.innerHTML = "";
   app.append(header({ title: tr("yourOrder"), subtitle: `${shortName(state.restaurantName)} · ${fmtLong(state.targetDate)}`, back: () => goTo("menu") }));
@@ -2620,17 +2691,7 @@ async function renderReview() {
   app.append(buildTotalsBox());
   debouncedRefreshServerQuote();
 
-  const fieldBlock = el(`
-    <div class="field-block">
-      <label for="delivery-location">${escapeHtml(tr("deliveryLocation"))}</label>
-      <input id="delivery-location" type="text" placeholder="${escapeHtml(tr("deliveryLocationPlaceholder"))}" value="${escapeHtml(state.deliveryLocation)}">
-    </div>
-  `);
-  fieldBlock.querySelector("input").addEventListener("input", (e) => {
-    state.deliveryLocation = e.target.value;
-    saveCart();
-  });
-  app.append(fieldBlock);
+  app.append(buildDeliveryLocationField());
 
   // Optional -- only used to email the confirmation (Part 23). Campus-
   // only audience, so it's validated against a uni.lu address, same as

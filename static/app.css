@@ -603,14 +603,18 @@ svg { display: block; }
 
 .field-block { padding: 0 var(--space-4) var(--space-4); }
 .field-block label { font-size: 0.85rem; color: var(--color-text-muted); display: block; margin-bottom: 4px; }
-.field-block input {
+.field-block input,
+.field-block select {
   width: 100%;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   padding: 10px 12px;
   font-size: 16px;
   min-height: var(--touch-target);
+  background: var(--color-surface);
+  color: var(--color-text);
 }
+.field-block select + input { margin-top: var(--space-2); }
 
 .email-status { font-size: 0.85rem; color: var(--color-available); }
 .email-status.is-error { color: var(--color-closed); }
