@@ -40,7 +40,7 @@ def is_configured() -> bool:
     return _bot_config() is not None
 
 
-def _format_order_message(order: dict, admin_url: str | None) -> str:
+def _format_order_message(order: dict, admin_url: str | None, restopolis_url: str | None) -> str:
     """Plain text (Telegram's default parse mode) built ONLY from the
     order's own already-computed, server-verified fields -- same "never
     invent data" rule as mailer.py's own message-building functions."""
@@ -54,6 +54,8 @@ def _format_order_message(order: dict, admin_url: str | None) -> str:
     ]
     for item in order["items"]:
         lines.append(f"  - {item['name']} x{item['quantity']}")
+    if restopolis_url:
+        lines.append(f"  (place these on Restopolis: {restopolis_url})")
 
     formula = order["totals"].get("formula") or {}
     if formula.get("total") is not None:
@@ -73,29 +75,46 @@ def _format_order_message(order: dict, admin_url: str | None) -> str:
 
 
 def send_admin_notification(
-    order: dict, admin_url: str | None = None, mark_reviewing_url: str | None = None
+    order: dict,
+    admin_url: str | None = None,
+    mark_reviewing_url: str | None = None,
+    restopolis_url: str | None = None,
 ) -> tuple[bool, str | None]:
     """Best-effort send. Returns (sent, error) -- `sent` is False (never
     raises) for both "not configured" and any real API/network failure.
 
-    `mark_reviewing_url` (Part 37), when given, is attached as a tappable
-    inline button -- a plain URL button, not a callback_query, so this
-    needs no webhook/polling setup on our side at all: Telegram just
-    opens the link (app.py's GET /admin/orders/<id>/mark-reviewing,
-    ADMIN_TOKEN-gated same as the rest of the admin page) when the admin
-    taps it. Flips the order to 'reviewing', which the customer's app
-    then shows instead of the generic "Pending" -- see
-    OrderStore.mark_reviewing()."""
+    `mark_reviewing_url` (Part 37) and `restopolis_url` (Part 38), when
+    given, are each attached as a tappable inline button -- plain URL
+    buttons, not callback_query, so this needs no webhook/polling setup
+    on our side at all: Telegram just opens the link when the admin taps
+    it.
+
+    `restopolis_url` deep-links straight to this order's RESTAURANT on
+    the real Restopolis site (its BtnChangeRestaurant endpoint redirects
+    straight to a Menu page with that restaurant already selected --
+    verified live, see app.py's construction of it). It only selects the
+    restaurant, not the specific date or items: Restopolis's site has no
+    URL parameter for either (see restopolis/client.py's module
+    docstring -- date navigation is done via NextWeek/PreviousWeek
+    requests that shift a server-side pointer, not a link Restopolis
+    itself exposes), so the admin still has to pick the right day and
+    dishes once there, same as visiting Restopolis directly always
+    required. Landing on the restaurant, one tap away, is the real
+    improvement -- claiming this jumps straight to the exact order would
+    be a UI promise this app can't back with real data."""
     config = _bot_config()
     if config is None:
         return False, "Telegram not configured (TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID unset)"
 
-    text = _format_order_message(order, admin_url)
+    text = _format_order_message(order, admin_url, restopolis_url)
     payload = {"chat_id": config["chat_id"], "text": text}
+    buttons = []
+    if restopolis_url:
+        buttons.append([{"text": "Open on Restopolis", "url": restopolis_url}])
     if mark_reviewing_url:
-        payload["reply_markup"] = {
-            "inline_keyboard": [[{"text": "I'm checking this order", "url": mark_reviewing_url}]]
-        }
+        buttons.append([{"text": "I'm checking this order", "url": mark_reviewing_url}])
+    if buttons:
+        payload["reply_markup"] = {"inline_keyboard": buttons}
     try:
         resp = requests.post(
             f"{TELEGRAM_API_BASE}/bot{config['token']}/sendMessage",

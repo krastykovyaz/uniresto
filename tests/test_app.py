@@ -568,6 +568,21 @@ def test_create_order_passes_a_mark_reviewing_url_when_admin_token_is_set(client
     assert "token=correct-token" in mark_reviewing_url
 
 
+def test_create_order_passes_a_restopolis_url_for_the_ordered_restaurant(client):
+    # Unlike admin_url/mark_reviewing_url, this one never depends on
+    # ADMIN_TOKEN -- it points at Restopolis's own site, not ours.
+    with patch("app.send_admin_notification", return_value=(True, None)) as mock_notify:
+        client.post(
+            "/api/orders",
+            json={"restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}]},
+        )
+    restopolis_url = mock_notify.call_args.kwargs["restopolis_url"]
+    assert restopolis_url is not None
+    assert restopolis_url.startswith("https://ssl.education.lu/eRestauration/CustomerServices/Menu/BtnChangeRestaurant")
+    # 164 = Altius's real restaurant_id (restaurants.yaml) -- never guessed.
+    assert "pRestaurantSelection=164" in restopolis_url
+
+
 def test_create_order_mark_reviewing_url_is_none_without_admin_token(client):
     with patch("app.send_admin_notification", return_value=(True, None)) as mock_notify:
         client.post(

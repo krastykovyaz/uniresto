@@ -28,6 +28,7 @@ from orderability_engine.orders import MAX_QUANTITY, OrderStore, OrderValidation
 from orderability_engine.service import OrderabilityService
 from orderability_engine.smart_lunch import TIER_ORDER, find_smart_lunch
 from orderability_engine.telegram_notify import send_admin_notification
+from restopolis.client import BASE_URL as RESTOPOLIS_BASE_URL
 from restopolis.config import load_restaurants
 from scraper import slug_for
 
@@ -262,7 +263,16 @@ def create_app(
         mark_reviewing_url = (
             f"{request.host_url}admin/orders/{order['id']}/mark-reviewing?token={admin_token}" if admin_token else None
         )
-        send_admin_notification(order, admin_url=admin_url, mark_reviewing_url=mark_reviewing_url)
+        # Part 38: deep-links straight to THIS restaurant on the real
+        # Restopolis site (its own BtnChangeRestaurant redirect -- see
+        # telegram_notify.py's send_admin_notification docstring for why
+        # it can only go this far, not to the exact date/items).
+        # restaurant.restaurant_id is real, verified data from
+        # restaurants.yaml (see its own header comment), never guessed.
+        restopolis_url = f"{RESTOPOLIS_BASE_URL}/Menu/BtnChangeRestaurant?pRestaurantSelection={restaurant.restaurant_id}"
+        send_admin_notification(
+            order, admin_url=admin_url, mark_reviewing_url=mark_reviewing_url, restopolis_url=restopolis_url
+        )
 
         return jsonify(order), 201
 
