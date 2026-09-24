@@ -1430,6 +1430,7 @@ function orderStatusLabel(status) {
   // status value visible/honest rather than mistranslated as "Pending".
   const key = {
     pending: "statusPending",
+    reviewing: "statusReviewing",
     awaiting_confirmation: "statusAwaitingConfirmation",
     confirmed: "statusConfirmed",
     cancelled: "statusCancelled",
@@ -1485,6 +1486,7 @@ function renderOrderHistory() {
         <p class="meta">${escapeHtml(tr("placedOn"))} ${escapeHtml(fmtDeadline(order.created_at))} · ${escapeHtml(orderStatusLabel(order.status))}</p>
         <p class="meta">${escapeHtml(historyWeightSummary(order))} · ${escapeHtml(formatServerPriceTotal(order))}</p>
         ${order.real_price != null ? `<p class="meta">${escapeHtml(tr("realPrice"))}: €${order.real_price.toFixed(2)}</p>` : ""}
+        ${order.status === "reviewing" ? `<p class="meta reviewing-note">${escapeHtml(tr("reviewingNote"))}</p>` : ""}
         <button type="button" class="history-reorder-btn">${escapeHtml(tr("reorder"))}</button>
       </article>
     `);

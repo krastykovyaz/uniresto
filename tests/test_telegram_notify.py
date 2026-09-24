@@ -104,3 +104,34 @@ def test_message_never_invents_data_only_uses_the_orders_own_fields(monkeypatch)
     assert order["delivery_location"] in text
     assert order["customer_email"] in text
     assert "https://uniresto.carcard.space/admin/orders?token=x" in text
+
+
+def test_no_reply_markup_when_mark_reviewing_url_not_given(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "999")
+
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"ok": True}
+    with patch("orderability_engine.telegram_notify.requests.post", return_value=mock_resp) as mock_post:
+        send_admin_notification(_order())
+
+    assert "reply_markup" not in mock_post.call_args.kwargs["json"]
+
+
+def test_mark_reviewing_url_becomes_an_inline_url_button(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "999")
+    url = "https://uniresto.carcard.space/admin/orders/42/mark-reviewing?token=x"
+
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"ok": True}
+    with patch("orderability_engine.telegram_notify.requests.post", return_value=mock_resp) as mock_post:
+        send_admin_notification(_order(), mark_reviewing_url=url)
+
+    payload = mock_post.call_args.kwargs["json"]
+    button = payload["reply_markup"]["inline_keyboard"][0][0]
+    assert button["url"] == url
+    # A plain URL button, never a callback_query -- Telegram just opens
+    # the link, no webhook/polling needed on our side (see the module
+    # docstring on send_admin_notification).
+    assert "callback_data" not in button

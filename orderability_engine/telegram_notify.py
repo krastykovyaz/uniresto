@@ -72,18 +72,34 @@ def _format_order_message(order: dict, admin_url: str | None) -> str:
     return "\n".join(lines)
 
 
-def send_admin_notification(order: dict, admin_url: str | None = None) -> tuple[bool, str | None]:
+def send_admin_notification(
+    order: dict, admin_url: str | None = None, mark_reviewing_url: str | None = None
+) -> tuple[bool, str | None]:
     """Best-effort send. Returns (sent, error) -- `sent` is False (never
-    raises) for both "not configured" and any real API/network failure."""
+    raises) for both "not configured" and any real API/network failure.
+
+    `mark_reviewing_url` (Part 37), when given, is attached as a tappable
+    inline button -- a plain URL button, not a callback_query, so this
+    needs no webhook/polling setup on our side at all: Telegram just
+    opens the link (app.py's GET /admin/orders/<id>/mark-reviewing,
+    ADMIN_TOKEN-gated same as the rest of the admin page) when the admin
+    taps it. Flips the order to 'reviewing', which the customer's app
+    then shows instead of the generic "Pending" -- see
+    OrderStore.mark_reviewing()."""
     config = _bot_config()
     if config is None:
         return False, "Telegram not configured (TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID unset)"
 
     text = _format_order_message(order, admin_url)
+    payload = {"chat_id": config["chat_id"], "text": text}
+    if mark_reviewing_url:
+        payload["reply_markup"] = {
+            "inline_keyboard": [[{"text": "I'm checking this order", "url": mark_reviewing_url}]]
+        }
     try:
         resp = requests.post(
             f"{TELEGRAM_API_BASE}/bot{config['token']}/sendMessage",
-            json={"chat_id": config["chat_id"], "text": text},
+            json=payload,
             timeout=10,
         )
         body = resp.json()

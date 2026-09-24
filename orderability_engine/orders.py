@@ -12,6 +12,11 @@ and app.py's /o/<id>/confirm|cancel routes). The order's own `status`
 now tracks that flow:
 
     pending               -- just placed, admin not yet actioned it
+    reviewing             -- admin has seen it and is checking the dishes
+                             (Part 37) -- purely a courtesy status shown to
+                             the customer; the admin can still record a
+                             real price straight from 'pending' too, this
+                             step is never required
     awaiting_confirmation -- admin recorded a real price, customer emailed
     confirmed             -- customer confirmed the real price
     cancelled             -- customer declined, or never confirmed
@@ -320,20 +325,38 @@ class OrderStore:
             ids = [r[0] for r in self._conn.execute("SELECT id FROM orders WHERE status = ? ORDER BY id DESC", (status,)).fetchall()]
         return [self.get_order(i) for i in ids]
 
+    def mark_reviewing(self, order_id: int) -> bool:
+        """Part 37: the admin has seen the order (typically via the
+        "I'm checking this order" link on the Telegram ping) and is
+        looking at real Restopolis to place it -- a purely informational
+        status the customer's app reflects (see static/i18n.js's
+        statusReviewing). Only 'pending' -> 'reviewing'; a no-op (False)
+        for an order already past that point, so tapping the Telegram
+        link twice (or after already recording a price) never moves an
+        order backward."""
+        with self._lock, self._transaction() as conn:
+            cur = conn.execute(
+                "UPDATE orders SET status = 'reviewing' WHERE id = ? AND status = 'pending'",
+                (order_id,),
+            )
+            return cur.rowcount > 0
+
     def set_real_price(self, order_id: int, real_price: float) -> str | None:
         """Records what Restopolis actually charged (an admin-supplied
         FACT, from having placed the real reservation -- never derived or
         guessed) and moves the order to 'awaiting_confirmation'. Returns
         a fresh confirmation token (for the customer's confirm/cancel
         email links) on success, None if no such order exists or it's
-        not in a state this applies to ('pending' only -- doesn't
-        re-issue a token for an order already awaiting/confirmed/
-        cancelled, which could invalidate a link already sent)."""
+        not in a state this applies to ('pending' or 'reviewing' --
+        marking reviewing first is never required, an admin can record a
+        price straight away -- but doesn't re-issue a token for an order
+        already awaiting/confirmed/cancelled, which could invalidate a
+        link already sent)."""
         token = secrets.token_urlsafe(24)
         with self._lock, self._transaction() as conn:
             cur = conn.execute(
                 "UPDATE orders SET real_price = ?, confirmation_token = ?, status = 'awaiting_confirmation' "
-                "WHERE id = ? AND status = 'pending'",
+                "WHERE id = ? AND status IN ('pending', 'reviewing')",
                 (real_price, token, order_id),
             )
             if cur.rowcount == 0:

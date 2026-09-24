@@ -233,6 +233,40 @@ def test_new_order_starts_pending_with_no_real_price(store):
     assert order["real_price"] is None
 
 
+def test_mark_reviewing_moves_pending_to_reviewing(store):
+    order_id = _basic_order_id(store)
+    assert store.mark_reviewing(order_id) is True
+    assert store.get_order(order_id)["status"] == "reviewing"
+
+
+def test_mark_reviewing_on_unknown_order_returns_false(store):
+    assert store.mark_reviewing(999999) is False
+
+
+def test_mark_reviewing_twice_is_a_no_op_the_second_time(store):
+    order_id = _basic_order_id(store)
+    assert store.mark_reviewing(order_id) is True
+    assert store.mark_reviewing(order_id) is False
+    assert store.get_order(order_id)["status"] == "reviewing"
+
+
+def test_mark_reviewing_after_a_price_was_already_recorded_does_not_move_it_backward(store):
+    order_id = _basic_order_id(store)
+    store.set_real_price(order_id, 8.50)
+    assert store.mark_reviewing(order_id) is False
+    assert store.get_order(order_id)["status"] == "awaiting_confirmation"
+
+
+def test_set_real_price_from_reviewing_also_moves_to_awaiting_confirmation(store):
+    order_id = _basic_order_id(store)
+    store.mark_reviewing(order_id)
+    token = store.set_real_price(order_id, 8.50)
+    assert token is not None
+    order = store.get_order(order_id)
+    assert order["status"] == "awaiting_confirmation"
+    assert order["real_price"] == 8.50
+
+
 def test_set_real_price_moves_to_awaiting_confirmation_and_returns_a_token(store):
     order_id = _basic_order_id(store)
     token = store.set_real_price(order_id, 8.50)

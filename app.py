@@ -259,7 +259,10 @@ def create_app(
         # order creation -- same reasoning as the email above.
         admin_token = os.environ.get("ADMIN_TOKEN")
         admin_url = f"{request.host_url}admin/orders?token={admin_token}" if admin_token else None
-        send_admin_notification(order, admin_url=admin_url)
+        mark_reviewing_url = (
+            f"{request.host_url}admin/orders/{order['id']}/mark-reviewing?token={admin_token}" if admin_token else None
+        )
+        send_admin_notification(order, admin_url=admin_url, mark_reviewing_url=mark_reviewing_url)
 
         return jsonify(order), 201
 
@@ -389,8 +392,9 @@ def create_app(
     @app.get("/admin/orders")
     def admin_orders():
         """Part 30: lists orders an admin still needs to (1) place in real
-        Restopolis and record a price for ('pending'), or (2) has already
-        sent to the customer and is waiting on ('awaiting_confirmation').
+        Restopolis and record a price for ('pending' and 'reviewing' --
+        see OrderStore.mark_reviewing(), Part 37), or (2) has already sent
+        to the customer and is waiting on ('awaiting_confirmation').
         Gated by ADMIN_TOKEN (see _is_admin_authorized()) -- unlike
         /admin/orderability above, this page can trigger a real customer
         email and change order status, so it's not left wide open."""
@@ -399,9 +403,23 @@ def create_app(
         return render_template(
             "admin_orders.html",
             pending=store().list_orders_by_status("pending"),
+            reviewing=store().list_orders_by_status("reviewing"),
             awaiting=store().list_orders_by_status("awaiting_confirmation"),
             token=request.args.get("token"),
         )
+
+    @app.get("/admin/orders/<int:order_id>/mark-reviewing")
+    def admin_mark_order_reviewing(order_id):
+        """Part 37: the link on the Telegram admin ping (a plain URL
+        button, see telegram_notify.py -- no webhook needed). GET, not
+        POST, since Telegram's inline URL buttons can only open a link;
+        same ADMIN_TOKEN gate as the rest of this page, and same
+        "state-changing GET" pattern this app already uses for the
+        customer's /o/<id>/confirm|cancel email links below."""
+        if not _is_admin_authorized():
+            abort(404)
+        store().mark_reviewing(order_id)
+        return redirect(f"/admin/orders?token={request.args.get('token', '')}")
 
     @app.post("/admin/orders/<int:order_id>/set-price")
     def admin_set_order_price(order_id):

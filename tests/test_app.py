@@ -554,6 +554,29 @@ def test_create_order_pings_the_admin_via_telegram(client):
     assert order_arg["id"] == resp.get_json()["id"]
 
 
+def test_create_order_passes_a_mark_reviewing_url_when_admin_token_is_set(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    with patch("app.send_admin_notification", return_value=(True, None)) as mock_notify:
+        resp = client.post(
+            "/api/orders",
+            json={"restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}]},
+        )
+    order_id = resp.get_json()["id"]
+    mark_reviewing_url = mock_notify.call_args.kwargs["mark_reviewing_url"]
+    assert mark_reviewing_url is not None
+    assert f"/admin/orders/{order_id}/mark-reviewing" in mark_reviewing_url
+    assert "token=correct-token" in mark_reviewing_url
+
+
+def test_create_order_mark_reviewing_url_is_none_without_admin_token(client):
+    with patch("app.send_admin_notification", return_value=(True, None)) as mock_notify:
+        client.post(
+            "/api/orders",
+            json={"restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}]},
+        )
+    assert mock_notify.call_args.kwargs["mark_reviewing_url"] is None
+
+
 def test_create_order_still_succeeds_when_telegram_notify_fails(client):
     # Best-effort, same as the email confirmation -- a Telegram failure
     # must never turn a successful order into a 500.
@@ -582,6 +605,38 @@ def test_admin_orders_with_correct_token_lists_pending_orders(client, monkeypatc
     resp = client.get("/admin/orders?token=correct-token")
     assert resp.status_code == 200
     assert f"Order #{order_id}".encode() in resp.data
+
+
+def test_admin_orders_lists_reviewing_orders_too(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    client.get(f"/admin/orders/{order_id}/mark-reviewing?token=correct-token")
+    resp = client.get("/admin/orders?token=correct-token")
+    assert resp.status_code == 200
+    assert f"Order #{order_id}".encode() in resp.data
+
+
+def test_admin_mark_reviewing_without_token_is_404(client):
+    order_id = _create_basic_order(client)
+    resp = client.get(f"/admin/orders/{order_id}/mark-reviewing")
+    assert resp.status_code == 404
+
+
+def test_admin_mark_reviewing_with_wrong_token_is_404(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    order_id = _create_basic_order(client)
+    resp = client.get(f"/admin/orders/{order_id}/mark-reviewing?token=wrong-token")
+    assert resp.status_code == 404
+
+
+def test_admin_mark_reviewing_flips_status_and_redirects(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    order_id = _create_basic_order(client)
+    resp = client.get(f"/admin/orders/{order_id}/mark-reviewing?token=correct-token")
+    assert resp.status_code == 302
+    assert resp.headers["Location"] == "/admin/orders?token=correct-token"
+    order = client.get(f"/api/orders/{order_id}").get_json()
+    assert order["status"] == "reviewing"
 
 
 def test_admin_set_price_without_token_is_404(client):

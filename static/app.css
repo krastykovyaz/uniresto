@@ -598,6 +598,7 @@ svg { display: block; }
 .history-row .restaurant { font-weight: 700; margin: 0 0 2px; }
 .history-row .items-summary { font-size: 0.9rem; margin: 0 0 4px; }
 .history-row .meta { font-size: 0.8rem; color: var(--color-text-muted); margin: 0 0 2px; }
+.history-row .reviewing-note { color: var(--color-available); font-weight: 600; }
 .history-reorder-btn {
   margin-top: var(--space-2);
   background: var(--color-surface);

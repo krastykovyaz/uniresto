@@ -8,13 +8,14 @@
     Never overwrites the app's own approximate price shown alongside it.
 </p>
 
-<h2>Needs a real price ({{ pending|length }})</h2>
-{% if not pending %}
+<h2>Needs a real price ({{ (pending + reviewing)|length }})</h2>
+{% if not pending and not reviewing %}
 <p class="muted">Nothing pending.</p>
 {% endif %}
-{% for o in pending %}
+{% for o in pending + reviewing %}
 <div class="card">
     <strong>Order #{{ o.id }}</strong> &mdash; {{ o.restaurant_name }} &middot; {{ o.order_date }}
+    {% if o.status == 'reviewing' %} &middot; <em>being checked</em>{% endif %}
     <div class="muted">
         {% for it in o['items'] %}{{ it.name }} &times;{{ it.quantity }}{% if not loop.last %}, {% endif %}{% endfor %}
     </div>
@@ -23,13 +24,18 @@
         {% if o.delivery_location %} &middot; Delivery: {{ o.delivery_location }}{% endif %}
         {% if o.customer_email %} &middot; {{ o.customer_email }}{% else %} &middot; <em>no email on file -- can't request confirmation</em>{% endif %}
     </div>
-    {% if o.customer_email %}
-    <form method="post" action="/admin/orders/{{ o.id }}/set-price?token={{ token }}" style="margin-top: 0.5rem; display: flex; gap: 0.5rem; align-items: center;">
-        <input type="hidden" name="token" value="{{ token }}">
-        <label>Real price (€) <input type="number" step="0.01" min="0" name="real_price" required style="width: 6rem;"></label>
-        <button type="submit">Record &amp; email customer</button>
-    </form>
-    {% endif %}
+    <div style="margin-top: 0.5rem; display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+        {% if o.status == 'pending' %}
+        <a href="/admin/orders/{{ o.id }}/mark-reviewing?token={{ token }}">Mark as reviewing</a>
+        {% endif %}
+        {% if o.customer_email %}
+        <form method="post" action="/admin/orders/{{ o.id }}/set-price?token={{ token }}" style="display: flex; gap: 0.5rem; align-items: center;">
+            <input type="hidden" name="token" value="{{ token }}">
+            <label>Real price (€) <input type="number" step="0.01" min="0" name="real_price" required style="width: 6rem;"></label>
+            <button type="submit">Record &amp; email customer</button>
+        </form>
+        {% endif %}
+    </div>
 </div>
 {% endfor %}
 
