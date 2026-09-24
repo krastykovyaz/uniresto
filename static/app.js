@@ -2959,7 +2959,11 @@ function render() {
 // network.
 const INTRO_SEEN_KEY = "uniresto.introSeen.v1";
 const INTRO_CLOSED_MS = 1900;
-const INTRO_OPEN_MS = 1100;
+// Must match the animation durations in app.css's Intro section
+// (intro-swing-fold/intro-unclip on desktop, intro-swing-phone on a
+// phone) -- the desktop swing runs longer since it's animating three
+// synced pieces (slide + rotation + clip reveal) instead of just one.
+const INTRO_OPEN_MS = FRAMED.matches ? 1300 : 1050;
 
 function playIntro() {
   try {

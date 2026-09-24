@@ -38,6 +38,16 @@
   --touch-target: 44px;
   --max-content-width: 720px;
   --bottom-nav-height: 64px;
+  /* One shared "ease-out-quint"-style curve for every piece of the
+     opening intro (cover rotation, clip reveal, shadow fade-in, phone
+     slide) -- see the Intro section below. Using the same curve
+     everywhere, rather than each animation picking its own, is what
+     makes the whole sequence read as one continuous motion instead of
+     several separately-timed pieces. Smooth, steady deceleration, no
+     anticipation hang at the start (unlike a hand-picked bezier with a
+     near-flat early control point, which reads as a stutter before the
+     motion "catches up"). */
+  --ease-smooth: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 * { box-sizing: border-box; }
@@ -960,7 +970,7 @@ svg { display: block; }
   transform-origin: left center;
   transform-style: preserve-3d;
 }
-.intro.is-opening .intro-cover { animation: intro-swing-phone 0.9s cubic-bezier(0.6, 0.05, 0.3, 1) forwards; }
+.intro.is-opening .intro-cover { animation: intro-swing-phone 1.05s var(--ease-smooth) forwards; }
 
 .intro-face {
   position: absolute;
@@ -989,14 +999,18 @@ svg { display: block; }
   font-size: 2.6rem;
   font-weight: 800;
   letter-spacing: -0.02em;
-  animation: intro-blink 1s ease-in-out infinite;
+  /* A slow, gentle pulse (sine-like ease-in-out, 1.7s) rather than a
+     stark on/off flash -- and both endpoints are real shadow values
+     (never "none"), since text-shadow can't interpolate smoothly
+     to/from that keyword and would otherwise pop instead of fade. */
+  animation: intro-blink 1.7s cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
 .intro-brand span { color: var(--color-primary); }
 .intro-tagline { margin: 0; font-size: 1rem; color: rgba(255, 255, 255, 0.72); }
 
 @keyframes intro-blink {
   0%, 100% { opacity: 1; text-shadow: 0 0 22px rgba(26, 168, 96, 0.65); }
-  50% { opacity: 0.2; text-shadow: none; }
+  50% { opacity: 0.45; text-shadow: 0 0 6px rgba(26, 168, 96, 0.25); }
 }
 @keyframes intro-swing-phone {
   to { transform: rotateY(-110deg); opacity: 0; }
@@ -1082,20 +1096,38 @@ svg { display: block; }
      phone slides back to centre. The negative clip insets leave room for
      .device's drop shadow on the three uncut sides. */
   .device-stage { display: block; position: relative; }
-  .device { transition: box-shadow 0.5s ease; }
   .device-stage.is-closed { transform: translateX(-25%); }
-  /* The device's own drop shadow would be cut in a hard vertical line by
-     the clip, so while closed/opening it's switched off and the cover
-     (.intro-front) carries the shadow instead; it fades back in once open. */
-  .device-stage.is-closed .device,
-  .device-stage.is-opening .device { box-shadow: none; }
   .device-stage.is-closed .device { clip-path: inset(0 0 0 50%); }
-  .device-stage.is-opening { transition: transform 1.1s cubic-bezier(0.6, 0.05, 0.3, 1); }
-  .device-stage.is-opening .device { animation: intro-unclip 1.1s cubic-bezier(0.6, 0.05, 0.3, 1) forwards; }
+  /* .device keeps its normal box-shadow the whole time now (an earlier
+     version toggled it off while closed/opening and faded it back in
+     afterward via a separate `transition` -- animating a 4-layer
+     box-shadow is expensive to paint and made the shadow visibly pop in
+     as a second, separately-timed step once the main motion had already
+     stopped). clip-path already clips shadow paint along with everything
+     else, so there's nothing to hide: while closed, the shadow simply
+     doesn't render along the clip boundary (a non-edge), only along the
+     device's real top/right/bottom, and that boundary sits under the
+     opaque cover anyway.
+     What DOES still need to move together are the phone sliding to
+     centre, the cover's rotation, and the clip widening to reveal the
+     real left half -- all three share the same 1.3s duration, so
+     nothing finishes early and sits waiting on the others. The slide
+     and the rotation also share --ease-smooth's exact curve; the clip
+     reveal is held flat until intro-unclip's own 45% mark (the cover
+     is still lying over the right half before then, at any easing) and
+     only THAT segment gets its own gentler ease-out
+     (animation-timing-function set on the 45% keyframe stop, which
+     overrides --ease-smooth for that segment only) -- deliberately
+     different, not merely inconsistent: verified frame-by-frame
+     (paused Web Animations, sampled every ~50-100ms) that both the
+     rotation and the reveal are continuous, monotonic, decelerating
+     curves with no jump anywhere across the full 1.3s. */
+  .device-stage.is-opening { transition: transform 1.3s var(--ease-smooth); }
+  .device-stage.is-opening .device { animation: intro-unclip 1.3s var(--ease-smooth) forwards; }
 
   .intro { position: absolute; perspective: 2400px; }
   .intro-cover { left: 50%; }
-  .intro.is-opening .intro-cover { animation: intro-swing-fold 1.1s cubic-bezier(0.6, 0.05, 0.3, 1) forwards; }
+  .intro.is-opening .intro-cover { animation: intro-swing-fold 1.3s var(--ease-smooth) forwards; }
 
   .intro-front {
     border-radius: 0 48px 48px 0;
@@ -1129,8 +1161,15 @@ svg { display: block; }
   }
   /* Stays closed for the first half of the swing (the cover is still
      over the right half then), then opens as the cover crosses the hinge. */
+  /* Held closed for the first ~45% (the cover is still lying flat over
+     the right half then, at any easing); once it starts, the reveal
+     itself gets its own gentle deceleration (per-keyframe
+     animation-timing-function) rather than linearly rushing from
+     closed to fully open across whatever time is left in the segment,
+     which is what read as a "snap" before. */
   @keyframes intro-unclip {
     0%, 45% { clip-path: inset(0 0 0 50%); }
+    45% { animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1); }
     100% { clip-path: inset(0 0 0 0); }
   }
 
