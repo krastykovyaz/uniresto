@@ -162,15 +162,17 @@ def test_recalculate_order_includes_formula_price_for_main_plus_starter_plus_des
     assert formula["main_count"] == 1
     assert formula["starter_count"] == 1
     assert formula["dessert_count"] == 1
-    assert formula["total"] == 10.00
+    assert formula["total"] == 8.00
 
 
 def test_recalculate_order_formula_ignores_per_dish_price_field():
     # id 99 ("Priced dessert") has a non-null per-dish price (test
     # fixture only -- Restopolis never actually sets one); the formula
-    # total must still be OUR flat per-category prices (main 6.00 +
-    # dessert 2.00 = 8.00), not id 99's own per-dish price.
-    result = recalculate_order(MENU_ITEMS, [{"id": 5, "quantity": 1}, {"id": 99, "quantity": 1}])
+    # total must still be OUR meal-tier bundle price (main+starter+dessert
+    # = 8.00), not id 99's own per-dish price. A starter (id 0) has to be
+    # included too, since a dessert with no starter isn't a priced
+    # combination at all (see orderability_engine/pricing.py).
+    result = recalculate_order(MENU_ITEMS, [{"id": 5, "quantity": 1}, {"id": 0, "quantity": 1}, {"id": 99, "quantity": 1}])
     formula = result["totals"]["formula"]
     assert formula["total"] == 8.00
     # but the unrelated per-dish total_price_known still reflects id 99's price
@@ -191,7 +193,7 @@ def test_get_order_round_trips_the_formula_price(store):
     formula = order["totals"]["formula"]
     assert formula["main_count"] == 1
     assert formula["starter_count"] == 1
-    assert formula["total"] == 8.00
+    assert formula["total"] == 7.00
 
 
 # ---------------------------------------------------------------------------

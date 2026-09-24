@@ -1,4 +1,4 @@
-"""OUR OWN per-item course pricing rule -- NOT Restopolis data.
+"""OUR OWN meal-formula pricing rule -- NOT Restopolis data.
 
 Restopolis's public Menu page never exposes a price at all (verified,
 see README.md Part 3 §21) -- every scraped `MenuItem.price` is always
@@ -10,23 +10,30 @@ apart from Restopolis's (also always-null) own deadline. It is not
 scraped, not derived from the site, and must never be confused with a
 per-dish Restopolis price.
 
-The canteen prices each COURSE independently -- not the whole meal as
-one bundle:
+The canteen prices a MEAL as a 3-tier bundle, not each course
+separately (Part 32, supplied directly):
 
-    main dish (Non-végétarien / Végétarien / Végan)   -> EUR 6.00
-    starter / salad (Entrée)                          -> EUR 2.00
-    dessert                                            -> EUR 2.00
-    sandwich (Constant Products, any of the 4 real
-              Restopolis sandwich categories)          -> EUR 4.00
+    main dish alone                                    -> EUR 6.00
+    main dish + starter/salad (Entrée)                 -> EUR 7.00
+    main dish + starter/salad + dessert                -> EUR 8.00
 
-Each category's line total is quantity x its own flat price, and the
-order total is simply their sum -- there is no bundled "meal formula"
-tier lookup here (an earlier v1 rule priced main-alone/main+starter/
-main+starter+dessert as 3 fixed bundle totals of 3.70/4.20/5.20; Part 18
-superseded it with flat per-item prices, supplied directly). Every
-combination is priceable, including a single item bought on its own --
-there is no "combination this data has no price for" case to guard
-against.
+A starter only upgrades the tier when it accompanies a main dish, and a
+dessert only upgrades further when a starter is also present -- a
+starter with no main, or a dessert with no starter, isn't a priced
+combination at all (`reason` explains which). This restores the
+bundle-tier shape Part 18 had flattened into flat per-course sums
+(6.00/2.00/2.00); see git history for that intermediate flat rule.
+
+Multiple mains are paired one-for-one, greedily, against however many
+starters/desserts are actually in the cart -- e.g. 2 mains + 1 starter
+prices as one EUR 7.00 meal (main+starter) and one EUR 6.00 meal
+(main alone), not both mains at the upgraded tier. This avoids
+overcharging a main that has no starter of its own to pair with.
+
+Sandwiches (Constant Products, any of the 4 real Restopolis sandwich
+categories) are priced independently of the meal-formula bundle, at a
+flat EUR 4.00 each -- they're a standalone purchase, not part of the
+main+starter+dessert tiers above.
 
 Two categories (Féculents/starches, Légumes/vegetables) still ride
 along free with any main dish -- see INCLUDED_SIDE_CATEGORIES -- and the
@@ -53,12 +60,12 @@ SANDWICH_CATEGORIES = {
     "01.4 Sandwiches sans gluten",
 }
 
-CATEGORY_PRICES = {
+MEAL_TIER_PRICES = {
     "main": 6.00,
-    "starter": 2.00,
-    "dessert": 2.00,
-    "sandwich": 4.00,
+    "main_starter": 7.00,
+    "main_starter_dessert": 8.00,
 }
+SANDWICH_PRICE = 4.00
 
 
 def compute_formula_total(line_items: list[dict]) -> dict:
@@ -72,14 +79,14 @@ def compute_formula_total(line_items: list[dict]) -> dict:
 
     Each of main_count/starter_count/dessert_count/sandwich_count is the
     total quantity ordered in that course category; `formula_count` is
-    their sum -- the total quantity of priced items this total covers.
-    `total` is the sum of each category's quantity times its own flat
-    price (see CATEGORY_PRICES), or `None` only when formula_count is 0
-    (nothing in the selection falls into a priced category at all -- an
-    empty cart, or a cart containing only sides/other Constant-Products/
-    snacks). `reason` is always `None`: kept in the shape for API/
-    frontend compatibility with the old bundle rule's "combination this
-    data can't price" case, which flat per-item pricing no longer has.
+    their sum. `total` is the combined meal-bundle + sandwich total, or
+    `None` when formula_count is 0 (nothing priced at all) OR when the
+    selection includes a starter with no main, or a dessert with no
+    starter -- see `reason` (one of "no_main_dish" /
+    "dessert_without_starter") for which. Sandwiches never block: a
+    sandwich alongside an unpriceable combination still contributes
+    nothing when `reason` is set, matching the pre-existing binary
+    total-or-reason contract the frontend already expects.
     """
     main_qty = sum(it["quantity"] for it in line_items if it["category"] in MAIN_CATEGORIES)
     starter_qty = sum(it["quantity"] for it in line_items if it["category"] in STARTER_CATEGORIES)
@@ -87,29 +94,42 @@ def compute_formula_total(line_items: list[dict]) -> dict:
     sandwich_qty = sum(it["quantity"] for it in line_items if it["category"] in SANDWICH_CATEGORIES)
     formula_count = main_qty + starter_qty + dessert_qty + sandwich_qty
 
-    if formula_count == 0:
-        return {
-            "formula_count": 0,
-            "main_count": 0,
-            "starter_count": 0,
-            "dessert_count": 0,
-            "sandwich_count": 0,
-            "total": None,
-            "reason": None,
-        }
-
-    total = (
-        main_qty * CATEGORY_PRICES["main"]
-        + starter_qty * CATEGORY_PRICES["starter"]
-        + dessert_qty * CATEGORY_PRICES["dessert"]
-        + sandwich_qty * CATEGORY_PRICES["sandwich"]
-    )
-    return {
+    result = {
         "formula_count": formula_count,
         "main_count": main_qty,
         "starter_count": starter_qty,
         "dessert_count": dessert_qty,
         "sandwich_count": sandwich_qty,
-        "total": round(total, 2),
+        "total": None,
         "reason": None,
     }
+
+    if formula_count == 0:
+        return result
+
+    if main_qty == 0 and (starter_qty > 0 or dessert_qty > 0):
+        result["reason"] = "no_main_dish"
+        return result
+
+    if dessert_qty > 0 and starter_qty == 0:
+        result["reason"] = "dessert_without_starter"
+        return result
+
+    # Greedily pair each main with a starter (if any remain), then each
+    # of those with a dessert (if any remain) -- see module docstring on
+    # why this is per-main pairing, not a single order-wide tier flag.
+    paired_starter = min(main_qty, starter_qty)
+    paired_dessert = min(paired_starter, dessert_qty)
+    mains_full = paired_dessert
+    mains_with_starter_only = paired_starter - paired_dessert
+    mains_plain = main_qty - paired_starter
+
+    meal_total = (
+        mains_full * MEAL_TIER_PRICES["main_starter_dessert"]
+        + mains_with_starter_only * MEAL_TIER_PRICES["main_starter"]
+        + mains_plain * MEAL_TIER_PRICES["main"]
+    )
+    sandwich_total = sandwich_qty * SANDWICH_PRICE
+
+    result["total"] = round(meal_total + sandwich_total, 2)
+    return result

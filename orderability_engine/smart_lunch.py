@@ -3,14 +3,15 @@ lunch combination matching a set of constraints -- never a ranking of
 "best"/"healthiest" (no medical or nutritional-quality claim is made or
 implied anywhere in this module or its output; see README.md Part 51).
 
-Reuses the EXISTING per-course pricing system (orderability_engine/
+Reuses the EXISTING meal-formula pricing system (orderability_engine/
 pricing.py) rather than inventing a separate one: a candidate combo's
-price is always the sum of its own courses' flat prices (main / starter
-/ dessert), computed via compute_formula_total(). This module still
-only ever GENERATES 3 structural shapes -- main alone / main+starter /
-main+starter+dessert -- for genuine "simple / regular / full" variety
-(see select_options()), not because other shapes would be unpriceable
-(flat per-item pricing can price any combination).
+price is always its bundle-tier total, computed via
+compute_formula_total(). This module only ever GENERATES the 3
+structural shapes that system actually prices -- main alone /
+main+starter / main+starter+dessert -- for genuine "simple / regular /
+full" variety (see select_options()); a starter or dessert without the
+course below it isn't a priced combination at all (see pricing.py), so
+this module never even builds a candidate that lacks one.
 
 Two constraint classes:
 
