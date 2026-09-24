@@ -1975,8 +1975,21 @@ function updateCategoryNavHighlight() {
   // row when the active category actually just changed (not on every
   // scroll tick), so it never fights the user's own manual left/right
   // drag on the row itself.
+  //
+  // Deliberately sets nav.scrollLeft directly rather than calling
+  // activeBtn.scrollIntoView(): scrollIntoView walks up EVERY scrollable
+  // ancestor to satisfy visibility, including the vertical #scroller
+  // this nav bar itself lives inside -- which fought (and cut short) the
+  // vertical scrollIntoView a category-chip CLICK just started (see the
+  // click handler above), since the active chip changes mid-animation as
+  // the scroll passes through intermediate categories. Setting
+  // nav.scrollLeft touches only the nav's own horizontal scroll,
+  // never any ancestor.
   if (activeBtn && justBecameActive) {
-    activeBtn.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+    const navRect = nav.getBoundingClientRect();
+    const btnRect = activeBtn.getBoundingClientRect();
+    const target = nav.scrollLeft + (btnRect.left - navRect.left) - (navRect.width - btnRect.width) / 2;
+    nav.scrollTo({ left: target, behavior: "smooth" });
   }
 }
 
