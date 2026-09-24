@@ -2,7 +2,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from orderability_engine.mailer import generate_verification_code, is_configured, send_order_confirmation, send_verification_code
+from orderability_engine.mailer import (
+    generate_verification_code,
+    is_configured,
+    send_order_confirmation,
+    send_order_needs_confirmation,
+    send_verification_code,
+)
 
 
 def _plain_text(msg):
@@ -194,3 +200,64 @@ def test_send_verification_code_succeeds_and_includes_the_code_in_both_parts(mon
     # Subject is short and plainly states its purpose -- see mailer.py's
     # module docstring on avoiding clickbait-y subject lines.
     assert "verification code" in captured["msg"]["Subject"].lower()
+
+
+# ---------------------------------------------------------------------------
+# Real-price confirmation email (Part 30)
+# ---------------------------------------------------------------------------
+
+
+def test_send_order_needs_confirmation_returns_not_sent_when_unconfigured():
+    order = _order()
+    sent, error = send_order_needs_confirmation(
+        "student@uni.lu", order, real_price=8.50, confirm_url="https://x/confirm", cancel_url="https://x/cancel"
+    )
+    assert sent is False
+    assert "not configured" in error
+
+
+def test_send_order_needs_confirmation_shows_both_prices_and_both_links(monkeypatch):
+    monkeypatch.setenv("SMTP_USER", "uniresto@gmail.com")
+    monkeypatch.setenv("SMTP_PASSWORD", "app-password-placeholder")
+
+    order = _order()  # totals.formula.total == 8.00 (the approximate/app price)
+    captured = {}
+    mock_conn = MagicMock()
+    mock_conn.__enter__.return_value = mock_conn
+    mock_conn.send_message.side_effect = lambda msg: captured.update(msg=msg)
+    with patch("orderability_engine.mailer.smtplib.SMTP", return_value=mock_conn):
+        sent, error = send_order_needs_confirmation(
+            "student@uni.lu",
+            order,
+            real_price=9.20,
+            confirm_url="https://uniresto.carcard.space/o/42/confirm?token=abc",
+            cancel_url="https://uniresto.carcard.space/o/42/cancel?token=abc",
+        )
+
+    assert sent is True
+    assert error is None
+    text = _plain_text(captured["msg"])
+    html = captured["msg"].get_body(preferencelist=("html",)).get_content()
+    for blob in (text, html):
+        assert "€8.00" in blob  # the approximate price is still shown, not silently dropped
+        assert "€9.20" in blob  # the real price
+        assert "https://uniresto.carcard.space/o/42/confirm?token=abc" in blob
+        assert "https://uniresto.carcard.space/o/42/cancel?token=abc" in blob
+    assert f"Order #{order['id']}" in text
+
+
+def test_send_order_needs_confirmation_omits_approximate_price_when_unknown(monkeypatch):
+    monkeypatch.setenv("SMTP_USER", "uniresto@gmail.com")
+    monkeypatch.setenv("SMTP_PASSWORD", "app-password-placeholder")
+
+    order = _order(totals={"formula": {"total": None, "reason": None}})
+    captured = {}
+    mock_conn = MagicMock()
+    mock_conn.__enter__.return_value = mock_conn
+    mock_conn.send_message.side_effect = lambda msg: captured.update(msg=msg)
+    with patch("orderability_engine.mailer.smtplib.SMTP", return_value=mock_conn):
+        send_order_needs_confirmation(
+            "student@uni.lu", order, real_price=9.20, confirm_url="https://x/confirm", cancel_url="https://x/cancel"
+        )
+
+    assert "Approximate price" not in _plain_text(captured["msg"])

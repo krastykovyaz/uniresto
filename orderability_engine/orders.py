@@ -1,8 +1,20 @@
 """Internal order storage + server-side price/weight recalculation.
 
-No payment, no real Restopolis order placement -- this only records what
-the customer picked, for later wiring into a real fulfillment flow
-(explicitly out of scope for this task).
+No payment, no real Restopolis order placement by the APP itself -- but
+Part 30 adds a real human-in-the-loop workflow around that boundary: an
+admin manually places the matching reservation in real Restopolis (see
+orderability_engine/telegram_notify.py's admin ping), records what
+Restopolis actually charged (`real_price`, a genuinely different number
+from `totals.formula`'s own approximate/OUR-pricing estimate -- never
+conflated), and the customer confirms or cancels that real price by
+email (see orderability_engine/mailer.py's send_order_needs_confirmation
+and app.py's /o/<id>/confirm|cancel routes). The order's own `status`
+now tracks that flow:
+
+    pending               -- just placed, admin not yet actioned it
+    awaiting_confirmation -- admin recorded a real price, customer emailed
+    confirmed             -- customer confirmed the real price
+    cancelled             -- customer declined, or never confirmed
 
 Per the task's explicit requirement, the browser is never trusted for
 price or weight: `recalculate_order` takes only {id, quantity} from the
@@ -14,6 +26,7 @@ tampered or stale client payload can't affect what gets charged/recorded.
 from __future__ import annotations
 
 import json
+import secrets
 import sqlite3
 import threading
 from contextlib import contextmanager
@@ -32,7 +45,17 @@ CREATE TABLE IF NOT EXISTS orders (
     restaurant_name TEXT NOT NULL,
     order_date TEXT NOT NULL,          -- the delivery/menu date being ordered for
     delivery_location TEXT,
-    status TEXT NOT NULL DEFAULT 'pending',  -- internal only; no payment/fulfillment yet
+    customer_email TEXT,               -- optional (Part 23); persisted since Part 30 needs
+                                        -- to email the customer again later, once a real
+                                        -- price is on file -- unlike Part 23's original
+                                        -- one-shot confirmation, this can't be "use once,
+                                        -- then discard" anymore.
+    status TEXT NOT NULL DEFAULT 'pending',  -- see this module's docstring for the state machine
+    real_price REAL,                   -- what Restopolis actually charged (Part 30) -- an
+                                        -- admin-recorded FACT, never derived/guessed, and
+                                        -- never overwrites totals.formula's own separate estimate
+    confirmation_token TEXT,           -- required to confirm/cancel via the emailed links;
+                                        -- prevents guessing an order id to act on someone else's order
     created_at TEXT NOT NULL
 );
 
@@ -49,6 +72,17 @@ CREATE TABLE IF NOT EXISTS order_items (
     quantity INTEGER NOT NULL DEFAULT 1
 );
 """
+
+# Columns added after the original schema shipped -- CREATE TABLE IF NOT
+# EXISTS is a no-op against an already-existing table (verified: this is
+# exactly the "orders" table on the live server, created back in Part 6),
+# so these need an explicit migration rather than just editing SCHEMA
+# above. (column_name, "ALTER TABLE ... ADD COLUMN ..." definition).
+_MIGRATIONS = [
+    ("customer_email", "ALTER TABLE orders ADD COLUMN customer_email TEXT"),
+    ("real_price", "ALTER TABLE orders ADD COLUMN real_price REAL"),
+    ("confirmation_token", "ALTER TABLE orders ADD COLUMN confirmation_token TEXT"),
+]
 
 
 class OrderValidationError(Exception):
@@ -157,7 +191,14 @@ class OrderStore:
         self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
         self._lock = threading.RLock()
         self._conn.executescript(SCHEMA)
+        self._migrate()
         self._conn.commit()
+
+    def _migrate(self) -> None:
+        existing = {row[1] for row in self._conn.execute("PRAGMA table_info(orders)").fetchall()}
+        for column_name, statement in _MIGRATIONS:
+            if column_name not in existing:
+                self._conn.execute(statement)
 
     def close(self) -> None:
         self._conn.close()
@@ -184,16 +225,17 @@ class OrderStore:
         order_date: date,
         items: list[dict],
         delivery_location: str | None = None,
+        customer_email: str | None = None,
     ) -> int:
         """items: recalculate_order()'s "items" list (server-priced/weighed)."""
         now = datetime.now(timezone.utc).isoformat()
         with self._lock, self._transaction() as conn:
             cur = conn.execute(
                 """
-                INSERT INTO orders (restaurant_code, restaurant_name, order_date, delivery_location, status, created_at)
-                VALUES (?, ?, ?, ?, 'pending', ?)
+                INSERT INTO orders (restaurant_code, restaurant_name, order_date, delivery_location, customer_email, status, created_at)
+                VALUES (?, ?, ?, ?, ?, 'pending', ?)
                 """,
-                (restaurant_code, restaurant_name, order_date.isoformat(), delivery_location, now),
+                (restaurant_code, restaurant_name, order_date.isoformat(), delivery_location, customer_email, now),
             )
             order_id = cur.lastrowid
             conn.executemany(
@@ -222,8 +264,8 @@ class OrderStore:
     def get_order(self, order_id: int) -> dict | None:
         with self._lock:
             row = self._conn.execute(
-                "SELECT id, restaurant_code, restaurant_name, order_date, delivery_location, status, created_at "
-                "FROM orders WHERE id = ?",
+                "SELECT id, restaurant_code, restaurant_name, order_date, delivery_location, customer_email, "
+                "status, real_price, created_at FROM orders WHERE id = ?",
                 (order_id,),
             ).fetchone()
             if row is None:
@@ -258,8 +300,63 @@ class OrderStore:
             "restaurant_name": row[2],
             "order_date": row[3],
             "delivery_location": row[4],
-            "status": row[5],
-            "created_at": row[6],
+            "customer_email": row[5],
+            "status": row[6],
+            # What Restopolis actually charged, once an admin has recorded
+            # it (Part 30) -- None until then. Deliberately separate from
+            # totals.formula's own estimate, never merged into one number.
+            "real_price": row[7],
+            "created_at": row[8],
             "items": line_items,
             "totals": aggregate_totals(line_items),
         }
+
+    def list_orders_by_status(self, status: str) -> list[dict]:
+        """Used by the admin page (Part 30) -- e.g. status='pending' for
+        orders an admin still needs to place in real Restopolis and
+        record a price for. Returns full order dicts (via get_order()),
+        newest first."""
+        with self._lock:
+            ids = [r[0] for r in self._conn.execute("SELECT id FROM orders WHERE status = ? ORDER BY id DESC", (status,)).fetchall()]
+        return [self.get_order(i) for i in ids]
+
+    def set_real_price(self, order_id: int, real_price: float) -> str | None:
+        """Records what Restopolis actually charged (an admin-supplied
+        FACT, from having placed the real reservation -- never derived or
+        guessed) and moves the order to 'awaiting_confirmation'. Returns
+        a fresh confirmation token (for the customer's confirm/cancel
+        email links) on success, None if no such order exists or it's
+        not in a state this applies to ('pending' only -- doesn't
+        re-issue a token for an order already awaiting/confirmed/
+        cancelled, which could invalidate a link already sent)."""
+        token = secrets.token_urlsafe(24)
+        with self._lock, self._transaction() as conn:
+            cur = conn.execute(
+                "UPDATE orders SET real_price = ?, confirmation_token = ?, status = 'awaiting_confirmation' "
+                "WHERE id = ? AND status = 'pending'",
+                (real_price, token, order_id),
+            )
+            if cur.rowcount == 0:
+                return None
+        return token
+
+    def confirm_order(self, order_id: int, token: str) -> bool:
+        """One-time use: the token only matches while status is still
+        'awaiting_confirmation', so a link that's already been clicked
+        (or a cancel link used instead) can't be replayed to flip the
+        outcome afterward."""
+        with self._lock, self._transaction() as conn:
+            cur = conn.execute(
+                "UPDATE orders SET status = 'confirmed' WHERE id = ? AND status = 'awaiting_confirmation' AND confirmation_token = ?",
+                (order_id, token),
+            )
+            return cur.rowcount > 0
+
+    def cancel_order(self, order_id: int, token: str) -> bool:
+        """Same one-time-use guarantee as confirm_order()."""
+        with self._lock, self._transaction() as conn:
+            cur = conn.execute(
+                "UPDATE orders SET status = 'cancelled' WHERE id = ? AND status = 'awaiting_confirmation' AND confirmation_token = ?",
+                (order_id, token),
+            )
+            return cur.rowcount > 0

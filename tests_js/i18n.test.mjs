@@ -273,6 +273,27 @@ test("canteenPrice spot-check in a few languages", () => {
   assert.equal(t("lb", "canteenPrice"), "Kantinn-Präis");
 });
 
+// ---------------------------------------------------------------------------
+// Admin confirmation workflow order statuses + real price (Part 30)
+// ---------------------------------------------------------------------------
+
+test("new order-status and real-price strings exist for every configured language", () => {
+  for (const lang of LANGUAGES) {
+    for (const key of ["statusAwaitingConfirmation", "statusConfirmed", "statusCancelled", "realPrice"]) {
+      const value = t(lang.code, key);
+      assert.ok(value && value !== key, `${lang.code}.${key} should resolve to real text, got ${JSON.stringify(value)}`);
+    }
+  }
+});
+
+test("order-status and real-price strings spot-check in a few languages", () => {
+  assert.equal(t("en", "statusAwaitingConfirmation"), "Awaiting your confirmation");
+  assert.equal(t("en", "statusConfirmed"), "Confirmed");
+  assert.equal(t("en", "statusCancelled"), "Cancelled");
+  assert.equal(t("en", "realPrice"), "Real price");
+  assert.equal(t("fr", "statusCancelled"), "Annulée");
+});
+
 test("intlLocale uses the declared locale, or Luxembourgish's German fallback", () => {
   assert.equal(intlLocale("en"), "en-US");
   // lb-LU where the runtime's Intl data has it; de-LU on runtimes (some

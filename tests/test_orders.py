@@ -192,3 +192,149 @@ def test_get_order_round_trips_the_formula_price(store):
     assert formula["main_count"] == 1
     assert formula["starter_count"] == 1
     assert formula["total"] == 8.00
+
+
+# ---------------------------------------------------------------------------
+# Admin confirmation workflow (Part 30): customer_email persistence,
+# real_price, and the pending -> awaiting_confirmation -> confirmed/cancelled
+# state machine
+# ---------------------------------------------------------------------------
+
+
+def _basic_order_id(store, **overrides):
+    kwargs = dict(
+        restaurant_code="UDL-CKB-ALTIUS",
+        restaurant_name="UDL-CKB - Altius - Restaurant",
+        order_date=datetime.date(2026, 9, 24),
+        items=[{"category": "Non-végétarien", "name": "Rôti de porc Orloff", "price": None, "quantity": 1}],
+    )
+    kwargs.update(overrides)
+    return store.create_order(**kwargs)
+
+
+def test_create_order_persists_customer_email(store):
+    order_id = _basic_order_id(store, customer_email="student@uni.lu")
+    order = store.get_order(order_id)
+    assert order["customer_email"] == "student@uni.lu"
+
+
+def test_create_order_without_customer_email_is_none(store):
+    order_id = _basic_order_id(store)
+    order = store.get_order(order_id)
+    assert order["customer_email"] is None
+
+
+def test_new_order_starts_pending_with_no_real_price(store):
+    order_id = _basic_order_id(store)
+    order = store.get_order(order_id)
+    assert order["status"] == "pending"
+    assert order["real_price"] is None
+
+
+def test_set_real_price_moves_to_awaiting_confirmation_and_returns_a_token(store):
+    order_id = _basic_order_id(store)
+    token = store.set_real_price(order_id, 8.50)
+    assert token is not None
+    order = store.get_order(order_id)
+    assert order["status"] == "awaiting_confirmation"
+    assert order["real_price"] == 8.50
+
+
+def test_set_real_price_on_unknown_order_returns_none(store):
+    assert store.set_real_price(999999, 8.50) is None
+
+
+def test_set_real_price_twice_is_refused_the_second_time(store):
+    # Already 'awaiting_confirmation' after the first call -- the WHERE
+    # status='pending' guard must reject a second call rather than
+    # silently re-issuing a token (which would invalidate a link already
+    # emailed to the customer).
+    order_id = _basic_order_id(store)
+    store.set_real_price(order_id, 8.50)
+    assert store.set_real_price(order_id, 9.00) is None
+    assert store.get_order(order_id)["real_price"] == 8.50
+
+
+def test_confirm_order_with_correct_token_succeeds(store):
+    order_id = _basic_order_id(store)
+    token = store.set_real_price(order_id, 8.50)
+    assert store.confirm_order(order_id, token) is True
+    assert store.get_order(order_id)["status"] == "confirmed"
+
+
+def test_confirm_order_with_wrong_token_fails(store):
+    order_id = _basic_order_id(store)
+    store.set_real_price(order_id, 8.50)
+    assert store.confirm_order(order_id, "wrong-token") is False
+    assert store.get_order(order_id)["status"] == "awaiting_confirmation"
+
+
+def test_confirm_order_before_any_price_set_fails(store):
+    order_id = _basic_order_id(store)
+    assert store.confirm_order(order_id, "anything") is False
+
+
+def test_confirm_order_token_is_one_time_use(store):
+    order_id = _basic_order_id(store)
+    token = store.set_real_price(order_id, 8.50)
+    assert store.confirm_order(order_id, token) is True
+    # Replaying the same token/link a second time must not succeed again.
+    assert store.confirm_order(order_id, token) is False
+
+
+def test_cancel_order_with_correct_token_succeeds(store):
+    order_id = _basic_order_id(store)
+    token = store.set_real_price(order_id, 8.50)
+    assert store.cancel_order(order_id, token) is True
+    assert store.get_order(order_id)["status"] == "cancelled"
+
+
+def test_cancel_order_with_wrong_token_fails(store):
+    order_id = _basic_order_id(store)
+    token = store.set_real_price(order_id, 8.50)
+    assert store.cancel_order(order_id, "wrong-token") is False
+    assert store.get_order(order_id)["status"] == "awaiting_confirmation"
+
+
+def test_confirm_then_cancel_with_the_same_token_only_the_first_wins(store):
+    order_id = _basic_order_id(store)
+    token = store.set_real_price(order_id, 8.50)
+    assert store.confirm_order(order_id, token) is True
+    assert store.cancel_order(order_id, token) is False
+    assert store.get_order(order_id)["status"] == "confirmed"
+
+
+def test_list_orders_by_status_returns_only_matching_orders_newest_first(store):
+    id1 = _basic_order_id(store)
+    id2 = _basic_order_id(store)
+    id3 = _basic_order_id(store)
+    store.set_real_price(id2, 8.50)  # id2 is now awaiting_confirmation, id1/id3 stay pending
+
+    pending = store.list_orders_by_status("pending")
+    assert [o["id"] for o in pending] == [id3, id1]
+
+    awaiting = store.list_orders_by_status("awaiting_confirmation")
+    assert [o["id"] for o in awaiting] == [id2]
+
+
+def test_migration_is_idempotent_reopening_the_same_db(tmp_path):
+    # A second OrderStore pointed at the same file (simulating a process
+    # restart) must not choke on columns that already exist.
+    db_path = tmp_path / "orders.db"
+    first = OrderStore(db_path)
+    order_id = first.create_order(
+        "UDL-CKB-ALTIUS",
+        "UDL-CKB - Altius - Restaurant",
+        datetime.date(2026, 9, 24),
+        items=[{"category": "Non-végétarien", "name": "Rôti de porc Orloff", "price": None, "quantity": 1}],
+        customer_email="student@uni.lu",
+    )
+    first.close()
+
+    second = OrderStore(db_path)
+    try:
+        order = second.get_order(order_id)
+        assert order["customer_email"] == "student@uni.lu"
+        assert order["real_price"] is None
+    finally:
+        second.close()

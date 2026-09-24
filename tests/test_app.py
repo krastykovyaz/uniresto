@@ -475,6 +475,165 @@ def test_verify_code_missing_fields_is_400(client):
 
 
 # ---------------------------------------------------------------------------
+# Admin confirmation workflow (Part 30)
+# ---------------------------------------------------------------------------
+
+
+def _create_basic_order(client, customer_email=None):
+    payload = {"restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}]}
+    if customer_email:
+        payload["customer_email"] = customer_email
+    with patch("app.send_admin_notification", return_value=(True, None)):
+        resp = client.post("/api/orders", json=payload)
+    return resp.get_json()["id"]
+
+
+def test_create_order_pings_the_admin_via_telegram(client):
+    with patch("app.send_admin_notification", return_value=(True, None)) as mock_notify:
+        resp = client.post(
+            "/api/orders",
+            json={"restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}]},
+        )
+    assert resp.status_code == 201
+    mock_notify.assert_called_once()
+    order_arg = mock_notify.call_args[0][0]
+    assert order_arg["id"] == resp.get_json()["id"]
+
+
+def test_create_order_still_succeeds_when_telegram_notify_fails(client):
+    # Best-effort, same as the email confirmation -- a Telegram failure
+    # must never turn a successful order into a 500.
+    with patch("app.send_admin_notification", return_value=(False, "chat not found")):
+        resp = client.post(
+            "/api/orders",
+            json={"restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}]},
+        )
+    assert resp.status_code == 201
+
+
+def test_admin_orders_without_admin_token_configured_is_404(client):
+    resp = client.get("/admin/orders?token=anything")
+    assert resp.status_code == 404
+
+
+def test_admin_orders_with_wrong_token_is_404(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    resp = client.get("/admin/orders?token=wrong-token")
+    assert resp.status_code == 404
+
+
+def test_admin_orders_with_correct_token_lists_pending_orders(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    resp = client.get("/admin/orders?token=correct-token")
+    assert resp.status_code == 200
+    assert f"Order #{order_id}".encode() in resp.data
+
+
+def test_admin_set_price_without_token_is_404(client):
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    resp = client.post(f"/admin/orders/{order_id}/set-price", data={"real_price": "8.50"})
+    assert resp.status_code == 404
+
+
+def test_admin_set_price_success_emails_customer_and_redirects(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+
+    with patch("app.send_order_needs_confirmation", return_value=(True, None)) as mock_send:
+        resp = client.post(
+            f"/admin/orders/{order_id}/set-price?token=correct-token",
+            data={"real_price": "8.50", "token": "correct-token"},
+        )
+    assert resp.status_code == 302
+    assert resp.headers["Location"] == "/admin/orders?token=correct-token"
+    mock_send.assert_called_once()
+    call_args = mock_send.call_args[0]
+    assert call_args[0] == "student@uni.lu"
+    assert call_args[2] == 8.50
+    assert f"/o/{order_id}/confirm" in call_args[3]
+    assert f"/o/{order_id}/cancel" in call_args[4]
+
+    order = client.get(f"/api/orders/{order_id}").get_json()
+    assert order["status"] == "awaiting_confirmation"
+    assert order["real_price"] == 8.50
+
+
+def test_admin_set_price_for_order_without_email_is_400(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    order_id = _create_basic_order(client)  # no customer_email
+    resp = client.post(f"/admin/orders/{order_id}/set-price?token=correct-token", data={"real_price": "8.50"})
+    assert resp.status_code == 400
+
+
+def test_admin_set_price_invalid_price_is_400(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    resp = client.post(f"/admin/orders/{order_id}/set-price?token=correct-token", data={"real_price": "not-a-number"})
+    assert resp.status_code == 400
+
+
+def test_admin_set_price_twice_is_409(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    with patch("app.send_order_needs_confirmation", return_value=(True, None)):
+        client.post(f"/admin/orders/{order_id}/set-price?token=correct-token", data={"real_price": "8.50"})
+        resp = client.post(f"/admin/orders/{order_id}/set-price?token=correct-token", data={"real_price": "9.00"})
+    assert resp.status_code == 409
+
+
+def test_order_confirm_with_valid_token_succeeds(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    with patch("app.send_order_needs_confirmation", return_value=(True, None)) as mock_send:
+        client.post(f"/admin/orders/{order_id}/set-price?token=correct-token", data={"real_price": "8.50"})
+    confirm_url = mock_send.call_args[0][3]
+    path = confirm_url.split("://", 1)[1].split("/", 1)[1]  # strip scheme+host, keep "/o/<id>/confirm?token=..."
+
+    resp = client.get(f"/{path}")
+    assert resp.status_code == 200
+    assert b"confirmed" in resp.data.lower()
+    order = client.get(f"/api/orders/{order_id}").get_json()
+    assert order["status"] == "confirmed"
+
+
+def test_order_confirm_with_invalid_token_shows_error_not_confirmed(client):
+    resp = client.get("/o/999999/confirm?token=nonsense")
+    assert resp.status_code == 200
+    assert b"link isn" in resp.data  # "This link isn't valid anymore" (apostrophe may be HTML-escaped)
+    assert b"Order confirmed" not in resp.data
+
+
+def test_order_cancel_with_valid_token_succeeds(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    with patch("app.send_order_needs_confirmation", return_value=(True, None)) as mock_send:
+        client.post(f"/admin/orders/{order_id}/set-price?token=correct-token", data={"real_price": "8.50"})
+    cancel_url = mock_send.call_args[0][4]
+    path = cancel_url.split("://", 1)[1].split("/", 1)[1]
+
+    resp = client.get(f"/{path}")
+    assert resp.status_code == 200
+    assert b"cancelled" in resp.data.lower()
+    order = client.get(f"/api/orders/{order_id}").get_json()
+    assert order["status"] == "cancelled"
+
+
+def test_order_confirm_link_cannot_be_replayed(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    with patch("app.send_order_needs_confirmation", return_value=(True, None)) as mock_send:
+        client.post(f"/admin/orders/{order_id}/set-price?token=correct-token", data={"real_price": "8.50"})
+    confirm_url = mock_send.call_args[0][3]
+    path = confirm_url.split("://", 1)[1].split("/", 1)[1]
+
+    first = client.get(f"/{path}")
+    second = client.get(f"/{path}")
+    assert b"Order confirmed" in first.data
+    assert b"Order confirmed" not in second.data
+
+
+# ---------------------------------------------------------------------------
 # Mobile SPA shell + admin
 # ---------------------------------------------------------------------------
 

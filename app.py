@@ -7,19 +7,27 @@ real Restopolis order placement, no delivery routing.
 from __future__ import annotations
 
 import logging
+import os
+import secrets
 from datetime import datetime, timedelta
 
 from dotenv import load_dotenv
-from flask import Flask, abort, jsonify, render_template, request
+from flask import Flask, abort, jsonify, redirect, render_template, request
 
 from orderability_engine.cache import OrderabilityCache
 from orderability_engine.email_verification import EmailVerificationStore
-from orderability_engine.mailer import generate_verification_code, send_order_confirmation, send_verification_code
+from orderability_engine.mailer import (
+    generate_verification_code,
+    send_order_confirmation,
+    send_order_needs_confirmation,
+    send_verification_code,
+)
 from orderability_engine.menu_service import flatten_menu_items, get_customer_menu
 from orderability_engine.models import STATUS_VALUES, TZINFO
 from orderability_engine.orders import MAX_QUANTITY, OrderStore, OrderValidationError, recalculate_order
 from orderability_engine.service import OrderabilityService
 from orderability_engine.smart_lunch import TIER_ORDER, find_smart_lunch
+from orderability_engine.telegram_notify import send_admin_notification
 from restopolis.config import load_restaurants
 from scraper import slug_for
 
@@ -47,6 +55,22 @@ def _is_allowed_customer_email(email: str) -> bool:
     if normalized.count("@") != 1 or normalized.startswith("@"):
         return False
     return normalized.endswith(ALLOWED_EMAIL_DOMAINS)
+
+
+# Part 30's admin page (real-price entry) is more sensitive than
+# /admin/orderability's read-only debug view above -- it triggers a real
+# customer-facing email and changes order status -- so it's gated behind
+# a shared secret (ADMIN_TOKEN env var), unlike that page. Deliberately
+# NOT a full login/session system, matching this whole app's minimal-auth
+# ethos elsewhere (e.g. email verification is a code, not a password).
+# The admin page is simply unreachable (every request 404s) until
+# ADMIN_TOKEN is actually set -- no accidentally-guessable default.
+def _is_admin_authorized() -> bool:
+    expected = os.environ.get("ADMIN_TOKEN")
+    if not expected:
+        return False
+    given = request.args.get("token") or (request.form.get("token") if request.method == "POST" else None)
+    return given is not None and secrets.compare_digest(given, expected)
 
 
 def create_app(
@@ -208,7 +232,9 @@ def create_app(
         except OrderValidationError as exc:
             return jsonify({"error": "invalid_selection", "message": str(exc)}), 400
 
-        order_id = store().create_order(restaurant.code, restaurant.name, d, quote["items"], delivery_location)
+        order_id = store().create_order(
+            restaurant.code, restaurant.name, d, quote["items"], delivery_location, customer_email
+        )
         order = store().get_order(order_id)
 
         # Best-effort, never fails the order itself: a flaky mail server
@@ -220,6 +246,13 @@ def create_app(
             sent, error = send_order_confirmation(customer_email, order)
             order["email_sent"] = sent
             order["email_error"] = error
+
+        # Also best-effort (Part 30): pings the admin to go place the
+        # matching reservation in real Restopolis. Never blocks or fails
+        # order creation -- same reasoning as the email above.
+        admin_token = os.environ.get("ADMIN_TOKEN")
+        admin_url = f"{request.host_url}admin/orders?token={admin_token}" if admin_token else None
+        send_admin_notification(order, admin_url=admin_url)
 
         return jsonify(order), 201
 
@@ -345,6 +378,98 @@ def create_app(
                 result = svc().check_orderability(restaurant, d)
                 rows.append(result)
         return render_template("admin.html", rows=rows, status_values=STATUS_VALUES)
+
+    @app.get("/admin/orders")
+    def admin_orders():
+        """Part 30: lists orders an admin still needs to (1) place in real
+        Restopolis and record a price for ('pending'), or (2) has already
+        sent to the customer and is waiting on ('awaiting_confirmation').
+        Gated by ADMIN_TOKEN (see _is_admin_authorized()) -- unlike
+        /admin/orderability above, this page can trigger a real customer
+        email and change order status, so it's not left wide open."""
+        if not _is_admin_authorized():
+            abort(404)
+        return render_template(
+            "admin_orders.html",
+            pending=store().list_orders_by_status("pending"),
+            awaiting=store().list_orders_by_status("awaiting_confirmation"),
+            token=request.args.get("token"),
+        )
+
+    @app.post("/admin/orders/<int:order_id>/set-price")
+    def admin_set_order_price(order_id):
+        """Records what Restopolis actually charged (an admin-supplied
+        FACT from having placed the real reservation, never guessed) and
+        emails the customer to confirm it -- showing both the real price
+        and the app's own approximate one side by side (never silently
+        replacing one with the other, see mailer.py's
+        send_order_needs_confirmation docstring)."""
+        if not _is_admin_authorized():
+            abort(404)
+
+        real_price_raw = request.form.get("real_price")
+        try:
+            real_price = float(real_price_raw)
+        except (TypeError, ValueError):
+            abort(400, description="'real_price' must be a number")
+
+        order = store().get_order(order_id)
+        if order is None:
+            abort(404, description=f"No order with id {order_id}")
+        if not order.get("customer_email"):
+            abort(400, description="This order has no customer email on file -- nothing to send a confirmation to")
+
+        token = store().set_real_price(order_id, real_price)
+        if token is None:
+            abort(409, description="This order isn't in a state a real price can be recorded for (already actioned?)")
+
+        confirm_url = f"{request.host_url}o/{order_id}/confirm?token={token}"
+        cancel_url = f"{request.host_url}o/{order_id}/cancel?token={token}"
+        order = store().get_order(order_id)  # re-fetch: now carries the real_price/awaiting_confirmation status
+        send_order_needs_confirmation(order["customer_email"], order, real_price, confirm_url, cancel_url)
+
+        return redirect(f"/admin/orders?token={request.args.get('token', '')}")
+
+    # ------------------------------------------------ Customer confirmation
+    #
+    # Public (no admin token, no login) -- reachable only via the one-time
+    # link in send_order_needs_confirmation's email, guarded by the
+    # per-order confirmation_token OrderStore.confirm_order/cancel_order
+    # requires (see orders.py's docstring for the full state machine).
+
+    @app.get("/o/<int:order_id>/confirm")
+    def order_confirm(order_id):
+        token = request.args.get("token", "")
+        if store().confirm_order(order_id, token):
+            return render_template(
+                "order_action.html",
+                icon="✅",
+                title="Order confirmed",
+                message="Thanks -- your order is confirmed. See you at the canteen!",
+            )
+        return render_template(
+            "order_action.html",
+            icon="⚠️",
+            title="This link isn't valid anymore",
+            message="It may have already been used, or the order was already confirmed or cancelled.",
+        )
+
+    @app.get("/o/<int:order_id>/cancel")
+    def order_cancel(order_id):
+        token = request.args.get("token", "")
+        if store().cancel_order(order_id, token):
+            return render_template(
+                "order_action.html",
+                icon="🚫",
+                title="Order cancelled",
+                message="Your order has been cancelled. No charge was made.",
+            )
+        return render_template(
+            "order_action.html",
+            icon="⚠️",
+            title="This link isn't valid anymore",
+            message="It may have already been used, or the order was already confirmed or cancelled.",
+        )
 
     # ----------------------------------------------------------- Customer
     #

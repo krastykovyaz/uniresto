@@ -239,3 +239,62 @@ def send_verification_code(to_email: str, code: str) -> tuple[bool, str | None]:
         <p style="margin:0;color:#6b7280;font-size:13px;">This code expires in 10 minutes. If you didn't request it, you can ignore this email.</p>"""
     html_body = _html_shell(f"Your UniResto verification code is {code}.", body_html, config)
     return _send(to_email, subject, text_body, html_body)
+
+
+def send_order_needs_confirmation(
+    to_email: str, order: dict, real_price: float, confirm_url: str, cancel_url: str
+) -> tuple[bool, str | None]:
+    """Part 30: sent once an admin has actually placed the matching
+    reservation in real Restopolis and recorded what it really charged
+    (`real_price` -- a supplied FACT, never derived). Deliberately shows
+    BOTH numbers side by side -- the approximate price the customer saw
+    in the app (order['totals']['formula']['total'], OUR OWN course
+    pricing, Part 18/26) and the real one -- rather than silently
+    replacing one with the other, so a mismatch is visible, not hidden.
+    `confirm_url`/`cancel_url` are one-time links (see
+    OrderStore.confirm_order/cancel_order's token requirement) styled as
+    real buttons -- the closest a plain email can get to an interactive
+    widget, since no mail client runs the app's own JavaScript."""
+    approx = (order["totals"].get("formula") or {}).get("total")
+    approx_line = f"Approximate price shown in the app: €{approx:.2f}\n" if approx is not None else ""
+    text_body = (
+        f"Your order at {order['restaurant_name']} ({order['order_date']}) has been placed with Restopolis.\n\n"
+        f"{approx_line}"
+        f"Real price: €{real_price:.2f}\n\n"
+        f"Confirm: {confirm_url}\n"
+        f"Cancel: {cancel_url}\n\n"
+        f"Order #{order['id']}. If you don't respond, the order stays unconfirmed."
+    )
+
+    approx_row = (
+        f'<tr><td style="padding:4px 0;color:#6b7280;">Approximate price you saw</td>'
+        f'<td style="padding:4px 0;text-align:right;color:#6b7280;">€{approx:.2f}</td></tr>'
+        if approx is not None
+        else ""
+    )
+    body_html = f"""\
+        <p style="margin:0 0 4px;font-size:17px;font-weight:700;">Confirm your order's real price</p>
+        <p style="margin:0 0 20px;color:#6b7280;">{order['restaurant_name']} &middot; {order['order_date']}</p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;margin-bottom:20px;">
+          {approx_row}
+          <tr><td style="padding:6px 0 0;font-weight:700;">Real price (Restopolis)</td>
+          <td style="padding:6px 0 0;text-align:right;font-weight:700;">€{real_price:.2f}</td></tr>
+        </table>
+        <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;">
+          <tr>
+            <td style="padding:0 6px 0 0;width:50%;">
+              <a href="{confirm_url}" style="display:block;text-align:center;background:{_BRAND_GREEN};color:#ffffff;text-decoration:none;font-weight:700;padding:14px 0;border-radius:10px;">Confirm</a>
+            </td>
+            <td style="padding:0 0 0 6px;width:50%;">
+              <a href="{cancel_url}" style="display:block;text-align:center;background:#ffffff;color:{_BRAND_TEXT};text-decoration:none;font-weight:700;padding:14px 0;border-radius:10px;border:1px solid #e2e5e9;">Cancel</a>
+            </td>
+          </tr>
+        </table>
+        <p style="margin:20px 0 0;color:#6b7280;font-size:13px;">Order #{order['id']}. If you don't respond, the order stays unconfirmed.</p>"""
+
+    config = _smtp_config()
+    if config is None:
+        return False, "SMTP not configured (SMTP_USER/SMTP_PASSWORD unset)"
+    subject = f"Confirm your UniResto order -- {order['restaurant_name']}"
+    html_body = _html_shell(f"Real price for order #{order['id']} is €{real_price:.2f} -- please confirm.", body_html, config)
+    return _send(to_email, subject, text_body, html_body)

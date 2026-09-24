@@ -1410,11 +1410,18 @@ function historyWeightSummary(order) {
 }
 
 function orderStatusLabel(status) {
-  // Only "pending" exists today (OrderStore has no real fulfillment
-  // flow yet, see its schema's DEFAULT) -- the fallback keeps a future
+  // Part 30 added a real state machine beyond just "pending": an admin
+  // records what Restopolis actually charged, the customer confirms or
+  // cancels that by email, and the order status reflects wherever it
+  // currently sits in that flow. The fallback keeps a future/unexpected
   // status value visible/honest rather than mistranslated as "Pending".
-  if (status === "pending") return tr("statusPending");
-  return status;
+  const key = {
+    pending: "statusPending",
+    awaiting_confirmation: "statusAwaitingConfirmation",
+    confirmed: "statusConfirmed",
+    cancelled: "statusCancelled",
+  }[status];
+  return key ? tr(key) : status;
 }
 
 async function openOrderHistory() {
@@ -1464,6 +1471,7 @@ function renderOrderHistory() {
         <p class="items-summary">${escapeHtml(itemsSummary)}</p>
         <p class="meta">${escapeHtml(tr("placedOn"))} ${escapeHtml(fmtDeadline(order.created_at))} · ${escapeHtml(orderStatusLabel(order.status))}</p>
         <p class="meta">${escapeHtml(historyWeightSummary(order))} · ${escapeHtml(formatServerPriceTotal(order))}</p>
+        ${order.real_price != null ? `<p class="meta">${escapeHtml(tr("realPrice"))}: €${order.real_price.toFixed(2)}</p>` : ""}
         <button type="button" class="history-reorder-btn">${escapeHtml(tr("reorder"))}</button>
       </article>
     `);
