@@ -19,6 +19,9 @@
       scroll container -- see the "Device frame" section of app.css and
       scrollRoot() in app.js.
     -->
+    <!-- .device-stage only exists to hold the opening intro (see playIntro()
+         in app.js) next to .device without being clipped along with it. -->
+    <div class="device-stage" id="device-stage">
     <div class="device">
         <span class="device-btn device-btn--power" aria-hidden="true"></span>
         <span class="device-btn device-btn--volume" aria-hidden="true"></span>
@@ -37,6 +40,7 @@
             <nav id="bottom-nav" aria-label="Main navigation"></nav>
             <div id="toast" role="status" aria-live="polite" class="toast" hidden></div>
         </div>
+    </div>
     </div>
     <script type="module" src="{{ url_for('static', filename='app.js') }}"></script>
 </body>

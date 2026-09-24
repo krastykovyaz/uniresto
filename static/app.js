@@ -2950,8 +2950,67 @@ function render() {
   renderBottomNav();
 }
 
+// Opening intro: a closed cover with the blinking "UniResto" name that
+// then flips open to reveal the app (see the Intro section of app.css).
+// Once per tab session, so reloading -- which is meant to land you back
+// exactly where you were -- doesn't replay it every time. Tapping the
+// cover opens it straight away. The app keeps loading underneath, so
+// the intro never delays anything that isn't already waiting on the
+// network.
+const INTRO_SEEN_KEY = "uniresto.introSeen.v1";
+const INTRO_CLOSED_MS = 1900;
+const INTRO_OPEN_MS = 1100;
+
+function playIntro() {
+  try {
+    if (sessionStorage.getItem(INTRO_SEEN_KEY)) return;
+    sessionStorage.setItem(INTRO_SEEN_KEY, "1");
+  } catch {
+    /* sessionStorage unavailable -- just play it */
+  }
+
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const stage = document.getElementById("device-stage");
+  const intro = el(`
+    <div class="intro ${reduceMotion ? "is-static" : ""}" aria-hidden="true">
+      <div class="intro-cover">
+        <div class="intro-face intro-front">
+          <div class="intro-cover-screen">
+            <p class="intro-brand">Uni<span>Resto</span></p>
+            <p class="intro-tagline">${escapeHtml(tr("introTagline"))}</p>
+          </div>
+        </div>
+        <div class="intro-face intro-back"><div class="intro-back-screen"></div></div>
+      </div>
+    </div>
+  `);
+  stage.append(intro);
+  if (FRAMED.matches && !reduceMotion) stage.classList.add("is-closed");
+
+  let opened = false;
+  const open = () => {
+    if (opened) return;
+    opened = true;
+    if (reduceMotion) {
+      intro.classList.add("is-done");
+      setTimeout(() => intro.remove(), 400);
+      return;
+    }
+    stage.classList.replace("is-closed", "is-opening");
+    intro.classList.add("is-opening");
+    setTimeout(() => {
+      intro.classList.add("is-done");
+      stage.classList.remove("is-opening");
+    }, INTRO_OPEN_MS);
+    setTimeout(() => intro.remove(), INTRO_OPEN_MS + 400);
+  };
+  intro.addEventListener("click", open);
+  setTimeout(open, INTRO_CLOSED_MS);
+}
+
 async function init() {
   applyLanguage();
+  playIntro();
   setInterval(tickStatusClock, 30000);
   app.append(loadingState(tr("loadingRestaurants")));
   try {

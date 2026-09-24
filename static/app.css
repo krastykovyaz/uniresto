@@ -934,8 +934,78 @@ svg { display: block; }
 
 /* Phones: these wrappers are layout-neutral and the page scrolls natively,
    so on an actual iPhone the app simply IS the screen. */
-.device, .device-screen, .scroller { display: contents; }
+.device-stage, .device, .device-screen, .scroller { display: contents; }
 .device-statusbar, .device-btn { display: none; }
+
+/* ================================================================= Intro */
+/* Played once per tab session by playIntro() in app.js: a closed cover
+   showing the blinking "UniResto" name, which then swings open around
+   its hinge to reveal the app. On a phone the whole screen is the cover
+   and swings away like a door; on desktop it's the front half of the
+   closed foldable (see the Device frame section below). */
+
+.intro {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  perspective: 1800px;
+  cursor: pointer;
+  transition: opacity 0.35s ease;
+}
+.intro.is-done { opacity: 0; pointer-events: none; }
+
+.intro-cover {
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+  transform-style: preserve-3d;
+}
+.intro.is-opening .intro-cover { animation: intro-swing-phone 0.9s cubic-bezier(0.6, 0.05, 0.3, 1) forwards; }
+
+.intro-face {
+  position: absolute;
+  inset: 0;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+.intro-front { background: #0c0d0f; }
+.intro-back { transform: rotateY(180deg); background: var(--color-bg); }
+
+.intro-cover-screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-5);
+  text-align: center;
+  color: #fff;
+  background: radial-gradient(120% 70% at 50% 45%, #13301f 0%, #0c0d0f 65%);
+}
+.intro-brand {
+  margin: 0;
+  font-size: 2.6rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  animation: intro-blink 1s ease-in-out infinite;
+}
+.intro-brand span { color: var(--color-primary); }
+.intro-tagline { margin: 0; font-size: 1rem; color: rgba(255, 255, 255, 0.72); }
+
+@keyframes intro-blink {
+  0%, 100% { opacity: 1; text-shadow: 0 0 22px rgba(26, 168, 96, 0.65); }
+  50% { opacity: 0.2; text-shadow: none; }
+}
+@keyframes intro-swing-phone {
+  to { transform: rotateY(-110deg); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .intro-brand { animation: none; }
+  .intro.is-opening .intro-cover { animation: none; }
+}
 
 /* Desktop-width browsers: draw the app on the inner screen of an open,
    book-style foldable phone. A stylized frame, not a replica of any
@@ -1002,6 +1072,67 @@ svg { display: block; }
   }
   .device-btn--power { right: 18%; width: 48px; }
   .device-btn--volume { right: 30%; width: 72px; }
+
+  /* ---- Intro: closed foldable -> opens around the middle hinge ----
+     Closed: only the right half of .device is shown (clip-path), shifted
+     left by a quarter so the closed phone sits centred, with the cover
+     (.intro-cover) lying on top of it. Opening: the cover rotates -180deg
+     around the hinge onto the left half -- its back face is drawn as the
+     left half of the open inner screen -- while the clip widens and the
+     phone slides back to centre. The negative clip insets leave room for
+     .device's drop shadow on the three uncut sides. */
+  .device-stage { display: block; position: relative; }
+  .device { transition: box-shadow 0.5s ease; }
+  .device-stage.is-closed { transform: translateX(-25%); }
+  /* The device's own drop shadow would be cut in a hard vertical line by
+     the clip, so while closed/opening it's switched off and the cover
+     (.intro-front) carries the shadow instead; it fades back in once open. */
+  .device-stage.is-closed .device,
+  .device-stage.is-opening .device { box-shadow: none; }
+  .device-stage.is-closed .device { clip-path: inset(0 0 0 50%); }
+  .device-stage.is-opening { transition: transform 1.1s cubic-bezier(0.6, 0.05, 0.3, 1); }
+  .device-stage.is-opening .device { animation: intro-unclip 1.1s cubic-bezier(0.6, 0.05, 0.3, 1) forwards; }
+
+  .intro { position: absolute; perspective: 2400px; }
+  .intro-cover { left: 50%; }
+  .intro.is-opening .intro-cover { animation: intro-swing-fold 1.1s cubic-bezier(0.6, 0.05, 0.3, 1) forwards; }
+
+  .intro-front {
+    border-radius: 0 48px 48px 0;
+    background: linear-gradient(150deg, #4a4d52 0%, #232427 38%, #1a1b1d 62%, #3b3e43 100%);
+    box-shadow:
+      0 0 0 1px #0b0b0c,
+      inset 0 0 0 1.5px rgba(255, 255, 255, 0.10),
+      0 40px 90px -20px rgba(20, 30, 45, 0.45),
+      0 18px 36px -18px rgba(20, 30, 45, 0.35);
+  }
+  .intro-front .intro-cover-screen { inset: 12px 12px 12px 6px; border-radius: 32px; }
+
+  .intro-back {
+    border-radius: 48px 0 0 48px;
+    background: linear-gradient(150deg, #4a4d52 0%, #232427 38%, #1a1b1d 62%, #3b3e43 100%);
+  }
+  .intro-back-screen {
+    position: absolute;
+    inset: 12px 0 12px 12px;
+    border-radius: 36px 0 0 36px;
+    background: var(--color-bg);
+  }
+
+  /* Reduced motion: no fold at all -- the cover just covers the whole
+     open phone and fades out. */
+  .intro.is-static .intro-cover { left: 0; }
+  .intro.is-static .intro-front { border-radius: 48px; }
+
+  @keyframes intro-swing-fold {
+    to { transform: rotateY(-180deg); }
+  }
+  /* Stays closed for the first half of the swing (the cover is still
+     over the right half then), then opens as the cover crosses the hinge. */
+  @keyframes intro-unclip {
+    0%, 45% { clip-path: inset(0 0 0 50%); }
+    100% { clip-path: inset(0 0 0 0); }
+  }
 
   .device-screen {
     display: flex;
