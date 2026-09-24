@@ -388,7 +388,11 @@ svg { display: block; }
   font-size: 0.95rem;
 }
 .weight-price-row .weight { font-weight: 700; }
-.weight-price-row .price { font-weight: 700; }
+/* "Canteen Price" (see priceText() in app.js) is a label, not a number
+   on the card itself -- set in italics, not bold, to read as a note
+   rather than a headline figure. The real €X.XX only ever appears
+   bold in the cart/review/confirmation totals, a different class. */
+.weight-price-row .price { font-weight: 400; font-style: italic; }
 .weight-price-row .price.is-unspecified { font-weight: 400; font-style: italic; color: var(--color-text-muted); font-size: 0.85rem; }
 .weight-price-row .calories { font-weight: 400; color: var(--color-text-muted); font-size: 0.85rem; }
 .weight-price-row .dot { color: var(--color-text-muted); }
