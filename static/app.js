@@ -470,20 +470,6 @@ function formatServerPriceTotal(order) {
   return parts.length ? parts.join(" + ") : tr("priceNotAvailable");
 }
 
-// order-math.js's own formatWeightSummary/formatPriceSummary are
-// language-neutral on purpose (it's a pure module shared with the Node
-// test suite, see tests_js/order-math.test.mjs) -- these two mirror the
-// same logic using the current UI language for display, without adding
-// an i18n dependency to that shared module.
-function localizedWeightSummary(totals) {
-  if (totals.itemCount === 0) return tr("noItemsSelected");
-  const parts = Object.entries(totals.weightByUnit)
-    .filter(([, v]) => v > 0)
-    .map(([unit, v]) => `${v} ${unit}`);
-  if (totals.unknownWeightPortions > 0) parts.push(`${totals.unknownWeightPortions} ${tr("statusUnknown").toLowerCase()}`);
-  return parts.length ? parts.join(" + ") : tr("portionSizeNotSpecified");
-}
-
 // Combines OUR OWN meal-formula price (static/pricing.js -- covers a
 // main dish + optional starter/dessert, Féculents/Légumes bundled free)
 // with any per-dish Restopolis price for whatever's left over (Constant
@@ -2193,8 +2179,7 @@ function renderSummaryBar() {
   const bar = el(`
     <div class="summary-bar">
       <div class="summary-text">
-        <strong>${tr("itemCount", { n: totals.itemCount })} · ${localizedWeightSummary(totals)}</strong>
-        ${localizedPriceSummary(totals)}
+        <strong>${tr("itemCount", { n: totals.itemCount })}</strong>
       </div>
       <button type="button">${escapeHtml(tr("viewOrder"))}</button>
     </div>
