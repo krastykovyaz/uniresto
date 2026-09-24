@@ -5,6 +5,7 @@ import pytest
 
 from app import create_app
 from orderability_engine.cache import OrderabilityCache
+from orderability_engine.models import TZINFO
 from orderability_engine.orders import OrderStore
 from orderability_engine.service import OrderabilityService
 from restopolis.config import load_restaurants
@@ -17,8 +18,7 @@ SALAD_BAR_ID = 0
 BRETZEL_ID = 32
 
 
-@pytest.fixture
-def client(tmp_path, altius_html, altius_closed_week_html, fixture_today):
+def _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, now=None):
     restaurants = load_restaurants()
     fake_client = FakeRestopolisClient(week_html_by_offset={0: altius_html, 1: altius_closed_week_html})
     service = OrderabilityService(
@@ -26,11 +26,23 @@ def client(tmp_path, altius_html, altius_closed_week_html, fixture_today):
         cache=OrderabilityCache(tmp_path / "cache.db", ttl_seconds=900),
         restaurants=restaurants,
         today=fixture_today,
+        # Pinned well before ANY test date's 08:00 same-day ordering
+        # deadline (evaluate_our_delivery) -- without this, every route
+        # here would compare against the REAL wall clock (check_orderability
+        # is always called with no explicit `now`, matching production),
+        # making order-creation tests flaky/date-dependent on whenever the
+        # suite happens to run rather than on the fixture's own "today".
+        now=now or datetime.datetime.combine(fixture_today, datetime.time(12, 0), tzinfo=TZINFO),
     )
     order_store = OrderStore(tmp_path / "orders.db")
     app = create_app(service=service, order_store=order_store)
     app.testing = True
-    with app.test_client() as c:
+    return app.test_client()
+
+
+@pytest.fixture
+def client(tmp_path, altius_html, altius_closed_week_html, fixture_today):
+    with _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today) as c:
         yield c
 
 
@@ -289,6 +301,48 @@ def test_create_order_for_unavailable_date_is_409(client):
         json={"restaurant": "altius", "date": "2026-09-26", "items": [{"id": 0, "quantity": 1}]},  # no_menu
     )
     assert resp.status_code == 409
+
+
+def test_create_order_after_our_deadline_is_409_even_though_restopolis_still_says_available(
+    tmp_path, altius_html, altius_closed_week_html, fixture_today
+):
+    # Restopolis's own status for 2026-09-24 is "available" all day (see
+    # test_api_status_available) -- but OUR same-day 08:00 cutoff
+    # (evaluate_our_delivery) has its own, stricter deadline. The menu
+    # stays browsable past that point (see
+    # test_api_menu_still_available_after_our_deadline_has_passed below),
+    # but creating an order must not silently succeed once we've told the
+    # customer ordering is closed.
+    after_deadline = datetime.datetime(2026, 9, 24, 8, 15, tzinfo=TZINFO)
+    with _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, now=after_deadline) as late_client:
+        resp = late_client.post(
+            "/api/orders",
+            json={"restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}]},
+        )
+    assert resp.status_code == 409
+    body = resp.get_json()
+    assert body["status"] == "closed"
+
+
+def test_api_menu_still_available_after_our_deadline_has_passed(tmp_path, altius_html, altius_closed_week_html, fixture_today):
+    # api_menu only ever gates on Restopolis's own status (never
+    # our_delivery) -- a customer can still see what was on the menu even
+    # once ordering has closed for the day.
+    after_deadline = datetime.datetime(2026, 9, 24, 8, 15, tzinfo=TZINFO)
+    with _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, now=after_deadline) as late_client:
+        resp = late_client.get("/api/restaurants/altius/menu/2026-09-24")
+    assert resp.status_code == 200
+
+
+def test_api_status_reports_restopolis_available_but_our_delivery_closed_after_deadline(
+    tmp_path, altius_html, altius_closed_week_html, fixture_today
+):
+    after_deadline = datetime.datetime(2026, 9, 24, 8, 15, tzinfo=TZINFO)
+    with _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, now=after_deadline) as late_client:
+        resp = late_client.get("/api/restaurants/altius/status?date=2026-09-24")
+    body = resp.get_json()
+    assert body["status"] == "available"
+    assert body["our_delivery"]["available"] is False
 
 
 def test_create_order_without_items_is_400(client):

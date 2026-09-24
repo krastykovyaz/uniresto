@@ -88,6 +88,7 @@ class OrderabilityService:
         cache_ttl_seconds: int | None = None,
         menu_cache_ttl_seconds: int | None = None,
         today: date | None = None,
+        now: datetime | None = None,
     ):
         self.client = client or RestopolisClient()
         self.cache = cache if cache is not None else OrderabilityCache(
@@ -95,6 +96,15 @@ class OrderabilityService:
         )
         self.restaurants = restaurants or load_restaurants()
         self.delivery_config = delivery_config
+        # Same reasoning as `today` below, but for check_orderability()'s
+        # `now` (used only for OUR delivery-deadline comparison, see
+        # evaluate_our_delivery) -- callers that never pass `now`
+        # explicitly (every Flask route in app.py) would otherwise always
+        # compare against the real wall clock, making it impossible for a
+        # test client fixture to deterministically exercise "before" vs
+        # "after" the deadline without depending on when the test suite
+        # happens to run.
+        self._now_override = now
         # Overridable so tests can pin "today" instead of depending on the
         # real system clock (which would make date-relative fixtures --
         # e.g. "the current week" -- flaky depending on when tests run).
@@ -118,6 +128,9 @@ class OrderabilityService:
 
     def _today(self) -> date:
         return self._today_override or date.today()
+
+    def _now(self) -> datetime:
+        return self._now_override or datetime.now(TZINFO)
 
     def get_week_html(self, restaurant: RestaurantConfig, target_date: date, refresh: bool = False) -> tuple[str, int]:
         """Raises PastDateError / HorizonExceededError. Returns (html, weeks_ahead).
@@ -157,7 +170,7 @@ class OrderabilityService:
         refresh: bool = False,
         now: datetime | None = None,
     ) -> OrderabilityResult:
-        now = now or datetime.now(TZINFO)
+        now = now or self._now()
         logger.info("[CHECK]\n%s\n%s", restaurant.code, target_date)
 
         previous = self.cache.get_raw(restaurant.code, target_date)

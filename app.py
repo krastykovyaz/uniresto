@@ -225,6 +225,13 @@ def create_app(
         result = svc().check_orderability(restaurant, d)
         if result.status != "available":
             return jsonify({"error": "date_not_available", "status": result.status, "reason": result.reason}), 409
+        # Restopolis's own signals can say available while OUR same-day
+        # 08:00 cutoff has already passed (evaluate_our_delivery) -- the
+        # menu stays browsable past that point (see api_menu above, never
+        # gated on our_delivery), but an order must never actually be
+        # created once we've told the customer it's closed.
+        if not result.our_delivery.available:
+            return jsonify({"error": "date_not_available", "status": "closed", "reason": "Our ordering deadline for this date has passed."}), 409
 
         flat_items, _ = _load_flat_menu(restaurant, d)
         try:

@@ -1192,14 +1192,24 @@ function renderDates() {
   const scroller = el(`<div class="date-scroller"></div>`);
   for (const d of state.availableDates) {
     const { dow, dom } = fmtShort(d.date);
-    const isAvailable = d.status === "available";
+    // Restopolis's own status can still say "available" once OUR same-day
+    // 08:00 cutoff has already passed (see orderability_engine/delivery_rules.py) --
+    // the two signals are reported independently by the backend on
+    // purpose (never merged into one), so the DISPLAY has to combine them
+    // itself: once our own deadline is passed, the card reads "Closed"
+    // regardless of what Restopolis's raw status says. The menu stays
+    // reachable either way (every card stays tappable below), matching
+    // that api_menu itself never gates on our_delivery.
+    const ourDeadlinePassed = d.status === "available" && d.our_delivery && d.our_delivery.available === false;
+    const displayStatus = ourDeadlinePassed ? "closed" : d.status;
+    const isAvailable = displayStatus === "available";
     const deadline = fmtDeadline(d.our_delivery && d.our_delivery.deadline);
     const ariaPrefix = isAvailable ? tr("select") : `${tr("unavailable")}:`;
     const card = el(`
-      <button class="date-card ${isAvailable ? "" : "is-disabled"}" aria-label="${ariaPrefix} ${dow} ${dom}${!isAvailable ? `, ${dateStatusLabel(d.status)}` : ""}">
+      <button class="date-card ${isAvailable ? "" : "is-disabled"}" aria-label="${ariaPrefix} ${dow} ${dom}${!isAvailable ? `, ${dateStatusLabel(displayStatus)}` : ""}">
         <div class="dow">${dow}</div>
         <div class="dom">${dom}</div>
-        <span class="status-chip ${d.status}">${escapeHtml(dateStatusLabel(d.status))}</span>
+        <span class="status-chip ${displayStatus}">${escapeHtml(dateStatusLabel(displayStatus))}</span>
         ${isAvailable && deadline ? `<div class="deadline">${escapeHtml(tr("orderBefore"))}<br>${deadline}</div>` : ""}
       </button>
     `);
