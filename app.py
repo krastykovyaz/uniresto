@@ -31,7 +31,7 @@ from orderability_engine.telegram_notify import send_admin_notification
 from restopolis.config import load_restaurants
 from scraper import slug_for
 
-# Loads SMTP_USER/SMTP_PASSWORD/etc from a git-ignored .env file in the
+# Loads RESEND_API_KEY/etc from a git-ignored .env file in the
 # working directory (see orderability_engine/mailer.py's docstring and
 # README.md Part 23) -- a no-op if .env doesn't exist (local dev with no
 # email configured yet) or if the real values already came from the
@@ -237,8 +237,8 @@ def create_app(
         )
         order = store().get_order(order_id)
 
-        # Best-effort, never fails the order itself: a flaky mail server
-        # or unset SMTP_USER/SMTP_PASSWORD must never turn a successful
+        # Best-effort, never fails the order itself: a flaky mail API
+        # or unset RESEND_API_KEY must never turn a successful
         # order into a 500 (see mailer.py's module docstring). Only
         # attempted when an email was actually given -- most orders in
         # this dev-only app won't have one.

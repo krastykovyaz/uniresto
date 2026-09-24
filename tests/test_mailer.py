@@ -12,10 +12,7 @@ from orderability_engine.mailer import (
 
 
 def _plain_text(msg):
-    """Messages are multipart/alternative (plain + HTML, see mailer.py's
-    module docstring) -- msg.get_content() only works on a single-part
-    message, so tests read the plain-text part specifically."""
-    return msg.get_body(preferencelist=("plain",)).get_content()
+    return msg["text"]
 
 
 def _order(**overrides):
@@ -35,27 +32,30 @@ def _order(**overrides):
 
 
 @pytest.fixture(autouse=True)
-def _clear_smtp_env(monkeypatch):
+def _clear_resend_env(monkeypatch):
     # is_configured()/send_order_confirmation() read os.environ fresh on
     # every call (see mailer.py's docstring) -- start every test from a
     # clean slate regardless of what's actually set on this machine.
-    for key in ("SMTP_USER", "SMTP_PASSWORD", "SMTP_HOST", "SMTP_PORT", "SMTP_FROM_NAME"):
+    for key in ("RESEND_API_KEY", "RESEND_FROM_EMAIL", "RESEND_FROM_NAME"):
         monkeypatch.delenv(key, raising=False)
+
+
+def _mock_response(status_code=200, json_body=None):
+    resp = MagicMock()
+    resp.status_code = status_code
+    resp.headers = {"content-type": "application/json"}
+    resp.json.return_value = json_body or {"id": "resend-message-id"}
+    resp.text = ""
+    return resp
 
 
 def test_is_configured_false_when_env_vars_unset():
     assert is_configured() is False
 
 
-def test_is_configured_true_when_both_required_vars_set(monkeypatch):
-    monkeypatch.setenv("SMTP_USER", "uniresto@gmail.com")
-    monkeypatch.setenv("SMTP_PASSWORD", "app-password-placeholder")
+def test_is_configured_true_when_api_key_set(monkeypatch):
+    monkeypatch.setenv("RESEND_API_KEY", "re_placeholder")
     assert is_configured() is True
-
-
-def test_is_configured_false_when_only_one_var_set(monkeypatch):
-    monkeypatch.setenv("SMTP_USER", "uniresto@gmail.com")
-    assert is_configured() is False
 
 
 def test_send_returns_not_sent_when_unconfigured():
@@ -64,56 +64,58 @@ def test_send_returns_not_sent_when_unconfigured():
     assert "not configured" in error
 
 
-def test_send_never_raises_and_reports_the_error_on_smtp_failure(monkeypatch):
-    monkeypatch.setenv("SMTP_USER", "uniresto@gmail.com")
-    monkeypatch.setenv("SMTP_PASSWORD", "app-password-placeholder")
+def test_send_never_raises_and_reports_the_error_on_api_failure(monkeypatch):
+    monkeypatch.setenv("RESEND_API_KEY", "re_placeholder")
 
-    with patch("orderability_engine.mailer.smtplib.SMTP") as mock_smtp:
-        mock_smtp.side_effect = OSError("connection refused")
+    with patch("orderability_engine.mailer.requests.post") as mock_post:
+        mock_post.side_effect = OSError("connection refused")
         sent, error = send_order_confirmation("student@uni.lu", _order())
 
     assert sent is False
     assert "connection refused" in error
 
 
-def test_send_succeeds_and_uses_configured_host_port_and_login(monkeypatch):
-    monkeypatch.setenv("SMTP_USER", "uniresto@gmail.com")
-    monkeypatch.setenv("SMTP_PASSWORD", "app-password-placeholder")
-    monkeypatch.setenv("SMTP_HOST", "smtp.gmail.com")
-    monkeypatch.setenv("SMTP_PORT", "587")
+def test_send_reports_error_message_on_http_error_status(monkeypatch):
+    monkeypatch.setenv("RESEND_API_KEY", "re_placeholder")
 
-    mock_conn = MagicMock()
-    mock_conn.__enter__.return_value = mock_conn
-    with patch("orderability_engine.mailer.smtplib.SMTP", return_value=mock_conn) as mock_smtp:
+    with patch("orderability_engine.mailer.requests.post") as mock_post:
+        mock_post.return_value = _mock_response(status_code=403, json_body={"message": "domain not verified"})
+        sent, error = send_order_confirmation("student@uni.lu", _order())
+
+    assert sent is False
+    assert error == "domain not verified"
+
+
+def test_send_succeeds_and_posts_to_resend_with_configured_from(monkeypatch):
+    monkeypatch.setenv("RESEND_API_KEY", "re_placeholder")
+    monkeypatch.setenv("RESEND_FROM_EMAIL", "noreply@unilu.space")
+    monkeypatch.setenv("RESEND_FROM_NAME", "UniResto")
+
+    with patch("orderability_engine.mailer.requests.post", return_value=_mock_response()) as mock_post:
         sent, error = send_order_confirmation("student@uni.lu", _order())
 
     assert sent is True
     assert error is None
-    mock_smtp.assert_called_once_with("smtp.gmail.com", 587, timeout=10)
-    mock_conn.starttls.assert_called_once()
-    mock_conn.login.assert_called_once_with("uniresto@gmail.com", "app-password-placeholder")
-    mock_conn.send_message.assert_called_once()
+    mock_post.assert_called_once()
+    args, kwargs = mock_post.call_args
+    assert args[0] == "https://api.resend.com/emails"
+    assert kwargs["headers"]["Authorization"] == "Bearer re_placeholder"
+    payload = kwargs["json"]
+    assert payload["from"] == "UniResto <noreply@unilu.space>"
+    assert payload["to"] == ["student@uni.lu"]
 
 
 def test_email_body_never_invents_data_only_uses_the_orders_own_fields(monkeypatch):
     # Sanity check on the message content itself: every line traces back
     # to a real field already on the order dict, nothing fabricated.
-    monkeypatch.setenv("SMTP_USER", "uniresto@gmail.com")
-    monkeypatch.setenv("SMTP_PASSWORD", "app-password-placeholder")
+    monkeypatch.setenv("RESEND_API_KEY", "re_placeholder")
 
     order = _order()
-    captured = {}
-
-    def _capture_send_message(msg):
-        captured["msg"] = msg
-
-    mock_conn = MagicMock()
-    mock_conn.__enter__.return_value = mock_conn
-    mock_conn.send_message.side_effect = _capture_send_message
-    with patch("orderability_engine.mailer.smtplib.SMTP", return_value=mock_conn):
+    with patch("orderability_engine.mailer.requests.post", return_value=_mock_response()) as mock_post:
         send_order_confirmation("student@uni.lu", order)
 
-    body = _plain_text(captured["msg"])
+    payload = mock_post.call_args.kwargs["json"]
+    body = payload["text"]
     assert order["restaurant_name"] in body
     assert order["order_date"] in body
     assert "Rôti de porc Orloff x1" in body
@@ -125,24 +127,20 @@ def test_email_body_never_invents_data_only_uses_the_orders_own_fields(monkeypat
     # And the same real data must also appear in the HTML part -- not
     # just the plain-text one, both are sent (see mailer.py's docstring
     # on why: multipart is itself a small anti-spam signal).
-    html = captured["msg"].get_body(preferencelist=("html",)).get_content()
+    html = payload["html"]
     assert order["restaurant_name"] in html
     assert "€8.00" in html
 
 
 def test_email_omits_total_line_when_formula_has_no_price(monkeypatch):
-    monkeypatch.setenv("SMTP_USER", "uniresto@gmail.com")
-    monkeypatch.setenv("SMTP_PASSWORD", "app-password-placeholder")
+    monkeypatch.setenv("RESEND_API_KEY", "re_placeholder")
 
     order = _order(totals={"formula": {"total": None, "reason": None}})
-    captured = {}
-    mock_conn = MagicMock()
-    mock_conn.__enter__.return_value = mock_conn
-    mock_conn.send_message.side_effect = lambda msg: captured.update(msg=msg)
-    with patch("orderability_engine.mailer.smtplib.SMTP", return_value=mock_conn):
+    with patch("orderability_engine.mailer.requests.post", return_value=_mock_response()) as mock_post:
         send_order_confirmation("student@uni.lu", order)
 
-    assert "Total:" not in _plain_text(captured["msg"])
+    payload = mock_post.call_args.kwargs["json"]
+    assert "Total:" not in payload["text"]
 
 
 # ---------------------------------------------------------------------------
@@ -171,35 +169,30 @@ def test_send_verification_code_returns_not_sent_when_unconfigured():
     assert "not configured" in error
 
 
-def test_send_verification_code_never_raises_on_smtp_failure(monkeypatch):
-    monkeypatch.setenv("SMTP_USER", "uniresto@gmail.com")
-    monkeypatch.setenv("SMTP_PASSWORD", "app-password-placeholder")
-    with patch("orderability_engine.mailer.smtplib.SMTP") as mock_smtp:
-        mock_smtp.side_effect = OSError("connection refused")
+def test_send_verification_code_never_raises_on_api_failure(monkeypatch):
+    monkeypatch.setenv("RESEND_API_KEY", "re_placeholder")
+    with patch("orderability_engine.mailer.requests.post") as mock_post:
+        mock_post.side_effect = OSError("connection refused")
         sent, error = send_verification_code("student@uni.lu", "123456")
     assert sent is False
     assert "connection refused" in error
 
 
 def test_send_verification_code_succeeds_and_includes_the_code_in_both_parts(monkeypatch):
-    monkeypatch.setenv("SMTP_USER", "uniresto@gmail.com")
-    monkeypatch.setenv("SMTP_PASSWORD", "app-password-placeholder")
+    monkeypatch.setenv("RESEND_API_KEY", "re_placeholder")
 
-    captured = {}
-    mock_conn = MagicMock()
-    mock_conn.__enter__.return_value = mock_conn
-    mock_conn.send_message.side_effect = lambda msg: captured.update(msg=msg)
-    with patch("orderability_engine.mailer.smtplib.SMTP", return_value=mock_conn):
+    with patch("orderability_engine.mailer.requests.post", return_value=_mock_response()) as mock_post:
         sent, error = send_verification_code("student@uni.lu", "654321")
 
     assert sent is True
     assert error is None
-    assert captured["msg"]["To"] == "student@uni.lu"
-    assert "654321" in _plain_text(captured["msg"])
-    assert "654321" in captured["msg"].get_body(preferencelist=("html",)).get_content()
+    payload = mock_post.call_args.kwargs["json"]
+    assert payload["to"] == ["student@uni.lu"]
+    assert "654321" in payload["text"]
+    assert "654321" in payload["html"]
     # Subject is short and plainly states its purpose -- see mailer.py's
     # module docstring on avoiding clickbait-y subject lines.
-    assert "verification code" in captured["msg"]["Subject"].lower()
+    assert "verification code" in payload["subject"].lower()
 
 
 # ---------------------------------------------------------------------------
@@ -217,47 +210,37 @@ def test_send_order_needs_confirmation_returns_not_sent_when_unconfigured():
 
 
 def test_send_order_needs_confirmation_shows_both_prices_and_both_links(monkeypatch):
-    monkeypatch.setenv("SMTP_USER", "uniresto@gmail.com")
-    monkeypatch.setenv("SMTP_PASSWORD", "app-password-placeholder")
+    monkeypatch.setenv("RESEND_API_KEY", "re_placeholder")
 
     order = _order()  # totals.formula.total == 8.00 (the approximate/app price)
-    captured = {}
-    mock_conn = MagicMock()
-    mock_conn.__enter__.return_value = mock_conn
-    mock_conn.send_message.side_effect = lambda msg: captured.update(msg=msg)
-    with patch("orderability_engine.mailer.smtplib.SMTP", return_value=mock_conn):
+    with patch("orderability_engine.mailer.requests.post", return_value=_mock_response()) as mock_post:
         sent, error = send_order_needs_confirmation(
             "student@uni.lu",
             order,
             real_price=9.20,
-            confirm_url="https://uniresto.carcard.space/o/42/confirm?token=abc",
-            cancel_url="https://uniresto.carcard.space/o/42/cancel?token=abc",
+            confirm_url="https://resto.unilu.space/o/42/confirm?token=abc",
+            cancel_url="https://resto.unilu.space/o/42/cancel?token=abc",
         )
 
     assert sent is True
     assert error is None
-    text = _plain_text(captured["msg"])
-    html = captured["msg"].get_body(preferencelist=("html",)).get_content()
-    for blob in (text, html):
+    payload = mock_post.call_args.kwargs["json"]
+    for blob in (payload["text"], payload["html"]):
         assert "€8.00" in blob  # the approximate price is still shown, not silently dropped
         assert "€9.20" in blob  # the real price
-        assert "https://uniresto.carcard.space/o/42/confirm?token=abc" in blob
-        assert "https://uniresto.carcard.space/o/42/cancel?token=abc" in blob
-    assert f"Order #{order['id']}" in text
+        assert "https://resto.unilu.space/o/42/confirm?token=abc" in blob
+        assert "https://resto.unilu.space/o/42/cancel?token=abc" in blob
+    assert f"Order #{order['id']}" in payload["text"]
 
 
 def test_send_order_needs_confirmation_omits_approximate_price_when_unknown(monkeypatch):
-    monkeypatch.setenv("SMTP_USER", "uniresto@gmail.com")
-    monkeypatch.setenv("SMTP_PASSWORD", "app-password-placeholder")
+    monkeypatch.setenv("RESEND_API_KEY", "re_placeholder")
 
     order = _order(totals={"formula": {"total": None, "reason": None}})
-    captured = {}
-    mock_conn = MagicMock()
-    mock_conn.__enter__.return_value = mock_conn
-    mock_conn.send_message.side_effect = lambda msg: captured.update(msg=msg)
-    with patch("orderability_engine.mailer.smtplib.SMTP", return_value=mock_conn):
+    with patch("orderability_engine.mailer.requests.post", return_value=_mock_response()) as mock_post:
         send_order_needs_confirmation(
             "student@uni.lu", order, real_price=9.20, confirm_url="https://x/confirm", cancel_url="https://x/cancel"
         )
 
-    assert "Approximate price" not in _plain_text(captured["msg"])
+    payload = mock_post.call_args.kwargs["json"]
+    assert "Approximate price" not in payload["text"]

@@ -2,34 +2,35 @@
 notifications, not a Restopolis feature (Restopolis has no
 customer-email concept at all; see README.md Part 23/27). Entirely
 optional: an order still succeeds with no email sent whenever either
-the customer left the email field blank or SMTP simply isn't configured
-on this server (no real secrets are ever hardcoded -- see the
-module-level env vars below, read fresh on every send rather than
+the customer left the email field blank or Resend simply isn't
+configured on this server (no real secrets are ever hardcoded -- see
+the module-level env vars below, read fresh on every send rather than
 cached at import time, so an admin can fix a typo in .env and restart
 the service without a code change).
 
 Never blocks or fails the caller: both `send_order_confirmation` and
 `send_verification_code` always return a (sent: bool, error: str | None)
 pair and the caller (app.py) is expected to log the failure and
-continue -- a flaky mail server must never turn a successful order, or
-a verification-code request, into a 500.
+continue -- a flaky mail API must never turn a successful order, or a
+verification-code request, into a 500.
 
-Credentials come ONLY from environment variables (SMTP_USER/
-SMTP_PASSWORD), typically via a git-ignored .env file loaded by
-python-dotenv at app startup (see app.py) or a systemd EnvironmentFile
-in production -- never committed, never hardcoded here.
+Credentials come ONLY from environment variables (RESEND_API_KEY),
+typically via a git-ignored .env file loaded by python-dotenv at app
+startup (see app.py) or a systemd EnvironmentFile in production --
+never committed, never hardcoded here.
+
+Sent via Resend's HTTPS API (https://api.resend.com/emails) rather than
+raw SMTP -- see README.md Part 31: the original Gmail-SMTP sender had no
+domain-level SPF/DKIM/DMARC alignment, so campus mail servers
+(uni.lu/student.uni.lu) were silently discarding messages with no
+bounce. Resend's `RESEND_FROM_EMAIL` lives on unilu.space, a domain
+with verified DKIM/SPF/DMARC records specifically for this purpose.
 
 Both message types are sent as MULTIPART (a plain-text part alongside a
 lightly-branded HTML part matching the app's own colors) with a short,
-plain, non-clickbait subject line and no links at all -- one real
-concrete lever against landing in spam, not a guarantee. The bigger,
-structural factor is entirely outside this code: SMTP_USER here is a
-personal Gmail address, not a domain with its own SPF/DKIM/DMARC record
-aligned to "UniResto", so campus mail servers (uni.lu/student.uni.lu)
-may reasonably still flag it -- see README.md Part 27's "Verified live"
-note and static/app.js's checkSpamFolder-labeled UI copy, which tells
-the user to check their spam folder rather than pretending this is
-solved by message content alone.
+plain, non-clickbait subject line and no links at all in the
+verification-code message -- one real concrete lever against landing in
+spam, not a guarantee.
 """
 
 from __future__ import annotations
@@ -37,13 +38,18 @@ from __future__ import annotations
 import logging
 import os
 import secrets
-import smtplib
-from email.message import EmailMessage
+
+import requests
 
 logger = logging.getLogger("uniresto.mailer")
 
-DEFAULT_SMTP_HOST = "smtp.gmail.com"
-DEFAULT_SMTP_PORT = 587
+RESEND_API_URL = "https://api.resend.com/emails"
+DEFAULT_FROM_EMAIL = "noreply@unilu.space"
+DEFAULT_FROM_NAME = "UniResto"
+# Resend's own domain-verification endpoint sits behind Cloudflare, which
+# blocks the default python-requests/urllib user-agent string as a bot
+# (HTTP 403, Cloudflare error 1010) -- a plain browser-shaped one avoids that.
+_USER_AGENT = "Mozilla/5.0 (compatible; UniResto-Mailer/1.0)"
 
 # Matches static/app.css's own --color-primary/--color-bg/--color-text,
 # so the email at least LOOKS like it came from the same app, not a
@@ -53,26 +59,23 @@ _BRAND_BG = "#f7f8fa"
 _BRAND_TEXT = "#14171a"
 
 
-def _smtp_config() -> dict | None:
+def _mail_config() -> dict | None:
     """Reads config fresh from the environment on every call (not cached
     at import time) so a corrected .env only needs a process restart, not
-    a code change. Returns None if the two required secrets aren't set --
-    that's the normal "email not configured yet" state, not an error."""
-    user = os.environ.get("SMTP_USER")
-    password = os.environ.get("SMTP_PASSWORD")
-    if not user or not password:
+    a code change. Returns None if the API key isn't set -- that's the
+    normal "email not configured yet" state, not an error."""
+    api_key = os.environ.get("RESEND_API_KEY")
+    if not api_key:
         return None
     return {
-        "host": os.environ.get("SMTP_HOST", DEFAULT_SMTP_HOST),
-        "port": int(os.environ.get("SMTP_PORT", DEFAULT_SMTP_PORT)),
-        "user": user,
-        "password": password,
-        "from_name": os.environ.get("SMTP_FROM_NAME", "UniResto"),
+        "api_key": api_key,
+        "from_email": os.environ.get("RESEND_FROM_EMAIL", DEFAULT_FROM_EMAIL),
+        "from_name": os.environ.get("RESEND_FROM_NAME", DEFAULT_FROM_NAME),
     }
 
 
 def is_configured() -> bool:
-    return _smtp_config() is not None
+    return _mail_config() is not None
 
 
 def _html_shell(preheader: str, body_html: str, config: dict) -> str:
@@ -109,24 +112,32 @@ def _html_shell(preheader: str, body_html: str, config: dict) -> str:
 
 
 def _send(to_email: str, subject: str, text_body: str, html_body: str) -> tuple[bool, str | None]:
-    config = _smtp_config()
+    config = _mail_config()
     if config is None:
-        return False, "SMTP not configured (SMTP_USER/SMTP_PASSWORD unset)"
+        return False, "Email not configured (RESEND_API_KEY unset)"
 
-    msg = EmailMessage()
-    msg["Subject"] = subject
-    msg["From"] = f"{config['from_name']} <{config['user']}>"
-    msg["To"] = to_email
-    msg.set_content(text_body)  # plain-text part first (multipart/alternative)
-    msg.add_alternative(html_body, subtype="html")
+    payload = {
+        "from": f"{config['from_name']} <{config['from_email']}>",
+        "to": [to_email],
+        "subject": subject,
+        "text": text_body,
+        "html": html_body,
+    }
 
     try:
-        with smtplib.SMTP(config["host"], config["port"], timeout=10) as smtp:
-            smtp.starttls()
-            smtp.login(config["user"], config["password"])
-            smtp.send_message(msg)
+        resp = requests.post(
+            RESEND_API_URL,
+            json=payload,
+            headers={"Authorization": f"Bearer {config['api_key']}", "User-Agent": _USER_AGENT},
+            timeout=10,
+        )
+        if resp.status_code >= 400:
+            error = resp.json().get("message") if resp.headers.get("content-type", "").startswith("application/json") else resp.text
+            error = error or f"HTTP {resp.status_code}"
+            logger.warning("[MAIL] failed to send %r to %s: %s", subject, to_email, error)
+            return False, error
         return True, None
-    except Exception as exc:  # noqa: BLE001 -- any SMTP/network failure must degrade gracefully, not crash the request
+    except Exception as exc:  # noqa: BLE001 -- any API/network failure must degrade gracefully, not crash the request
         logger.warning("[MAIL] failed to send %r to %s: %s", subject, to_email, exc)
         return False, str(exc)
 
@@ -198,9 +209,9 @@ def send_order_confirmation(to_email: str, order: dict) -> tuple[bool, str | Non
     """Best-effort send. Returns (sent, error) -- `sent` is False (never
     raises) for both "not configured" and any real SMTP failure, so
     app.py can log either case without special-casing them."""
-    config = _smtp_config()
+    config = _mail_config()
     if config is None:
-        return False, "SMTP not configured (SMTP_USER/SMTP_PASSWORD unset)"
+        return False, "Email not configured (RESEND_API_KEY unset)"
     subject = f"UniResto order confirmed -- {order['restaurant_name']}"
     text_body = _format_order_text(order)
     html_body = _html_shell(f"Your order at {order['restaurant_name']} is confirmed.", _format_order_html(order), config)
@@ -221,9 +232,9 @@ def send_verification_code(to_email: str, code: str) -> tuple[bool, str | None]:
     types in -- see orderability_engine/email_verification.py) so this
     function stays a pure "format and send" step, consistent with how
     send_order_confirmation never computes the order it's asked to send."""
-    config = _smtp_config()
+    config = _mail_config()
     if config is None:
-        return False, "SMTP not configured (SMTP_USER/SMTP_PASSWORD unset)"
+        return False, "Email not configured (RESEND_API_KEY unset)"
     subject = "Your UniResto verification code"
     text_body = (
         f"Your UniResto verification code is: {code}\n\n"
@@ -292,9 +303,9 @@ def send_order_needs_confirmation(
         </table>
         <p style="margin:20px 0 0;color:#6b7280;font-size:13px;">Order #{order['id']}. If you don't respond, the order stays unconfirmed.</p>"""
 
-    config = _smtp_config()
+    config = _mail_config()
     if config is None:
-        return False, "SMTP not configured (SMTP_USER/SMTP_PASSWORD unset)"
+        return False, "Email not configured (RESEND_API_KEY unset)"
     subject = f"Confirm your UniResto order -- {order['restaurant_name']}"
     html_body = _html_shell(f"Real price for order #{order['id']} is €{real_price:.2f} -- please confirm.", body_html, config)
     return _send(to_email, subject, text_body, html_body)
