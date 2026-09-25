@@ -586,6 +586,7 @@ const ICON_PATHS = {
   chevron: '<path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
   mail: '<rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M3.5 6.5L12 13l8.5-6.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
   phone: '<path d="M6.6 10.8c1.4 2.8 3.8 5.2 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.3 21 3 13.7 3 4.9c0-.6.4-1 1-1h3.4c.6 0 1 .4 1 1 0 1.2.2 2.4.6 3.6.1.4 0 .8-.2 1L6.6 10.8z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" fill="none"/>',
+  delivery: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" fill="none"/><path d="M4.5 7.5L12 12l7.5-4.5M12 12v9" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none"/>',
 };
 
 function icon(name, size = 24) {
@@ -1019,7 +1020,7 @@ function renderBottomNav() {
 // refreshing mid-checkout lands back on that restaurant's menu, not on
 // the cart and not all the way back to Home.
 const LOCATION_STORAGE_KEY = "uniresto.location.v1";
-const RESTORABLE_SCREENS = new Set(["restaurants", "dates", "menu", "favorites", "order-history", "profile"]);
+const RESTORABLE_SCREENS = new Set(["role", "restaurants", "dates", "menu", "favorites", "order-history", "profile", "delivery"]);
 
 function saveLocation() {
   if (!RESTORABLE_SCREENS.has(state.screen)) return;
@@ -1046,8 +1047,24 @@ async function restoreLocation() {
   } catch {
     saved = null;
   }
-  if (!saved || !RESTORABLE_SCREENS.has(saved.screen) || saved.screen === "restaurants") return false;
+  // "role" is excluded the same way "restaurants" used to be: it's now
+  // init()'s own ultimate fallback below, so explicitly restoring TO it
+  // would be a no-op anyway -- falling through to that fallback lands in
+  // the exact same place. "restaurants" itself, unlike before, now DOES
+  // restore properly (see the branch below): it's no longer the
+  // fallback screen, so a customer mid-browsing who refreshes needs an
+  // explicit restore to stay there instead of being bounced back to the
+  // role picker.
+  if (!saved || !RESTORABLE_SCREENS.has(saved.screen) || saved.screen === "role") return false;
 
+  if (saved.screen === "restaurants") {
+    goTo("restaurants");
+    return true;
+  }
+  if (saved.screen === "delivery") {
+    goTo("delivery");
+    return true;
+  }
   if (saved.screen === "favorites") {
     await openFavorites();
     return true;
@@ -1115,6 +1132,79 @@ function buildingLabel(building) {
   if (!building) return null;
   const key = BUILDING_I18N_KEYS[building];
   return key ? tr(key) : building;
+}
+
+// The very first screen on a fresh launch (see init()'s fallback below) --
+// picks between the two personas this app now serves: a customer placing
+// an order, or the person delivering already-placed orders. A returning
+// visit mid-session (a manual refresh) skips straight back to whichever
+// of the two screens below the user was already on -- see
+// RESTORABLE_SCREENS/restoreLocation() -- this picker itself is never
+// re-shown just because the user tapped "Home".
+function renderRole() {
+  app.innerHTML = "";
+  app.append(el(`<p class="eyebrow" style="padding-top:28px">${escapeHtml(tr("tagline"))}</p>`));
+  app.append(el(`<h1 class="large-title">${escapeHtml(tr("roleQuestion"))}</h1>`));
+
+  const grid = el(`<div class="restaurant-grid"></div>`);
+  const roles = [
+    { key: "eat", titleKey: "roleEat", subtitleKey: "roleEatSubtitle", iconName: "fork", colorClass: "is-veg", go: () => goTo("restaurants") },
+    { key: "delivery", titleKey: "roleDelivery", subtitleKey: "roleDeliverySubtitle", iconName: "delivery", colorClass: "is-drink", go: () => goTo("delivery") },
+  ];
+  for (const role of roles) {
+    const card = el(`
+      <button class="restaurant-card" aria-label="${tr("select")}: ${escapeHtml(tr(role.titleKey))}">
+        <div class="restaurant-card-main">
+          <div class="icon-avatar ${role.colorClass}">${icon(role.iconName, 20)}</div>
+          <div>
+            <h2>${escapeHtml(tr(role.titleKey))}</h2>
+            <p class="kind">${escapeHtml(tr(role.subtitleKey))}</p>
+          </div>
+        </div>
+      </button>
+    `);
+    card.addEventListener("click", role.go);
+    grid.append(card);
+  }
+  app.append(grid);
+}
+
+// Example-only for now (see the .example-banner/.example-badge on every
+// card below): there's no authenticated "who's delivering" concept in
+// this app yet, and this screen is reachable by anyone who taps
+// "Delivery" on the role picker above -- so it must never show a real
+// customer's name, email, or delivery location until that's actually
+// built. The dish names are real (pulled from the same live menu data
+// the rest of the app uses), only the orders themselves are made up.
+const EXAMPLE_ORDERS = [
+  { restaurant: "Altius", items: "2× Croissant fourré 70 g, 1× Bouillon de légumes", location: "Building G · Room 2211" },
+  { restaurant: "Brasserie John's", items: "1× Mini baguette sans gluten fromage", location: "JFK building · Room 0140" },
+  { restaurant: "Altius", items: "1× Rôti de porc Orloff, 1× Salad'bar, 1× Paris - Brest", location: "Building D · Room 3105" },
+  { restaurant: "Brasserie John's", items: "3× Wrap aux falafels", location: "Weicker Building" },
+];
+
+function renderDelivery() {
+  app.innerHTML = "";
+  app.append(header({ title: tr("deliveryOrdersTitle"), back: () => goTo("role") }));
+  app.append(el(`<p class="example-banner">${escapeHtml(tr("deliveryExampleBanner"))}</p>`));
+
+  const list = el(`<div class="order-list"></div>`);
+  for (const order of EXAMPLE_ORDERS) {
+    const card = el(`
+      <div class="restaurant-card">
+        <div class="restaurant-card-main">
+          <div class="icon-avatar is-other">${icon("receipt", 20)}</div>
+          <div>
+            <h2>${escapeHtml(order.restaurant)} <span class="example-badge">${escapeHtml(tr("exampleBadge"))}</span></h2>
+            <p class="kind">${escapeHtml(order.items)}</p>
+            <p class="kind">${escapeHtml(order.location)}</p>
+          </div>
+        </div>
+      </div>
+    `);
+    list.append(card);
+  }
+  app.append(list);
 }
 
 function renderRestaurants() {
@@ -2956,6 +3046,12 @@ function render() {
   offScroll(updateCategoryNavHighlight);
 
   switch (state.screen) {
+    case "role":
+      renderRole();
+      break;
+    case "delivery":
+      renderDelivery();
+      break;
     case "restaurants":
       renderRestaurants();
       break;
@@ -3078,7 +3174,7 @@ async function init() {
   }
 
   const restored = await restoreLocation();
-  if (!restored) goTo("restaurants");
+  if (!restored) goTo("role");
 }
 
 init();

@@ -233,6 +233,38 @@ svg { display: block; }
   .restaurant-grid { grid-template-columns: 1fr 1fr; }
 }
 
+/* Delivery's order list: same .restaurant-card look, but deliberately
+   never goes 2-column at wider widths like .restaurant-grid does above
+   -- orders read top-to-bottom as a queue, not a picker grid. */
+.order-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4) var(--space-4);
+}
+
+.example-banner {
+  margin: 0 var(--space-4) var(--space-3);
+  padding: var(--space-3);
+  background: var(--color-unknown-bg);
+  color: var(--color-unknown);
+  border-radius: var(--radius-md);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.example-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--color-unknown-bg);
+  color: var(--color-unknown);
+  flex: 0 0 auto;
+}
+
 .restaurant-card {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
