@@ -1212,7 +1212,14 @@ function renderDelivery() {
 
 function renderRestaurants() {
   app.innerHTML = "";
-  app.append(el(`<p class="eyebrow" style="padding-top:28px">${escapeHtml(tr("tagline"))}</p>`));
+  const backRow = el(`
+    <div style="padding: var(--space-4) var(--space-4) 0;">
+      <button class="back-button" aria-label="${escapeHtml(tr("back"))}">${icon("back", 20)}</button>
+    </div>
+  `);
+  backRow.querySelector(".back-button").addEventListener("click", () => goTo("role"));
+  app.append(backRow);
+  app.append(el(`<p class="eyebrow" style="padding-top:var(--space-3)">${escapeHtml(tr("tagline"))}</p>`));
   app.append(el(`<h1 class="large-title">${escapeHtml(tr("whereToEat"))}</h1>`));
 
   const grid = el(`<div class="restaurant-grid"></div>`);
