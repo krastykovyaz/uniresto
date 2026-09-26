@@ -2371,6 +2371,7 @@ function renderSummaryBar() {
     <div class="summary-bar">
       <div class="summary-text">
         <strong>${tr("itemCount", { n: totals.itemCount })}</strong>
+        <span>${escapeHtml(localizedPriceSummary(totals))}</span>
       </div>
       <button type="button">${escapeHtml(tr("viewOrder"))}</button>
     </div>
