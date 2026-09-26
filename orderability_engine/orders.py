@@ -325,6 +325,22 @@ class OrderStore:
             ids = [r[0] for r in self._conn.execute("SELECT id FROM orders WHERE status = ? ORDER BY id DESC", (status,)).fetchall()]
         return [self.get_order(i) for i in ids]
 
+    def list_recent_orders(self, limit: int = 100) -> list[dict]:
+        """Part 52+: real orders for the in-app Delivery (courier) screen
+        -- every status except 'cancelled' (a courier has nothing to do
+        with one that never happened), newest first. Unlike
+        list_orders_by_status() this deliberately isn't scoped to one
+        status: a courier benefits from seeing an order the moment it's
+        placed ('pending'), not only once an admin has actioned it."""
+        with self._lock:
+            ids = [
+                r[0]
+                for r in self._conn.execute(
+                    "SELECT id FROM orders WHERE status != 'cancelled' ORDER BY id DESC LIMIT ?", (limit,)
+                ).fetchall()
+            ]
+        return [self.get_order(i) for i in ids]
+
     def mark_reviewing(self, order_id: int) -> bool:
         """Part 37: the admin has seen the order (typically via the
         "I'm checking this order" link on the Telegram ping) and is

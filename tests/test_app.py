@@ -5,6 +5,7 @@ import pytest
 
 from app import create_app
 from orderability_engine.cache import OrderabilityCache
+from orderability_engine.delivery_subscribers import DeliverySubscriberStore
 from orderability_engine.models import TZINFO
 from orderability_engine.orders import OrderStore
 from orderability_engine.service import OrderabilityService
@@ -35,7 +36,8 @@ def _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, 
         now=now or datetime.datetime.combine(fixture_today, datetime.time(12, 0), tzinfo=TZINFO),
     )
     order_store = OrderStore(tmp_path / "orders.db")
-    app = create_app(service=service, order_store=order_store)
+    delivery_subscriber_store = DeliverySubscriberStore(tmp_path / "orders.db")
+    app = create_app(service=service, order_store=order_store, delivery_subscriber_store=delivery_subscriber_store)
     app.testing = True
     return app.test_client()
 
@@ -526,6 +528,117 @@ def test_verify_code_with_wrong_code_fails(client):
 def test_verify_code_missing_fields_is_400(client):
     assert client.post("/api/email/verify-code", json={"email": "student@uni.lu"}).status_code == 400
     assert client.post("/api/email/verify-code", json={"code": "123456"}).status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Delivery registration + real orders (Part 52+)
+# ---------------------------------------------------------------------------
+
+
+def test_delivery_register_send_code_rejects_non_uni_lu_email(client):
+    resp = client.post("/api/delivery/register/send-code", json={"email": "courier@gmail.com"})
+    assert resp.status_code == 400
+
+
+def test_delivery_register_verify_code_persists_the_subscriber(client):
+    with patch("app.generate_verification_code", return_value="654321"), patch(
+        "app.send_verification_code", return_value=(True, None)
+    ):
+        client.post("/api/delivery/register/send-code", json={"email": "courier@uni.lu"})
+    resp = client.post("/api/delivery/register/verify-code", json={"email": "courier@uni.lu", "code": "654321"})
+    assert resp.get_json()["verified"] is True
+    assert "courier@uni.lu" in client.application.config["DELIVERY_SUBSCRIBER_STORE"].list_emails()
+
+
+def test_delivery_register_verify_code_wrong_code_does_not_persist(client):
+    with patch("app.generate_verification_code", return_value="654321"), patch(
+        "app.send_verification_code", return_value=(True, None)
+    ):
+        client.post("/api/delivery/register/send-code", json={"email": "courier@uni.lu"})
+    resp = client.post("/api/delivery/register/verify-code", json={"email": "courier@uni.lu", "code": "000000"})
+    assert resp.get_json()["verified"] is False
+    assert "courier@uni.lu" not in client.application.config["DELIVERY_SUBSCRIBER_STORE"].list_emails()
+
+
+def test_delivery_register_code_is_not_accepted_by_customer_email_verification(client):
+    # A code issued for courier registration must not also verify the
+    # customer checkout email flow (two separate EmailVerificationStore
+    # instances) -- and vice versa (test_verify_code_with_no_code_requested_fails
+    # already covers the customer store never having seen this address).
+    with patch("app.generate_verification_code", return_value="654321"), patch(
+        "app.send_verification_code", return_value=(True, None)
+    ):
+        client.post("/api/delivery/register/send-code", json={"email": "student@uni.lu"})
+    resp = client.post("/api/email/verify-code", json={"email": "student@uni.lu", "code": "654321"})
+    assert resp.get_json()["verified"] is False
+    assert resp.get_json()["reason"] == "no_code_requested"
+
+
+def test_delivery_orders_returns_real_orders_and_strips_customer_email(client):
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    resp = client.get("/api/delivery/orders")
+    assert resp.status_code == 200
+    orders = resp.get_json()
+    assert any(o["id"] == order_id for o in orders)
+    for o in orders:
+        assert "customer_email" not in o
+
+
+def test_delivery_orders_excludes_cancelled(client):
+    order_id = _create_basic_order(client)
+    store = client.application.config["ORDER_STORE"]
+    token = store.set_real_price(order_id, 6.70)
+    store.cancel_order(order_id, token)
+    resp = client.get("/api/delivery/orders")
+    assert order_id not in [o["id"] for o in resp.get_json()]
+
+
+def test_create_order_notifies_every_registered_courier(client):
+    with patch("app.generate_verification_code", return_value="654321"), patch(
+        "app.send_verification_code", return_value=(True, None)
+    ):
+        client.post("/api/delivery/register/send-code", json={"email": "courier@uni.lu"})
+    client.post("/api/delivery/register/verify-code", json={"email": "courier@uni.lu", "code": "654321"})
+
+    with patch("app.send_admin_notification", return_value=(True, None)), patch(
+        "app.send_delivery_notification", return_value=(True, None)
+    ) as mock_notify:
+        resp = client.post(
+            "/api/orders",
+            json={"restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}]},
+        )
+    assert resp.status_code == 201
+    mock_notify.assert_called_once()
+    assert mock_notify.call_args[0][0] == "courier@uni.lu"
+    assert mock_notify.call_args[0][1]["id"] == resp.get_json()["id"]
+
+
+def test_create_order_with_no_registered_couriers_notifies_no_one(client):
+    with patch("app.send_admin_notification", return_value=(True, None)), patch(
+        "app.send_delivery_notification"
+    ) as mock_notify:
+        client.post(
+            "/api/orders",
+            json={"restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}]},
+        )
+    mock_notify.assert_not_called()
+
+
+def test_create_order_still_succeeds_when_courier_notification_fails(client):
+    with patch("app.generate_verification_code", return_value="654321"), patch(
+        "app.send_verification_code", return_value=(True, None)
+    ):
+        client.post("/api/delivery/register/send-code", json={"email": "courier@uni.lu"})
+    client.post("/api/delivery/register/verify-code", json={"email": "courier@uni.lu", "code": "654321"})
+
+    with patch("app.send_admin_notification", return_value=(True, None)), patch(
+        "app.send_delivery_notification", side_effect=Exception("smtp exploded")
+    ):
+        resp = client.post(
+            "/api/orders",
+            json={"restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}]},
+        )
+    assert resp.status_code == 201
 
 
 # ---------------------------------------------------------------------------

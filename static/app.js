@@ -1176,60 +1176,200 @@ function renderRole() {
   app.append(grid);
 }
 
-// Example-only for now (see the .example-banner/.example-badge on every
-// card below): there's no authenticated "who's delivering" concept in
-// this app yet, and this screen is reachable by anyone who taps
-// "Delivery" on the role picker above -- so it must never show a real
-// customer's name, email, or delivery location until that's actually
-// built. The dish names are real (pulled from the same live menu data
-// the rest of the app uses), only the orders themselves are made up.
-const EXAMPLE_ORDERS = [
-  { restaurant: "Altius", items: "2× Croissant fourré 70 g, 1× Bouillon de légumes", location: "Building G · Room 2211" },
-  { restaurant: "Brasserie John's", items: "1× Mini baguette sans gluten fromage", location: "JFK building · Room 0140" },
-  { restaurant: "Altius", items: "1× Rôti de porc Orloff, 1× Salad'bar, 1× Paris - Brest", location: "Building D · Room 3105" },
-  { restaurant: "Brasserie John's", items: "3× Wrap aux falafels", location: "Weicker Building" },
-];
-
 // Groups orders under their canteen name, each group collapsible on its
 // own (tap the canteen name) -- reads as a per-canteen queue instead of
 // one flat list once there's more than a couple of orders. Preserves
-// EXAMPLE_ORDERS' own order for which canteen appears first.
+// the real orders' own order (newest-first, from the backend) for which
+// canteen appears first.
 function groupOrdersByCanteen(orders) {
   const groups = new Map();
   for (const order of orders) {
-    if (!groups.has(order.restaurant)) groups.set(order.restaurant, []);
-    groups.get(order.restaurant).push(order);
+    if (!groups.has(order.restaurant_name)) groups.set(order.restaurant_name, []);
+    groups.get(order.restaurant_name).push(order);
   }
   return groups;
 }
 
-function renderDelivery() {
+const DELIVERY_REGISTERED_KEY = "uniresto.deliveryRegistered.v1";
+
+// Purely a per-device convenience (skip re-showing the registration form
+// once it's already succeeded here) -- the SERVER is the only source of
+// truth for who's actually registered (DeliverySubscriberStore); this
+// never gates viewing the order list itself, only whether the "register
+// for email alerts" form or a small confirmation note is shown.
+function loadDeliveryRegisteredEmail() {
+  try {
+    return localStorage.getItem(DELIVERY_REGISTERED_KEY);
+  } catch {
+    return null;
+  }
+}
+function saveDeliveryRegisteredEmail(email) {
+  try {
+    localStorage.setItem(DELIVERY_REGISTERED_KEY, email);
+  } catch {
+    /* localStorage unavailable -- registration still succeeded server-side */
+  }
+}
+
+// Same two-step send-code/verify-code flow as openEmailSheet() (Part 27),
+// against the delivery-specific endpoints (a SEPARATE verification store
+// server-side -- see app.py) -- reusing the exact "prove you can read
+// this address" mechanism customers already use, not a new one, per the
+// explicit instruction this was built from. Inline on the page rather
+// than a bottom sheet: this is the primary reason to be on this screen
+// at all, not a secondary settings action.
+function deliveryRegisterCard() {
+  const registeredEmail = loadDeliveryRegisteredEmail();
+  if (registeredEmail) {
+    return el(`<p class="info-banner">${escapeHtml(tr("deliveryRegisteredAs", { email: registeredEmail }))}</p>`);
+  }
+
+  const card = el(`<div class="delivery-register-card"></div>`);
+  let step = "enter";
+  let pendingEmail = "";
+
+  function renderStep() {
+    if (step === "enter") {
+      card.innerHTML = `
+        <p class="delivery-register-hint">${escapeHtml(tr("deliveryRegisterHint"))}</p>
+        <div class="field-block">
+          <input type="email" inputmode="email" class="delivery-register-input" placeholder="${escapeHtml(tr("customerEmailPlaceholder"))}">
+        </div>
+        <button type="button" class="primary-button delivery-register-send">${escapeHtml(tr("sendCode"))}</button>
+      `;
+      const input = card.querySelector(".delivery-register-input");
+      card.querySelector(".delivery-register-send").addEventListener("click", () => requestCode(input.value.trim()));
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") requestCode(input.value.trim());
+      });
+    } else {
+      card.innerHTML = `
+        <p class="delivery-register-hint">${escapeHtml(tr("codeSentHint", { email: pendingEmail }))}</p>
+        <div class="field-block">
+          <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" class="delivery-register-code" placeholder="000000">
+        </div>
+        <button type="button" class="primary-button delivery-register-confirm">${escapeHtml(tr("confirmCode"))}</button>
+        <button type="button" class="secondary-button delivery-register-resend">${escapeHtml(tr("resendCode"))}</button>
+      `;
+      const codeInput = card.querySelector(".delivery-register-code");
+      card.querySelector(".delivery-register-confirm").addEventListener("click", () => submitCode(codeInput.value.trim()));
+      codeInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") card.querySelector(".delivery-register-confirm").click();
+      });
+      card.querySelector(".delivery-register-resend").addEventListener("click", () => requestCode(pendingEmail));
+    }
+  }
+
+  async function requestCode(email) {
+    if (!email) return;
+    if (!isAllowedUniLuEmail(email)) {
+      showToast(tr("invalidUniLuEmail"));
+      return;
+    }
+    const sendBtn = card.querySelector(".delivery-register-send, .delivery-register-resend");
+    if (sendBtn) sendBtn.disabled = true;
+    try {
+      const result = await api("/api/delivery/register/send-code", { method: "POST", body: JSON.stringify({ email }) });
+      if (!result.sent) {
+        showToast(tr("verificationSendFailed"));
+        if (sendBtn) sendBtn.disabled = false;
+        return;
+      }
+      pendingEmail = email;
+      step = "verify";
+      renderStep();
+    } catch (err) {
+      if (err.status === 429 && err.body && err.body.retry_after_seconds != null) {
+        showToast(tr("resendCooldown", { n: err.body.retry_after_seconds }));
+      } else {
+        showToast(tr("verificationSendFailed"));
+      }
+      if (sendBtn) sendBtn.disabled = false;
+    }
+  }
+
+  async function submitCode(code) {
+    if (!/^\d{6}$/.test(code)) {
+      showToast(tr("invalidCode"));
+      return;
+    }
+    const confirmBtn = card.querySelector(".delivery-register-confirm");
+    if (confirmBtn) confirmBtn.disabled = true;
+    try {
+      const result = await api("/api/delivery/register/verify-code", {
+        method: "POST",
+        body: JSON.stringify({ email: pendingEmail, code }),
+      });
+      if (!result.verified) {
+        const reasonKey =
+          { incorrect_code: "invalidCode", code_expired: "codeExpired", too_many_attempts: "tooManyAttempts", no_code_requested: "codeExpired" }[
+            result.reason
+          ] || "verificationFailed";
+        showToast(tr(reasonKey));
+        if (confirmBtn) confirmBtn.disabled = false;
+        return;
+      }
+      saveDeliveryRegisteredEmail(pendingEmail);
+      card.replaceWith(deliveryRegisterCard());
+    } catch {
+      showToast(tr("verificationFailed"));
+      if (confirmBtn) confirmBtn.disabled = false;
+    }
+  }
+
+  renderStep();
+  return card;
+}
+
+async function renderDelivery() {
   app.innerHTML = "";
   app.append(header({ title: tr("deliveryOrdersTitle"), back: () => goTo("role") }));
-  app.append(el(`<p class="example-banner">${escapeHtml(tr("deliveryExampleBanner"))}</p>`));
+  app.append(deliveryRegisterCard());
+  app.append(loadingState(tr("loadingOrders")));
+
+  let orders;
+  try {
+    orders = await api("/api/delivery/orders");
+  } catch {
+    if (state.screen !== "delivery") return; // navigated away while this was in flight
+    app.querySelector(".loading-state")?.replaceWith(emptyState("receipt", tr("deliveryOrdersLoadFailedTitle"), tr("deliveryOrdersLoadFailedBody")));
+    return;
+  }
+  if (state.screen !== "delivery") return; // navigated away while this was in flight
+  app.querySelector(".loading-state")?.remove();
+
+  if (orders.length === 0) {
+    app.append(emptyState("receipt", tr("deliveryOrdersEmptyTitle"), tr("deliveryOrdersEmptyBody")));
+    return;
+  }
 
   const list = el(`<div class="order-list"></div>`);
-  for (const [restaurant, orders] of groupOrdersByCanteen(EXAMPLE_ORDERS)) {
+  for (const [restaurant, canteenOrders] of groupOrdersByCanteen(orders)) {
     const group = el(`
       <div class="canteen-group">
         <button type="button" class="canteen-group-header">
           <span class="canteen-group-name">${escapeHtml(restaurant)}</span>
-          <span class="canteen-group-count">${escapeHtml(tr("orderCount", { n: orders.length }))}</span>
+          <span class="canteen-group-count">${escapeHtml(tr("orderCount", { n: canteenOrders.length }))}</span>
           <span class="canteen-group-chevron">${icon("chevron", 16)}</span>
         </button>
         <div class="canteen-group-body"></div>
       </div>
     `);
     const body = group.querySelector(".canteen-group-body");
-    for (const order of orders) {
+    for (const order of canteenOrders) {
+      const itemsSummary = order.items
+        .map((it) => `${dishNameLabel(it.name, state.lang)}${it.quantity > 1 ? ` ×${it.quantity}` : ""}`)
+        .join(", ");
       body.append(
         el(`
           <div class="restaurant-card">
             <div class="restaurant-card-main">
               <div class="icon-avatar is-other">${icon("receipt", 20)}</div>
               <div>
-                <h2>${escapeHtml(order.location)} <span class="example-badge">${escapeHtml(tr("exampleBadge"))}</span></h2>
-                <p class="kind">${escapeHtml(order.items)}</p>
+                <h2>${escapeHtml(order.delivery_location || tr("deliveryLocationNotGiven"))}</h2>
+                <p class="kind">${escapeHtml(itemsSummary)}</p>
+                <p class="kind">${escapeHtml(fmtLong(order.order_date))} · ${escapeHtml(orderStatusLabel(order.status))}</p>
               </div>
             </div>
           </div>

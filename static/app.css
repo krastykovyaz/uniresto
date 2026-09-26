@@ -243,7 +243,7 @@ svg { display: block; }
   padding: var(--space-2) var(--space-4) var(--space-4);
 }
 
-.example-banner {
+.info-banner {
   margin: 0 var(--space-4) var(--space-3);
   padding: var(--space-3);
   background: var(--color-unknown-bg);
@@ -253,17 +253,21 @@ svg { display: block; }
   line-height: 1.4;
 }
 
-.example-badge {
-  font-size: 0.65rem;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  padding: 2px 7px;
-  border-radius: 999px;
-  background: var(--color-unknown-bg);
-  color: var(--color-unknown);
-  flex: 0 0 auto;
+/* Delivery's own courier-registration form (Part 52+): inline on the
+   page, not a bottom sheet -- registering is the primary reason to be
+   on this screen, not a secondary settings action. Once registered,
+   .info-banner above shows a small confirmation in its place instead. */
+.delivery-register-card {
+  margin: 0 var(--space-4) var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
 }
+.delivery-register-card .field-block { padding: 0 0 var(--space-3); }
+.delivery-register-hint { margin: 0 0 var(--space-3); color: var(--color-text-muted); font-size: 0.85rem; line-height: 1.4; }
+.delivery-register-card .primary-button,
+.delivery-register-card .secondary-button { width: 100%; margin-top: var(--space-2); }
 
 .restaurant-card {
   background: var(--color-surface);

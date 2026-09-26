@@ -15,9 +15,11 @@ from dotenv import load_dotenv
 from flask import Flask, abort, jsonify, redirect, render_template, request
 
 from orderability_engine.cache import OrderabilityCache
+from orderability_engine.delivery_subscribers import DeliverySubscriberStore
 from orderability_engine.email_verification import EmailVerificationStore
 from orderability_engine.mailer import (
     generate_verification_code,
+    send_delivery_notification,
     send_order_confirmation,
     send_order_needs_confirmation,
     send_verification_code,
@@ -78,6 +80,7 @@ def create_app(
     service: OrderabilityService | None = None,
     order_store: OrderStore | None = None,
     email_verification_store: EmailVerificationStore | None = None,
+    delivery_subscriber_store: DeliverySubscriberStore | None = None,
 ) -> Flask:
     app = Flask(__name__)
 
@@ -89,6 +92,12 @@ def create_app(
     )
     app.config["ORDER_STORE"] = order_store or OrderStore("orders.db")
     app.config["EMAIL_VERIFICATION_STORE"] = email_verification_store or EmailVerificationStore()
+    # Reuses the SAME verification-code flow as the customer checkout
+    # email (Part 27) -- see EmailVerificationStore itself, and
+    # delivery_subscribers.py's own docstring for why registering is
+    # just "prove you can read this address", never a real login.
+    app.config["DELIVERY_VERIFICATION_STORE"] = EmailVerificationStore()
+    app.config["DELIVERY_SUBSCRIBER_STORE"] = delivery_subscriber_store or DeliverySubscriberStore("orders.db")
     app.config["RESTAURANTS_BY_SLUG"] = by_slug
 
     def svc() -> OrderabilityService:
@@ -99,6 +108,12 @@ def create_app(
 
     def email_verification() -> EmailVerificationStore:
         return app.config["EMAIL_VERIFICATION_STORE"]
+
+    def delivery_verification() -> EmailVerificationStore:
+        return app.config["DELIVERY_VERIFICATION_STORE"]
+
+    def delivery_subscribers() -> DeliverySubscriberStore:
+        return app.config["DELIVERY_SUBSCRIBER_STORE"]
 
     def get_restaurant_or_404(slug: str):
         restaurant = by_slug.get(slug)
@@ -274,6 +289,24 @@ def create_app(
             order, admin_url=admin_url, mark_reviewing_url=mark_reviewing_url, restopolis_url=restopolis_url
         )
 
+        # Part 52+: emails every registered courier the moment the order
+        # is placed (not gated on admin confirmation -- a courier can
+        # start planning the pickup right away). Best-effort per address,
+        # same reasoning as every other notification above: one failed
+        # send must never fail the order, or stop the rest from going out
+        # -- wrapped here (unlike send_order_confirmation/
+        # send_admin_notification above) because this one loops over an
+        # unbounded, admin-uncontrolled list of addresses, so a single
+        # unexpected exception must not take down order creation OR skip
+        # notifying the remaining couriers.
+        for courier_email in delivery_subscribers().list_emails():
+            try:
+                send_delivery_notification(courier_email, order, restopolis_url=restopolis_url)
+            except Exception:  # noqa: BLE001 -- see comment above: must never fail the order or the remaining sends
+                logging.getLogger("uniresto.mailer").warning(
+                    "[MAIL] failed to notify courier %s about order #%s", courier_email, order["id"], exc_info=True
+                )
+
         return jsonify(order), 201
 
     @app.get("/api/orders/<int:order_id>")
@@ -327,6 +360,62 @@ def create_app(
             abort(400, description="Body must include 'email' and 'code'")
         verified, reason = email_verification().verify(email, code)
         return jsonify({"verified": verified, "reason": reason})
+
+    # ---------------------------------------------------- Delivery (Part 52+)
+
+    @app.post("/api/delivery/register/send-code")
+    def api_delivery_register_send_code():
+        """Same verification-code flow as /api/email/send-code above (a
+        SEPARATE EmailVerificationStore instance -- a code issued for
+        customer checkout must never also verify a courier registration,
+        or vice versa), for a courier proving they can read mail at the
+        address they want order notifications sent to."""
+        body = request.get_json(force=True, silent=True) or {}
+        email = (body.get("email") or "").strip()
+        if not email:
+            abort(400, description="Body must include 'email'")
+        if not _is_allowed_customer_email(email):
+            abort(400, description=f"'email' must be a valid address ending in {' or '.join(ALLOWED_EMAIL_DOMAINS)}")
+
+        remaining = delivery_verification().seconds_until_resend_allowed(email)
+        if remaining > 0:
+            return jsonify({"sent": False, "error": "rate_limited", "retry_after_seconds": remaining}), 429
+
+        code = generate_verification_code()
+        sent, error = send_verification_code(email, code)
+        if sent:
+            delivery_verification().issue(email, code)
+        return jsonify({"sent": sent, "error": error})
+
+    @app.post("/api/delivery/register/verify-code")
+    def api_delivery_register_verify_code():
+        """On a correct code, persists the address in DeliverySubscriberStore
+        (idempotent -- registering twice is fine) so every future order
+        notifies it; on an incorrect/expired one, nothing is persisted."""
+        body = request.get_json(force=True, silent=True) or {}
+        email = (body.get("email") or "").strip()
+        code = (body.get("code") or "").strip()
+        if not email or not code:
+            abort(400, description="Body must include 'email' and 'code'")
+        verified, reason = delivery_verification().verify(email, code)
+        if verified:
+            delivery_subscribers().add(email)
+        return jsonify({"verified": verified, "reason": reason})
+
+    @app.get("/api/delivery/orders")
+    def api_delivery_orders():
+        """Real orders for the in-app Delivery screen (Part 52+) -- every
+        status except 'cancelled', newest first (see
+        OrderStore.list_recent_orders()). Deliberately strips
+        customer_email from every order before returning: a courier needs
+        to know WHERE to bring the order, never who placed it. Viewing
+        this list needs no registration/verification at all (see
+        delivery_subscribers.py's own docstring) -- registering only
+        controls whether an address gets emailed."""
+        orders = store().list_recent_orders()
+        for order in orders:
+            order.pop("customer_email", None)
+        return jsonify(orders)
 
     @app.post("/api/smart-lunch")
     def api_smart_lunch():

@@ -252,6 +252,121 @@ def send_verification_code(to_email: str, code: str) -> tuple[bool, str | None]:
     return _send(to_email, subject, text_body, html_body)
 
 
+def _format_delivery_text(order: dict, restopolis_url: str | None) -> str:
+    """Plain-text body for send_delivery_notification() below -- grouped
+    by category (see orderability_engine/pricing.py's category_breakdown(),
+    same idea as telegram_notify.py's admin ping), each with BOTH the
+    adulte and apprenant price, since a courier bringing food to campus
+    has no way to know which the recipient actually is. Deliberately
+    never includes order["customer_email"]: a courier needs to know
+    WHERE to bring the order, not who placed it."""
+    from orderability_engine.pricing import category_breakdown
+
+    lines = [f"New order #{order['id']} -- {order['restaurant_name']}, {order['order_date']}", ""]
+    by_category: dict[str, list[dict]] = {}
+    for item in order["items"]:
+        by_category.setdefault(item.get("category") or "Other", []).append(item)
+    for category, items in by_category.items():
+        lines.append(f"{category}:")
+        for item in items:
+            lines.append(f"  - {item['name']} x{item['quantity']}")
+    if restopolis_url:
+        lines.append("")
+        lines.append(f"Restaurant on Restopolis: {restopolis_url}")
+
+    breakdown = category_breakdown(order["items"])
+    if breakdown:
+        lines.append("")
+        lines.append("Totals by category (staff price / student price):")
+        adulte_sum = 0.0
+        apprenant_sum = 0.0
+        for entry in breakdown:
+            lines.append(f"  {entry['category']}: €{entry['adulte_total']:.2f} / €{entry['apprenant_total']:.2f}")
+            adulte_sum += entry["adulte_total"]
+            apprenant_sum += entry["apprenant_total"]
+        lines.append(f"  Total: €{adulte_sum:.2f} / €{apprenant_sum:.2f}")
+
+    if order.get("delivery_location"):
+        lines.append("")
+        lines.append(f"Delivery location: {order['delivery_location']}")
+
+    return "\n".join(lines)
+
+
+def _format_delivery_html(order: dict, restopolis_url: str | None) -> str:
+    from orderability_engine.pricing import category_breakdown
+
+    rows = []
+    for item in order["items"]:
+        rows.append(
+            f'<tr><td style="padding:4px 0;color:#6b7280;font-size:13px;">{item["category"]}</td></tr>'
+            f'<tr><td style="padding:0 0 6px;">{item["name"]} × {item["quantity"]}</td></tr>'
+        )
+
+    breakdown = category_breakdown(order["items"])
+    breakdown_rows = []
+    adulte_sum = 0.0
+    apprenant_sum = 0.0
+    for entry in breakdown:
+        breakdown_rows.append(
+            f'<tr><td style="padding:4px 0;">{entry["category"]}</td>'
+            f'<td style="padding:4px 0;text-align:right;color:#6b7280;">€{entry["adulte_total"]:.2f} / €{entry["apprenant_total"]:.2f}</td></tr>'
+        )
+        adulte_sum += entry["adulte_total"]
+        apprenant_sum += entry["apprenant_total"]
+    total_row = ""
+    if breakdown:
+        total_row = (
+            '<tr><td style="padding:10px 0 0;font-weight:700;border-top:1px solid #eef0f2;">Total (staff / student)</td>'
+            f'<td style="padding:10px 0 0;text-align:right;font-weight:700;border-top:1px solid #eef0f2;">€{adulte_sum:.2f} / €{apprenant_sum:.2f}</td></tr>'
+        )
+
+    restopolis_link = (
+        f'<p style="margin:16px 0 0;"><a href="{restopolis_url}" style="color:#1aa860;">Open restaurant on Restopolis</a></p>'
+        if restopolis_url
+        else ""
+    )
+    delivery = (
+        f'<p style="margin:16px 0 0;color:#6b7280;">Delivery location: {order["delivery_location"]}</p>'
+        if order.get("delivery_location")
+        else ""
+    )
+
+    return f"""\
+        <p style="margin:0 0 4px;font-size:17px;font-weight:700;">New order to deliver</p>
+        <p style="margin:0 0 20px;color:#6b7280;">{order['restaurant_name']} &middot; {order['order_date']}</p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;">
+          {''.join(rows)}
+        </table>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;margin-top:16px;">
+          {''.join(breakdown_rows)}
+          {total_row}
+        </table>
+        {restopolis_link}
+        {delivery}
+        <p style="margin:20px 0 0;color:#6b7280;font-size:13px;">Order #{order['id']}</p>"""
+
+
+def send_delivery_notification(to_email: str, order: dict, restopolis_url: str | None = None) -> tuple[bool, str | None]:
+    """Best-effort send to ONE registered courier address (Part 52+) --
+    same (sent, error) contract as every other function here. Called once
+    per registered address (see orderability_engine/delivery_subscribers.py)
+    the moment an order is placed. Shows BOTH the adulte (staff) and
+    apprenant (student) price per category (category_breakdown()) since
+    this app has no concept of which the recipient actually is -- and the
+    real Restopolis restaurant link (BtnChangeRestaurant deep link, same
+    one telegram_notify.py's admin ping uses; see its docstring for why
+    it can only go that far, not to the exact date/items). Deliberately
+    never includes the customer's own email."""
+    config = _mail_config()
+    if config is None:
+        return False, "Email not configured (RESEND_API_KEY unset)"
+    subject = f"New order to deliver -- {order['restaurant_name']}"
+    text_body = _format_delivery_text(order, restopolis_url)
+    html_body = _html_shell(f"New order #{order['id']} to deliver at {order['restaurant_name']}.", _format_delivery_html(order, restopolis_url), config)
+    return _send(to_email, subject, text_body, html_body)
+
+
 def send_order_needs_confirmation(
     to_email: str, order: dict, real_price: float, confirm_url: str, cancel_url: str
 ) -> tuple[bool, str | None]:

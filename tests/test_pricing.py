@@ -2,10 +2,14 @@ from orderability_engine.pricing import (
     COLD_DRINK_PRICES,
     HOT_DRINK_PRICES,
     MEAL_TIER_PRICES,
+    MEAL_TIER_PRICES_APPRENANT,
     REUSABLE_PACKAGING_PRICES,
     SANDWICH_PRICES,
+    SANDWICH_PRICES_APPRENANT,
     SNACK_PRICE,
+    SNACK_PRICE_APPRENANT,
     VIENNOISERIE_PRICES,
+    category_breakdown,
     compute_formula_total,
 )
 
@@ -279,3 +283,82 @@ def test_new_price_tables_match_the_official_adultes_tariff_for_known_items():
     assert COLD_DRINK_PRICES["Rosport Blue 1,00 l btl"] == 3.10
     assert REUSABLE_PACKAGING_PRICES["myCan"] == 9.00
     assert REUSABLE_PACKAGING_PRICES["Remboursement Consigne ECOBOX (1000 ml)"] == -5.00
+
+
+# ---------------------------------------------------------------------------
+# Apprenant (student) tier -- Part 52+: the app still CHARGES/DISPLAYS the
+# adulte tier everywhere by default (compute_formula_total's own default),
+# but a caller that genuinely needs both at once (the delivery
+# notification email) can ask for either.
+# ---------------------------------------------------------------------------
+
+
+def test_apprenant_tier_prices_match_the_official_tariff():
+    assert MEAL_TIER_PRICES_APPRENANT == {"main": 3.70, "main_starter": 4.20, "main_starter_dessert": 4.70}
+    assert SNACK_PRICE_APPRENANT == 3.50
+    assert SANDWICH_PRICES_APPRENANT["1/2 Levain fromage"] == 3.15
+    assert SANDWICH_PRICES_APPRENANT["1/2 tranche de pain"] == 0.25  # identical at both tiers
+
+
+def test_apprenant_tier_is_cheaper_than_adulte_for_a_full_meal():
+    items = [_line("Non-végétarien"), _line("Entrée"), _line("Dessert")]
+    adulte = compute_formula_total(items, tier="adulte")
+    apprenant = compute_formula_total(items, tier="apprenant")
+    assert adulte["total"] == 8.70
+    assert apprenant["total"] == 4.70
+    assert apprenant["total"] < adulte["total"]
+
+
+def test_apprenant_tier_for_a_sandwich():
+    result = compute_formula_total([_line("01.1 Sandwiches végétariens", name="1/2 Levain fromage")], tier="apprenant")
+    assert result["total"] == 3.15
+
+
+def test_invalid_tier_raises():
+    import pytest
+
+    with pytest.raises(ValueError):
+        compute_formula_total([_line("Non-végétarien")], tier="visiteur")
+
+
+# ---------------------------------------------------------------------------
+# category_breakdown() -- Part 52+: per-category subtotals at both tiers,
+# for the delivery notification email; never one lump total there.
+# ---------------------------------------------------------------------------
+
+
+def test_category_breakdown_combines_main_starter_dessert_into_one_meal_formula_entry():
+    items = [_line("Non-végétarien"), _line("Entrée"), _line("Dessert")]
+    breakdown = category_breakdown(items)
+    assert breakdown == [{"category": "Meal formula", "adulte_total": 8.70, "apprenant_total": 4.70}]
+
+
+def test_category_breakdown_gives_sandwiches_and_drinks_their_own_entries():
+    items = [
+        _line("Non-végétarien"),
+        _line("01.1 Sandwiches végétariens", name="1/2 Levain fromage"),
+        _line("11. Boissons chaudes", name="Cappuccino"),
+    ]
+    breakdown = category_breakdown(items)
+    assert {"category": "Meal formula", "adulte_total": 6.70, "apprenant_total": 3.70} in breakdown
+    assert {"category": "01.1 Sandwiches végétariens", "adulte_total": 3.30, "apprenant_total": 3.15} in breakdown
+    assert {"category": "11. Boissons chaudes", "adulte_total": 2.25, "apprenant_total": 1.95} in breakdown
+    assert len(breakdown) == 3
+
+
+def test_category_breakdown_skips_an_unpriced_category_entirely():
+    items = [_line("06. Fruits", name="Some brand new fruit never catalogued")]
+    assert category_breakdown(items) == []
+
+
+def test_category_breakdown_omits_meal_formula_entry_when_nothing_is_priced():
+    # A starter with no main can't be priced (see "no_main_dish" reason) --
+    # no fabricated Meal formula row for it.
+    items = [_line("Entrée")]
+    assert category_breakdown(items) == []
+
+
+def test_category_breakdown_excludes_included_free_sides():
+    items = [_line("Non-végétarien"), _line("Féculents"), _line("Légumes")]
+    breakdown = category_breakdown(items)
+    assert breakdown == [{"category": "Meal formula", "adulte_total": 6.70, "apprenant_total": 3.70}]
