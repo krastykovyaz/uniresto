@@ -15,7 +15,7 @@ import {
   computeFormulaTotal,
   priceForItem,
 } from "./pricing.js";
-import { LANGUAGES, allergenLabel, categoryLabel, getLanguage, intlLocale, langInfo, setLanguage, t } from "./i18n.js";
+import { LANGUAGES, allergenLabel, categoryLabel, dishNameLabel, getLanguage, intlLocale, langInfo, setLanguage, t } from "./i18n.js";
 import {
   CALORIE_BUCKETS,
   WEIGHT_BUCKETS,
@@ -1490,9 +1490,9 @@ function renderFavorites() {
 
     const row = el(`
       <article class="favorite-row">
-        <button type="button" class="heart-btn is-favorite" aria-label="${escapeHtml(tr("removeFavorite", { name: fav.name }))}" aria-pressed="true">${icon("heartFilled", 20)}</button>
+        <button type="button" class="heart-btn is-favorite" aria-label="${escapeHtml(tr("removeFavorite", { name: dishNameLabel(fav.name, state.lang) }))}" aria-pressed="true">${icon("heartFilled", 20)}</button>
         <div class="favorite-info">
-          <p class="name">${escapeHtml(fav.name)}</p>
+          <p class="name">${escapeHtml(dishNameLabel(fav.name, state.lang))}</p>
           <p class="restaurant">${escapeHtml(shortName(fav.restaurantName))}</p>
           ${
             liveItem
@@ -1504,7 +1504,7 @@ function renderFavorites() {
               : `<p class="status-line">${escapeHtml(restaurantStatus === "available" ? tr("favoriteNotOnTodayMenu") : dateStatusLabel(restaurantStatus))}</p>`
           }
         </div>
-        ${liveItem ? `<button type="button" class="order-now-btn" aria-label="${escapeHtml(tr("orderNow"))}: ${escapeHtml(fav.name)}">${icon("plus", 18)}</button>` : ""}
+        ${liveItem ? `<button type="button" class="order-now-btn" aria-label="${escapeHtml(tr("orderNow"))}: ${escapeHtml(dishNameLabel(fav.name, state.lang))}">${icon("plus", 18)}</button>` : ""}
       </article>
     `);
 
@@ -1610,7 +1610,7 @@ function renderOrderHistory() {
   }
 
   for (const order of state.orderHistoryOrders) {
-    const itemsSummary = order.items.map((it) => `${it.name}${it.quantity > 1 ? ` ×${it.quantity}` : ""}`).join(", ");
+    const itemsSummary = order.items.map((it) => `${dishNameLabel(it.name, state.lang)}${it.quantity > 1 ? ` ×${it.quantity}` : ""}`).join(", ");
     const row = el(`
       <article class="history-row">
         <p class="restaurant">${escapeHtml(shortName(order.restaurant_name))} · ${escapeHtml(fmtLong(order.order_date))}</p>
@@ -2293,11 +2293,11 @@ function foodCard(item) {
   const card = el(`
     <article class="food-card ${isSelected ? "is-selected" : ""}" data-item-id="${item.id}">
       <div class="select-check" aria-hidden="true">${icon(isSelected ? "check" : "plus", 16)}</div>
-      <button type="button" class="heart-btn ${isFav ? "is-favorite" : ""}" aria-label="${escapeHtml(tr(isFav ? "removeFavorite" : "addFavorite", { name: item.name }))}" aria-pressed="${isFav}">${icon(isFav ? "heartFilled" : "heart", 20)}</button>
+      <button type="button" class="heart-btn ${isFav ? "is-favorite" : ""}" aria-label="${escapeHtml(tr(isFav ? "removeFavorite" : "addFavorite", { name: dishNameLabel(item.name, state.lang) }))}" aria-pressed="${isFav}">${icon(isFav ? "heartFilled" : "heart", 20)}</button>
       <div class="card-head">
         <div class="icon-avatar ${categoryIconClass(item)}">${icon("fork", 18)}</div>
         <div class="card-title">
-          <p class="name">${escapeHtml(item.name)}</p>
+          <p class="name">${escapeHtml(dishNameLabel(item.name, state.lang))}</p>
           ${item.description ? `<p class="description">${escapeHtml(item.description)}</p>` : ""}
         </div>
       </div>
@@ -2323,9 +2323,9 @@ function foodCard(item) {
     qtyRow.append(
       el(`
       <div class="quantity-stepper">
-        <button type="button" aria-label="${escapeHtml(tr("decreaseQuantityOf", { name: item.name }))}">−</button>
+        <button type="button" aria-label="${escapeHtml(tr("decreaseQuantityOf", { name: dishNameLabel(item.name, state.lang) }))}">−</button>
         <span class="quantity-value">${sel.quantity}</span>
-        <button type="button" aria-label="${escapeHtml(tr("increaseQuantityOf", { name: item.name }))}">+</button>
+        <button type="button" aria-label="${escapeHtml(tr("increaseQuantityOf", { name: dishNameLabel(item.name, state.lang) }))}">+</button>
       </div>
     `)
     );
@@ -2350,7 +2350,7 @@ function foodCard(item) {
   card.setAttribute("role", "button");
   card.setAttribute("tabindex", "0");
   card.setAttribute("aria-pressed", String(isSelected));
-  card.setAttribute("aria-label", tr(isSelected ? "deselectItem" : "selectItem", { name: item.name }));
+  card.setAttribute("aria-label", tr(isSelected ? "deselectItem" : "selectItem", { name: dishNameLabel(item.name, state.lang) }));
   card.addEventListener("keydown", (e) => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
@@ -2642,7 +2642,7 @@ function renderSmartLunchResult() {
       grid.append(
         el(`
           <div class="smart-lunch-item">
-            <p class="name">${escapeHtml(item.name)}</p>
+            <p class="name">${escapeHtml(dishNameLabel(item.name, state.lang))}</p>
             <p class="meta">${weightText(item) ? escapeHtml(weightText(item)) : ""}${weightText(item) && caloriesText(item) ? " · " : ""}${caloriesText(item) ? escapeHtml(caloriesText(item)) : ""}</p>
           </div>
         `)
@@ -2887,16 +2887,16 @@ async function renderReview() {
     const line = el(`
       <div class="review-line">
         <div class="details">
-          <p class="name">${escapeHtml(item.name)}</p>
+          <p class="name">${escapeHtml(dishNameLabel(item.name, state.lang))}</p>
           <p class="meta">${weightText(item) ? `${escapeHtml(weightText(item))} ` : ""}× ${sel.quantity}${item.price != null ? ` · €${(item.price * sel.quantity).toFixed(2)}` : ""}</p>
         </div>
         <div class="line-actions">
           <div class="quantity-stepper">
-            <button type="button" aria-label="${escapeHtml(tr("decreaseQuantityOf", { name: item.name }))}">−</button>
+            <button type="button" aria-label="${escapeHtml(tr("decreaseQuantityOf", { name: dishNameLabel(item.name, state.lang) }))}">−</button>
             <span class="quantity-value">${sel.quantity}</span>
-            <button type="button" aria-label="${escapeHtml(tr("increaseQuantityOf", { name: item.name }))}">+</button>
+            <button type="button" aria-label="${escapeHtml(tr("increaseQuantityOf", { name: dishNameLabel(item.name, state.lang) }))}">+</button>
           </div>
-          <button type="button" class="remove-btn" aria-label="${escapeHtml(tr("remove"))}: ${escapeHtml(item.name)}">${escapeHtml(tr("remove"))}</button>
+          <button type="button" class="remove-btn" aria-label="${escapeHtml(tr("remove"))}: ${escapeHtml(dishNameLabel(item.name, state.lang))}">${escapeHtml(tr("remove"))}</button>
         </div>
       </div>
     `);
@@ -3012,7 +3012,7 @@ function renderConfirmation() {
     app.append(el(`
       <div class="review-line">
         <div class="details">
-          <p class="name">${escapeHtml(it.name)}</p>
+          <p class="name">${escapeHtml(dishNameLabel(it.name, state.lang))}</p>
           <p class="meta">${localizedWeightValue(it.weight_value, it.weight_unit) ? `${escapeHtml(localizedWeightValue(it.weight_value, it.weight_unit))} ` : ""}× ${it.quantity}${it.price != null ? ` · €${it.line_price.toFixed(2)}` : ""}</p>
         </div>
       </div>

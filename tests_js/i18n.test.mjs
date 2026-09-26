@@ -1,6 +1,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ALLERGEN_LABELS, CATEGORY_LABELS, LANGUAGES, allergenLabel, categoryLabel, intlLocale, langInfo, t, translations } from "../static/i18n.js";
+import {
+  ALLERGEN_LABELS,
+  CATEGORY_LABELS,
+  DISH_NAME_LABELS,
+  LANGUAGES,
+  allergenLabel,
+  categoryLabel,
+  dishNameLabel,
+  intlLocale,
+  langInfo,
+  t,
+  translations,
+} from "../static/i18n.js";
 
 test("11 languages are configured: the 10 most-spoken plus Luxembourgish", () => {
   assert.equal(LANGUAGES.length, 11);
@@ -87,6 +99,44 @@ test("categoryLabel falls back to the raw string for an unknown category", () =>
 test("categoryLabel in French returns the category unchanged (already French)", () => {
   for (const category of Object.keys(CATEGORY_LABELS)) {
     assert.equal(categoryLabel(category, "fr"), category);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// dishNameLabel / DISH_NAME_LABELS
+// ---------------------------------------------------------------------------
+
+test("every covered dish name has a translation in every configured language", () => {
+  // Unlike CATEGORY_LABELS/ALLERGEN_LABELS, this is NOT a closed set (the
+  // menu rotates daily) -- just checks internal consistency of whatever
+  // is covered so far, never completeness against the whole menu.
+  const langCodes = LANGUAGES.map((l) => l.code).sort();
+  for (const [name, dict] of Object.entries(DISH_NAME_LABELS)) {
+    assert.deepEqual(Object.keys(dict).sort(), langCodes, `incomplete translations for dish "${name}"`);
+  }
+});
+
+test("dishNameLabel translates a known descriptive dish name", () => {
+  assert.equal(dishNameLabel("Salade campagnarde", "en"), "Country salad");
+  assert.equal(dishNameLabel("Soupe de pommes de terre", "ru"), "Картофельный суп");
+});
+
+test("dishNameLabel falls back to the raw name for an unmapped dish", () => {
+  assert.equal(dishNameLabel("Some Future Dish Restopolis Adds", "en"), "Some Future Dish Restopolis Adds");
+});
+
+test("dishNameLabel in French returns the name unchanged (already French)", () => {
+  for (const name of Object.keys(DISH_NAME_LABELS)) {
+    assert.equal(dishNameLabel(name, "fr"), name);
+  }
+});
+
+test("dishNameLabel deliberately leaves real product/brand names untranslated", () => {
+  // Same "if it is not strange" judgment call documented on
+  // DISH_NAME_LABELS itself -- these read as brand names, not
+  // descriptive dish text, so they're simply not in the table at all.
+  for (const brandName of ["Rosport Blue 0,50 l btl", "Coca Cola 0,20 l btl", "myBento", "Nutchy"]) {
+    assert.equal(dishNameLabel(brandName, "zh"), brandName);
   }
 });
 
