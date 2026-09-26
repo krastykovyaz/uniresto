@@ -94,6 +94,23 @@ test("availableCategories preserves first-seen order and dedupes", () => {
   assert.deepEqual(availableCategories(items), ["Entrée", "Dessert"]);
 });
 
+test("availableCategories puts main dishes first regardless of raw menu order", () => {
+  // Restopolis's own HTML lists Entrée before the mains -- people order
+  // a main dish first, so the mains come first here instead.
+  const items = [
+    item({ category: "Dessert" }),
+    item({ category: "Entrée" }),
+    item({ category: "Non-végétarien" }),
+    item({ category: "Végan" }),
+  ];
+  assert.deepEqual(availableCategories(items), ["Non-végétarien", "Végan", "Entrée", "Dessert"]);
+});
+
+test("availableCategories trails an unrecognized category after every known one, in first-seen order", () => {
+  const items = [item({ category: "09. Something new" }), item({ category: "Dessert" }), item({ category: "Non-végétarien" })];
+  assert.deepEqual(availableCategories(items), ["Non-végétarien", "Dessert", "09. Something new"]);
+});
+
 test("availableAllergens dedupes by code and sorts by code", () => {
   const items = [
     item({ allergens: [{ code: 7, name: "Lait" }] }),

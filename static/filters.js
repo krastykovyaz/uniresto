@@ -24,9 +24,49 @@ export function defaultFilters() {
 export const WEIGHT_BUCKETS = ["any", "under100", "100to250", "over250"];
 export const CALORIE_BUCKETS = ["any", "under200", "200to400", "over400"];
 
-// Preserves first-seen order (matches how the menu itself lists
-// categories) rather than alphabetizing, so filter chips read in the
-// same order as the menu below them.
+// How people actually order at the canteen: pick a main dish first,
+// then a starter/side, then dessert, and only then browse extras
+// (takeaway snacks, sandwiches, pastries, drinks, packaging) -- NOT the
+// raw order Restopolis's own HTML happens to list categories in (which
+// puts Entrée before the mains). A category not listed here (Restopolis
+// adding one this table doesn't know about yet) still shows, just
+// trailing after every known one, in whatever order it was first seen
+// -- never hidden, same "don't guess, don't hide" rule as
+// categoryLabel().
+const CATEGORY_DISPLAY_PRIORITY = [
+  "Non-végétarien",
+  "Végétarien",
+  "Végan",
+  "Entrée",
+  "Féculents",
+  "Légumes",
+  "Dessert",
+  "Snack à emporter",
+  "01.1 Sandwiches végétariens",
+  "01.2 Sandwiches végans",
+  "01.3 Sandwiches non-végétariens",
+  "01.4 Sandwiches sans gluten",
+  "02. Viennoiseries",
+  "03. Gâteaux et cookies maison",
+  "04. Vitamines à emporter",
+  "05. Laitages",
+  "06. Fruits",
+  "07. Glaces",
+  "08. Pâtisserie",
+  "10.1 Boissons froides - Eau minérale et pétillante",
+  "10.2 Boissons froides - Jus",
+  "10.3 Boissons froides - Sodas",
+  "11. Boissons chaudes",
+  "12.1 Emballages et articles réutilisables",
+  "12.2 Emballages et articles à usage unique",
+];
+const CATEGORY_PRIORITY_INDEX = new Map(CATEGORY_DISPLAY_PRIORITY.map((category, i) => [category, i]));
+
+// Dedupes to first-seen order, then reorders by CATEGORY_DISPLAY_PRIORITY
+// (a stable sort, so anything not in that list keeps its first-seen
+// order, trailing after every known category) -- so filter chips and
+// the menu below them read in the order people actually order in, not
+// however Restopolis's HTML happens to list categories.
 export function availableCategories(items) {
   const seen = new Set();
   const order = [];
@@ -36,7 +76,14 @@ export function availableCategories(items) {
       order.push(it.category);
     }
   }
-  return order;
+  return order
+    .map((category, i) => ({ category, i }))
+    .sort((a, b) => {
+      const ai = CATEGORY_PRIORITY_INDEX.has(a.category) ? CATEGORY_PRIORITY_INDEX.get(a.category) : Infinity;
+      const bi = CATEGORY_PRIORITY_INDEX.has(b.category) ? CATEGORY_PRIORITY_INDEX.get(b.category) : Infinity;
+      return ai !== bi ? ai - bi : a.i - b.i;
+    })
+    .map(({ category }) => category);
 }
 
 // [{code, name}], deduplicated by code, sorted by code -- a stable order
