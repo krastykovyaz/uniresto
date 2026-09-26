@@ -1362,6 +1362,9 @@ svg { display: block; }
   #bottom-nav { justify-content: center; }
   #bottom-nav .nav-tab { max-width: 150px; }
   .filter-sheet { max-width: 600px; }
+
+  /* Wider screen, more breathing room: 4 across instead of 2. */
+  .food-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 
 /* -------------------------------------------------------- Language sheet */
