@@ -388,7 +388,7 @@ def test_smart_lunch_no_constraints_gives_up_to_three_options(client):
     assert resp.status_code == 200
     body = resp.get_json()
     assert [o["tier"] for o in body["options"]] == ["main", "main_starter", "main_starter_dessert"]
-    assert body["options"][0]["total_price"] == 6.00
+    assert body["options"][0]["total_price"] == 6.70
 
 
 def test_smart_lunch_vegan_preference_only_returns_the_vegan_main(client):

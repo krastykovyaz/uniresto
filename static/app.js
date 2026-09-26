@@ -9,6 +9,7 @@ import {
   INCLUDED_SIDE_CATEGORIES,
   MAIN_CATEGORIES,
   SANDWICH_CATEGORIES,
+  SNACK_CATEGORIES,
   STARTER_CATEGORIES,
   computeFormulaTotal,
 } from "./pricing.js";
@@ -453,6 +454,7 @@ function serverPriceBreakdown(order) {
       !STARTER_CATEGORIES.has(it.category) &&
       !DESSERT_CATEGORIES.has(it.category) &&
       !SANDWICH_CATEGORIES.has(it.category) &&
+      !SNACK_CATEGORIES.has(it.category) &&
       !INCLUDED_SIDE_CATEGORIES.has(it.category)
   );
   const otherKnownTotal = otherItems.filter((it) => it.line_price != null).reduce((sum, it) => sum + it.line_price, 0);
@@ -485,7 +487,7 @@ function formatServerPriceTotal(order) {
 // misleading "per-dish" number: the formula price is a property of the
 // whole meal, not of any single line.
 function priceBreakdown(totals) {
-  const formula = computeFormulaTotal(totals.lines.map((l) => ({ category: l.category, quantity: l.quantity })));
+  const formula = computeFormulaTotal(totals.lines.map((l) => ({ category: l.category, name: l.name, quantity: l.quantity })));
 
   const otherLines = totals.lines.filter(
     (l) =>
@@ -493,6 +495,7 @@ function priceBreakdown(totals) {
       !STARTER_CATEGORIES.has(l.category) &&
       !DESSERT_CATEGORIES.has(l.category) &&
       !SANDWICH_CATEGORIES.has(l.category) &&
+      !SNACK_CATEGORIES.has(l.category) &&
       !INCLUDED_SIDE_CATEGORIES.has(l.category)
   );
   const otherKnownTotal = otherLines.filter((l) => l.lineTotal != null).reduce((sum, l) => sum + l.lineTotal, 0);
@@ -503,7 +506,7 @@ function priceBreakdown(totals) {
 
 function formulaReasonText(formula) {
   if (!formula.reason) return null;
-  return tr(formula.reason === "no_main_dish" ? "formulaReasonNoMainDish" : "formulaReasonDessertWithoutStarter");
+  return tr("formulaReasonNoMainDish");
 }
 
 function localizedPriceSummary(totals) {
@@ -2208,7 +2211,8 @@ function priceIsUnspecified(item) {
     MAIN_CATEGORIES.has(item.category) ||
     STARTER_CATEGORIES.has(item.category) ||
     DESSERT_CATEGORIES.has(item.category) ||
-    SANDWICH_CATEGORIES.has(item.category)
+    SANDWICH_CATEGORIES.has(item.category) ||
+    SNACK_CATEGORIES.has(item.category)
   )
     return false;
   return true;

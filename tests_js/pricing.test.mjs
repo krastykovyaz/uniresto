@@ -1,13 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MEAL_TIER_PRICES, SANDWICH_PRICE, computeFormulaTotal } from "../static/pricing.js";
+import { MEAL_TIER_PRICES, SANDWICH_CATEGORIES, SANDWICH_PRICES, SNACK_PRICE, computeFormulaTotal } from "../static/pricing.js";
 
-const line = (category, quantity = 1) => ({ category, quantity });
+const line = (category, quantity = 1, name = "Test item") => ({ category, quantity, name });
 
 test("main dish alone", () => {
   const r = computeFormulaTotal([line("Non-végétarien")]);
   assert.equal(r.mainCount, 1);
-  assert.equal(r.total, 6.0);
+  assert.equal(r.total, 6.7);
   assert.equal(r.reason, null);
 });
 
@@ -15,7 +15,18 @@ test("main plus starter", () => {
   const r = computeFormulaTotal([line("Végétarien"), line("Entrée")]);
   assert.equal(r.mainCount, 1);
   assert.equal(r.starterCount, 1);
-  assert.equal(r.total, 7.0);
+  assert.equal(r.total, 7.7);
+  assert.equal(r.reason, null);
+});
+
+test("main plus dessert without starter is now a priced combination", () => {
+  // Unlike the previous version of this rule, Formule 2 ("main + starter
+  // OR main + dessert") means a dessert alone -- with no starter at all
+  // -- ALSO upgrades the tier. Real official pricing, not a guess.
+  const r = computeFormulaTotal([line("Végan"), line("Dessert")]);
+  assert.equal(r.mainCount, 1);
+  assert.equal(r.dessertCount, 1);
+  assert.equal(r.total, 7.7);
   assert.equal(r.reason, null);
 });
 
@@ -24,13 +35,13 @@ test("main plus starter plus dessert", () => {
   assert.equal(r.mainCount, 1);
   assert.equal(r.starterCount, 1);
   assert.equal(r.dessertCount, 1);
-  assert.equal(r.total, 8.0);
+  assert.equal(r.total, 8.7);
   assert.equal(r.reason, null);
 });
 
 test("included sides (Féculents/Légumes) do not add to the total", () => {
   const r = computeFormulaTotal([line("Non-végétarien"), line("Féculents"), line("Légumes")]);
-  assert.equal(r.total, 6.0);
+  assert.equal(r.total, 6.7);
 });
 
 test("starter alone with no main cannot be priced", () => {
@@ -52,23 +63,73 @@ test("dessert alone with no main cannot be priced", () => {
 
 test("empty selection is unpriced with no reason", () => {
   const r = computeFormulaTotal([]);
+  assert.equal(r.formulaCount, 0);
   assert.equal(r.total, null);
   assert.equal(r.reason, null);
 });
 
-test("main plus dessert without starter cannot be priced", () => {
-  // A dessert only upgrades the tier when a starter is already present
-  // -- skipping straight from main to dessert isn't a priced combination.
-  const r = computeFormulaTotal([line("Non-végétarien"), line("Dessert")]);
+test("snack à emporter is priced at a flat rate independent of the meal formula", () => {
+  const r = computeFormulaTotal([line("Snack à emporter", 1, "Wrap aux falafels")]);
+  assert.equal(r.snackCount, 1);
+  assert.equal(r.formulaCount, 1);
+  assert.equal(r.total, 4.8);
+  assert.equal(r.reason, null);
+});
+
+test("snack à emporter adds on top of a meal", () => {
+  const r = computeFormulaTotal([line("Non-végétarien"), line("Snack à emporter", 1, "Salade campagnarde")]);
+  assert.equal(r.total, Math.round((6.7 + 4.8) * 100) / 100);
+});
+
+test("sandwich is priced at its own real item price", () => {
+  const r = computeFormulaTotal([line("01.1 Sandwiches végétariens", 1, "Petit pain blanc fromage")]);
+  assert.equal(r.sandwichCount, 1);
+  assert.equal(r.formulaCount, 1);
+  assert.equal(r.total, 2.3);
+  assert.equal(r.reason, null);
+});
+
+test("two different sandwiches are priced individually, not at one flat rate", () => {
+  const r = computeFormulaTotal([
+    line("01.1 Sandwiches végétariens", 1, "1/2 Levain fromage"), // 3.30
+    line("01.3 Sandwiches non-végétariens", 1, "1/2 Levain salami"), // 2.30
+  ]);
+  assert.equal(r.sandwichCount, 2);
+  assert.equal(r.total, Math.round((3.3 + 2.3) * 100) / 100);
+});
+
+test("sandwich not in the official price list is silently unpriced, not guessed", () => {
+  const r = computeFormulaTotal([line("01.1 Sandwiches végétariens", 1, "Some brand new sandwich never catalogued")]);
+  assert.equal(r.sandwichCount, 1);
   assert.equal(r.total, null);
-  assert.equal(r.reason, "dessert_without_starter");
+  assert.equal(r.reason, null);
+});
+
+test("sandwich adds on top of a main plus starter meal", () => {
+  const r = computeFormulaTotal([line("Non-végétarien"), line("Entrée"), line("01.3 Sandwiches non-végétariens", 1, "1/2 Levain jambon cuit")]);
+  assert.equal(r.mainCount, 1);
+  assert.equal(r.starterCount, 1);
+  assert.equal(r.sandwichCount, 1);
+  assert.equal(r.formulaCount, 3);
+  assert.equal(r.total, Math.round((7.7 + 3.3) * 100) / 100);
+});
+
+test("all four sandwich categories have at least one real priced item", () => {
+  assert.equal(SANDWICH_CATEGORIES.size, 4);
+  assert.ok(Object.keys(SANDWICH_PRICES).length >= 20);
+});
+
+test("other Constant Products besides sandwiches and snacks stay unpriced", () => {
+  const r = computeFormulaTotal([line("02. Viennoiseries", 1, "Croissant fourré 70 g")]);
+  assert.equal(r.formulaCount, 0);
+  assert.equal(r.total, null);
 });
 
 test("two full meals price each at the full tier", () => {
   const r = computeFormulaTotal([line("Non-végétarien", 2), line("Entrée", 2), line("Dessert", 2)]);
   assert.equal(r.formulaCount, 6);
   assert.equal(r.mainCount, 2);
-  assert.equal(r.total, Math.round(8.0 * 2 * 100) / 100);
+  assert.equal(r.total, Math.round(8.7 * 2 * 100) / 100);
 });
 
 test("extra main with no starter of its own stays at the plain tier", () => {
@@ -79,52 +140,37 @@ test("extra main with no starter of its own stays at the plain tier", () => {
   assert.equal(r.formulaCount, 3);
   assert.equal(r.mainCount, 2);
   assert.equal(r.starterCount, 1);
-  assert.equal(r.total, Math.round((7.0 + 6.0) * 100) / 100);
+  assert.equal(r.total, Math.round((7.7 + 6.7) * 100) / 100);
   assert.equal(r.reason, null);
+});
+
+test("full tier pairing leaves the remaining side for the partial tier", () => {
+  // 2 mains, 1 starter, 1 dessert -> one main takes BOTH (full tier),
+  // and the other main is left with neither (plain tier) -- NOT one
+  // main with the starter and the other with the dessert (which would
+  // make both partial instead of one full + one plain).
+  const r = computeFormulaTotal([line("Non-végétarien", 2), line("Entrée", 1), line("Dessert", 1)]);
+  assert.equal(r.total, Math.round((8.7 + 6.7) * 100) / 100);
 });
 
 test("multiple different main categories are summed", () => {
   const r = computeFormulaTotal([line("Non-végétarien", 1), line("Végétarien", 1)]);
   assert.equal(r.formulaCount, 2);
   assert.equal(r.mainCount, 2);
-  assert.equal(r.total, Math.round(6.0 * 2 * 100) / 100);
+  assert.equal(r.total, Math.round(6.7 * 2 * 100) / 100);
 });
 
-test("meal tier and sandwich prices match the given values exactly", () => {
-  assert.deepEqual(MEAL_TIER_PRICES, { main: 6.0, main_starter: 7.0, main_starter_dessert: 8.0 });
-  assert.equal(SANDWICH_PRICE, 4.0);
+test("meal tier and snack prices match the official adultes tariff", () => {
+  assert.deepEqual(MEAL_TIER_PRICES, { main: 6.7, main_starter: 7.7, main_starter_dessert: 8.7 });
+  assert.equal(SNACK_PRICE, 4.8);
 });
 
-test("sandwich is priced at 4 euro independent of the meal formula", () => {
-  const r = computeFormulaTotal([line("01.1 Sandwiches végétariens")]);
-  assert.equal(r.sandwichCount, 1);
-  assert.equal(r.formulaCount, 1);
-  assert.equal(r.total, 4.0);
-  assert.equal(r.reason, null);
-});
-
-test("all four real sandwich categories are priced the same", () => {
-  const r = computeFormulaTotal([
-    line("01.1 Sandwiches végétariens"),
-    line("01.2 Sandwiches végans"),
-    line("01.3 Sandwiches non-végétariens"),
-    line("01.4 Sandwiches sans gluten"),
-  ]);
-  assert.equal(r.sandwichCount, 4);
-  assert.equal(r.total, Math.round(4.0 * 4 * 100) / 100);
-});
-
-test("sandwich adds on top of a main plus starter meal", () => {
-  const r = computeFormulaTotal([line("Non-végétarien"), line("Entrée"), line("01.3 Sandwiches non-végétariens")]);
-  assert.equal(r.mainCount, 1);
-  assert.equal(r.starterCount, 1);
-  assert.equal(r.sandwichCount, 1);
-  assert.equal(r.formulaCount, 3);
-  assert.equal(r.total, Math.round((7.0 + 4.0) * 100) / 100);
-});
-
-test("other Constant Products besides sandwiches stay unpriced", () => {
-  const r = computeFormulaTotal([line("02. Viennoiseries"), line("10.1 Boissons froides - Eau minérale et pétillante")]);
-  assert.equal(r.formulaCount, 0);
-  assert.equal(r.total, null);
+test("sandwich prices match the official adultes tariff for known items", () => {
+  assert.equal(SANDWICH_PRICES["1/2 Levain fromage"], 3.3);
+  assert.equal(SANDWICH_PRICES["Ciabatta tomate-mozzarella et pesto"], 4.0);
+  assert.equal(SANDWICH_PRICES["1/2 tranche de pain"], 0.25);
+  assert.equal(SANDWICH_PRICES['Petit pain blanc "Schockelasbotter végan"'], 1.85);
+  assert.equal(SANDWICH_PRICES['1/2 Levain "Pastrami"'], 3.3);
+  assert.equal(SANDWICH_PRICES["1/2 Levain salami"], 2.3);
+  assert.equal(SANDWICH_PRICES["Mini baguette sans gluten fromage"], 4.0);
 });

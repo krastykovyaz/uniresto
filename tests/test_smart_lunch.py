@@ -29,9 +29,9 @@ def test_no_constraints_gives_one_option_per_tier():
     result = find_smart_lunch(_basic_menu(), {})
     assert len(result["options"]) == 3
     assert [o["tier"] for o in result["options"]] == ["main", "main_starter", "main_starter_dessert"]
-    assert result["options"][0]["total_price"] == 6.00
-    assert result["options"][1]["total_price"] == 7.00
-    assert result["options"][2]["total_price"] == 8.00
+    assert result["options"][0]["total_price"] == 6.70
+    assert result["options"][1]["total_price"] == 7.70
+    assert result["options"][2]["total_price"] == 8.70
     assert result["matched_constraints"] == []
     assert result["unavailable_constraints"] == []
 
@@ -63,7 +63,7 @@ def test_no_main_dishes_left_after_hard_filters_gives_clear_reason():
 def test_meal_preference_restricts_to_one_tier_and_varies_by_main():
     result = find_smart_lunch(_basic_menu(), {"meal_preference": "main_starter"})
     assert all(o["tier"] == "main_starter" for o in result["options"])
-    assert all(o["total_price"] == 7.00 for o in result["options"])
+    assert all(o["total_price"] == 7.70 for o in result["options"])
     main_ids = [o["items"][0]["id"] for o in result["options"]]
     assert len(main_ids) == len(set(main_ids))  # every option uses a different main
     assert "meal_preference" in result["matched_constraints"]
@@ -79,8 +79,8 @@ def test_meal_preference_dropped_when_no_starter_available():
 
 
 def test_max_price_filters_out_higher_tiers():
-    result = find_smart_lunch(_basic_menu(), {"max_price": 6.00})
-    assert all(o["total_price"] <= 6.00 for o in result["options"])
+    result = find_smart_lunch(_basic_menu(), {"max_price": 7.00})
+    assert all(o["total_price"] <= 7.00 for o in result["options"])
     assert all(o["tier"] == "main" for o in result["options"])
     assert "max_price" in result["matched_constraints"]
 
@@ -170,9 +170,9 @@ def test_never_generates_dessert_without_starter():
 
 def test_select_options_varies_by_tier_when_no_preference():
     combos = [
-        {"tier": "main", "items": [{"id": 1}], "price": 6.00},
-        {"tier": "main_starter", "items": [{"id": 1}], "price": 7.00},
-        {"tier": "main_starter_dessert", "items": [{"id": 1}], "price": 8.00},
+        {"tier": "main", "items": [{"id": 1}], "price": 6.70},
+        {"tier": "main_starter", "items": [{"id": 1}], "price": 7.70},
+        {"tier": "main_starter_dessert", "items": [{"id": 1}], "price": 8.70},
     ]
     selected = select_options(combos, meal_preference=None)
     assert [c["tier"] for c in selected] == ["main", "main_starter", "main_starter_dessert"]
@@ -180,9 +180,9 @@ def test_select_options_varies_by_tier_when_no_preference():
 
 def test_select_options_varies_by_main_when_preference_given():
     combos = [
-        {"tier": "main", "items": [{"id": 1}], "price": 6.00},
-        {"tier": "main", "items": [{"id": 1}], "price": 6.00},  # duplicate main -- must be skipped
-        {"tier": "main", "items": [{"id": 2}], "price": 6.00},
+        {"tier": "main", "items": [{"id": 1}], "price": 6.70},
+        {"tier": "main", "items": [{"id": 1}], "price": 6.70},  # duplicate main -- must be skipped
+        {"tier": "main", "items": [{"id": 2}], "price": 6.70},
     ]
     selected = select_options(combos, meal_preference="main")
     assert [c["items"][0]["id"] for c in selected] == [1, 2]
