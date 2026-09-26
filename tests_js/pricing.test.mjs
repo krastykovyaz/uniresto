@@ -1,6 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MEAL_TIER_PRICES, SANDWICH_CATEGORIES, SANDWICH_PRICES, SNACK_PRICE, computeFormulaTotal } from "../static/pricing.js";
+import {
+  COLD_DRINK_PRICES,
+  HOT_DRINK_PRICES,
+  MEAL_TIER_PRICES,
+  REUSABLE_PACKAGING_PRICES,
+  SANDWICH_CATEGORIES,
+  SANDWICH_PRICES,
+  SNACK_PRICE,
+  VIENNOISERIE_PRICES,
+  computeFormulaTotal,
+} from "../static/pricing.js";
 
 const line = (category, quantity = 1, name = "Test item") => ({ category, quantity, name });
 
@@ -119,8 +129,8 @@ test("all four sandwich categories have at least one real priced item", () => {
   assert.ok(Object.keys(SANDWICH_PRICES).length >= 20);
 });
 
-test("other Constant Products besides sandwiches and snacks stay unpriced", () => {
-  const r = computeFormulaTotal([line("02. Viennoiseries", 1, "Croissant fourré 70 g")]);
+test("dairy and ice cream stay unpriced", () => {
+  const r = computeFormulaTotal([line("05. Laitages", 1, "Yaourt nature Luxlait 125 g")]);
   assert.equal(r.formulaCount, 0);
   assert.equal(r.total, null);
 });
@@ -173,4 +183,64 @@ test("sandwich prices match the official adultes tariff for known items", () => 
   assert.equal(SANDWICH_PRICES['1/2 Levain "Pastrami"'], 3.3);
   assert.equal(SANDWICH_PRICES["1/2 Levain salami"], 2.3);
   assert.equal(SANDWICH_PRICES["Mini baguette sans gluten fromage"], 4.0);
+});
+
+test("viennoiserie is priced and adds on top of a meal", () => {
+  const r = computeFormulaTotal([line("Non-végétarien"), line("02. Viennoiseries", 1, "Croissant 50 g")]);
+  assert.equal(r.otherItemsCount, 1);
+  assert.equal(r.total, Math.round((6.7 + 1.58) * 100) / 100);
+});
+
+test("hot drink is priced independent of the meal formula", () => {
+  const r = computeFormulaTotal([line("11. Boissons chaudes", 1, "Cappuccino")]);
+  assert.equal(r.otherItemsCount, 1);
+  assert.equal(r.formulaCount, 1);
+  assert.equal(r.total, 2.25);
+  assert.equal(r.reason, null);
+});
+
+test("cold drink across its three raw categories all price from the same table", () => {
+  const r = computeFormulaTotal([
+    line("10.1 Boissons froides - Eau minérale et pétillante", 1, "Rosport Blue 0,50 l btl"),
+    line("10.2 Boissons froides - Jus", 1, "Ramborn Apple Juice 0,33 btl"),
+    line("10.3 Boissons froides - Sodas", 1, "Coca Cola 0,20 l btl"),
+  ]);
+  assert.equal(r.otherItemsCount, 3);
+  assert.equal(r.total, Math.round((1.45 + 1.8 + 1.8) * 100) / 100);
+});
+
+test("ecobox refund is a genuine negative line", () => {
+  // A deposit charge followed by its own refund nets to 0 -- and since
+  // nothing is left actually priced, total reads as null, not a
+  // misleading €0.00.
+  const r = computeFormulaTotal([
+    line("12.1 Emballages et articles réutilisables", 1, "Consigne ECOBOX (500 ml)"),
+    line("12.1 Emballages et articles réutilisables", 1, "Remboursement Consigne ECOBOX (500 ml)"),
+  ]);
+  assert.equal(r.otherItemsCount, 2);
+  assert.equal(r.total, null);
+});
+
+test("packaging item adds a small amount on top of a sandwich", () => {
+  const r = computeFormulaTotal([
+    line("01.1 Sandwiches végétariens", 1, "Petit pain blanc fromage"),
+    line("12.2 Emballages et articles à usage unique", 1, "Sachet pour sandwiches"),
+  ]);
+  assert.equal(r.total, Math.round((2.3 + 0.1) * 100) / 100);
+});
+
+test("unmapped item in a newly priced category is silently unpriced", () => {
+  const r = computeFormulaTotal([line("06. Fruits", 1, "Some brand new fruit never catalogued")]);
+  assert.equal(r.otherItemsCount, 1);
+  assert.equal(r.total, null);
+  assert.equal(r.reason, null);
+});
+
+test("new price tables match the official adultes tariff for known items", () => {
+  assert.equal(VIENNOISERIE_PRICES["Croissant fourré 70 g"], 1.77);
+  assert.equal(HOT_DRINK_PRICES["Espresso double"], 2.25);
+  assert.equal(HOT_DRINK_PRICES["Thermo Café 1,50 l"], 7.5);
+  assert.equal(COLD_DRINK_PRICES["Rosport Blue 1,00 l btl"], 3.1);
+  assert.equal(REUSABLE_PACKAGING_PRICES["myCan"], 9.0);
+  assert.equal(REUSABLE_PACKAGING_PRICES["Remboursement Consigne ECOBOX (1000 ml)"], -5.0);
 });

@@ -1,4 +1,13 @@
-from orderability_engine.pricing import MEAL_TIER_PRICES, SANDWICH_PRICES, SNACK_PRICE, compute_formula_total
+from orderability_engine.pricing import (
+    COLD_DRINK_PRICES,
+    HOT_DRINK_PRICES,
+    MEAL_TIER_PRICES,
+    REUSABLE_PACKAGING_PRICES,
+    SANDWICH_PRICES,
+    SNACK_PRICE,
+    VIENNOISERIE_PRICES,
+    compute_formula_total,
+)
 
 
 def _line(category, quantity=1, name="Test item"):
@@ -139,11 +148,12 @@ def test_all_four_sandwich_categories_have_at_least_one_real_priced_item():
     assert len(SANDWICH_PRICES) >= 20
 
 
-def test_other_constant_products_besides_sandwiches_and_snacks_stay_unpriced():
-    # Viennoiseries/drinks/dairy/etc: real official prices exist for
-    # these too, but transcribing them is separate, follow-up work --
-    # this module deliberately doesn't guess at them in the meantime.
-    result = compute_formula_total([_line("02. Viennoiseries", name="Croissant fourré 70 g")])
+def test_dairy_and_ice_cream_stay_unpriced():
+    # Laitages/Glaces: real official prices likely exist for these too,
+    # but the available source material wasn't clear/complete enough to
+    # transcribe confidently for this pass -- this module deliberately
+    # doesn't guess at them in the meantime.
+    result = compute_formula_total([_line("05. Laitages", name="Yaourt nature Luxlait 125 g")])
     assert result["formula_count"] == 0
     assert result["total"] is None
 
@@ -203,3 +213,69 @@ def test_sandwich_prices_match_the_official_adultes_tariff_for_known_items():
     assert SANDWICH_PRICES['1/2 Levain "Pastrami"'] == 3.30
     assert SANDWICH_PRICES["1/2 Levain salami"] == 2.30
     assert SANDWICH_PRICES["Mini baguette sans gluten fromage"] == 4.00
+
+
+def test_viennoiserie_is_priced_and_adds_on_top_of_a_meal():
+    result = compute_formula_total([_line("Non-végétarien"), _line("02. Viennoiseries", name="Croissant 50 g")])
+    assert result["other_items_count"] == 1
+    assert result["total"] == round(6.70 + 1.58, 2)
+
+
+def test_hot_drink_is_priced_independent_of_the_meal_formula():
+    result = compute_formula_total([_line("11. Boissons chaudes", name="Cappuccino")])
+    assert result["other_items_count"] == 1
+    assert result["formula_count"] == 1
+    assert result["total"] == 2.25
+    assert result["reason"] is None
+
+
+def test_cold_drink_across_its_three_raw_categories_all_price_from_the_same_table():
+    result = compute_formula_total(
+        [
+            _line("10.1 Boissons froides - Eau minérale et pétillante", name="Rosport Blue 0,50 l btl"),
+            _line("10.2 Boissons froides - Jus", name="Ramborn Apple Juice 0,33 btl"),
+            _line("10.3 Boissons froides - Sodas", name="Coca Cola 0,20 l btl"),
+        ]
+    )
+    assert result["other_items_count"] == 3
+    assert result["total"] == round(1.45 + 1.80 + 1.80, 2)
+
+
+def test_ecobox_refund_is_a_genuine_negative_line():
+    # A deposit charge followed by its own refund should net to 0 --
+    # and since nothing is left actually priced, total reads as None
+    # (the "no price" signal), not a misleading EUR 0.00.
+    result = compute_formula_total(
+        [
+            _line("12.1 Emballages et articles réutilisables", name="Consigne ECOBOX (500 ml)"),
+            _line("12.1 Emballages et articles réutilisables", name="Remboursement Consigne ECOBOX (500 ml)"),
+        ]
+    )
+    assert result["other_items_count"] == 2
+    assert result["total"] is None
+
+
+def test_packaging_item_adds_a_small_amount_on_top_of_a_sandwich():
+    result = compute_formula_total(
+        [
+            _line("01.1 Sandwiches végétariens", name="Petit pain blanc fromage"),
+            _line("12.2 Emballages et articles à usage unique", name="Sachet pour sandwiches"),
+        ]
+    )
+    assert result["total"] == round(2.30 + 0.10, 2)
+
+
+def test_unmapped_item_in_a_newly_priced_category_is_silently_unpriced():
+    result = compute_formula_total([_line("06. Fruits", name="Some brand new fruit never catalogued")])
+    assert result["other_items_count"] == 1
+    assert result["total"] is None
+    assert result["reason"] is None
+
+
+def test_new_price_tables_match_the_official_adultes_tariff_for_known_items():
+    assert VIENNOISERIE_PRICES["Croissant fourré 70 g"] == 1.77
+    assert HOT_DRINK_PRICES["Espresso double"] == 2.25
+    assert HOT_DRINK_PRICES["Thermo Café 1,50 l"] == 7.50
+    assert COLD_DRINK_PRICES["Rosport Blue 1,00 l btl"] == 3.10
+    assert REUSABLE_PACKAGING_PRICES["myCan"] == 9.00
+    assert REUSABLE_PACKAGING_PRICES["Remboursement Consigne ECOBOX (1000 ml)"] == -5.00

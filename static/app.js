@@ -8,6 +8,7 @@ import {
   DESSERT_CATEGORIES,
   INCLUDED_SIDE_CATEGORIES,
   MAIN_CATEGORIES,
+  OTHER_NAME_PRICED_CATEGORIES,
   SANDWICH_CATEGORIES,
   SNACK_CATEGORIES,
   STARTER_CATEGORIES,
@@ -455,6 +456,7 @@ function serverPriceBreakdown(order) {
       !DESSERT_CATEGORIES.has(it.category) &&
       !SANDWICH_CATEGORIES.has(it.category) &&
       !SNACK_CATEGORIES.has(it.category) &&
+      !OTHER_NAME_PRICED_CATEGORIES.has(it.category) &&
       !INCLUDED_SIDE_CATEGORIES.has(it.category)
   );
   const otherKnownTotal = otherItems.filter((it) => it.line_price != null).reduce((sum, it) => sum + it.line_price, 0);
@@ -496,6 +498,7 @@ function priceBreakdown(totals) {
       !DESSERT_CATEGORIES.has(l.category) &&
       !SANDWICH_CATEGORIES.has(l.category) &&
       !SNACK_CATEGORIES.has(l.category) &&
+      !OTHER_NAME_PRICED_CATEGORIES.has(l.category) &&
       !INCLUDED_SIDE_CATEGORIES.has(l.category)
   );
   const otherKnownTotal = otherLines.filter((l) => l.lineTotal != null).reduce((sum, l) => sum + l.lineTotal, 0);
@@ -2219,7 +2222,8 @@ function priceIsUnspecified(item) {
     STARTER_CATEGORIES.has(item.category) ||
     DESSERT_CATEGORIES.has(item.category) ||
     SANDWICH_CATEGORIES.has(item.category) ||
-    SNACK_CATEGORIES.has(item.category)
+    SNACK_CATEGORIES.has(item.category) ||
+    OTHER_NAME_PRICED_CATEGORIES.has(item.category)
   )
     return false;
   return true;
