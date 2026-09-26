@@ -3102,7 +3102,7 @@ function render() {
   renderBottomNav();
 }
 
-// Opening intro: a closed cover with the blinking "UniResto" name that
+// Opening intro: a closed cover with the "UniResto" name that
 // then flips open to reveal the app (see the Intro section of app.css).
 // Once per tab session, so reloading -- which is meant to land you back
 // exactly where you were -- doesn't replay it every time. Tapping the

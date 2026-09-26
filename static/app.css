@@ -985,7 +985,7 @@ svg { display: block; }
 
 /* ================================================================= Intro */
 /* Played once per tab session by playIntro() in app.js: a closed cover
-   showing the blinking "UniResto" name, which then swings open around
+   showing the "UniResto" name, which then swings open around
    its hinge to reveal the app. On a phone the whole screen is the cover
    and swings away like a door; on desktop it's the front half of the
    closed foldable (see the Device frame section below). */
@@ -1007,6 +1007,11 @@ svg { display: block; }
   transform-style: preserve-3d;
 }
 .intro.is-opening .intro-cover { animation: intro-swing-phone 1.05s var(--ease-smooth) forwards; }
+/* The fade-out lives on .intro, never on .intro-cover: opacity < 1 on a
+   preserve-3d element flattens it, which disables backface-visibility on
+   the faces -- the front face's "UniResto" then shows through mirrored
+   mid-swing (worst in Safari, visible in Chrome too). */
+.intro.is-opening { animation: intro-fade-phone 1.05s var(--ease-smooth) forwards; }
 
 .intro-face {
   position: absolute;
@@ -1035,21 +1040,25 @@ svg { display: block; }
   font-size: 2.6rem;
   font-weight: 800;
   letter-spacing: -0.02em;
-  /* A slow, gentle pulse (sine-like ease-in-out, 1.7s) rather than a
-     stark on/off flash -- and both endpoints are real shadow values
-     (never "none"), since text-shadow can't interpolate smoothly
-     to/from that keyword and would otherwise pop instead of fade. */
-  animation: intro-blink 1.7s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  text-shadow: 0 0 22px rgba(26, 168, 96, 0.65);
+  /* One smooth fade-in, then a steady glow -- no repeating pulse. Fill
+     is backwards-only so the animation is fully over (no lingering
+     composited layer, which Safari lets escape the face's
+     backface-visibility) well before the cover starts to swing. */
+  animation: intro-brand-in 0.9s var(--ease-smooth) backwards;
 }
 .intro-brand span { color: var(--color-primary); }
 .intro-tagline { margin: 0; font-size: 1rem; color: rgba(255, 255, 255, 0.72); }
 
-@keyframes intro-blink {
-  0%, 100% { opacity: 1; text-shadow: 0 0 22px rgba(26, 168, 96, 0.65); }
-  50% { opacity: 0.45; text-shadow: 0 0 6px rgba(26, 168, 96, 0.25); }
+@keyframes intro-brand-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
 }
 @keyframes intro-swing-phone {
-  to { transform: rotateY(-110deg); opacity: 0; }
+  to { transform: rotateY(-110deg); }
+}
+@keyframes intro-fade-phone {
+  to { opacity: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1164,6 +1173,7 @@ svg { display: block; }
   .intro { position: absolute; perspective: 2400px; }
   .intro-cover { left: 50%; }
   .intro.is-opening .intro-cover { animation: intro-swing-fold 1.3s var(--ease-smooth) forwards; }
+  .intro.is-opening { animation: intro-fade-fold 1.3s var(--ease-smooth) forwards; }
 
   .intro-front {
     border-radius: 0 48px 48px 0;
@@ -1194,6 +1204,15 @@ svg { display: block; }
 
   @keyframes intro-swing-fold {
     to { transform: rotateY(-180deg); }
+  }
+  /* Held at full opacity for the same first ~45% intro-unclip stays flat
+     for, then fades out alongside the reveal, so the cover's opaque back
+     face (drawn as the left half's surface) never lingers over the
+     just-unclipped content after the swing ends. On .intro, not the
+     cover -- see the flattening note in the base Intro section. */
+  @keyframes intro-fade-fold {
+    0%, 45% { opacity: 1; }
+    to { opacity: 0; }
   }
   /* Stays closed for the first half of the swing (the cover is still
      over the right half then), then opens as the cover crosses the hinge. */
@@ -1235,7 +1254,7 @@ svg { display: block; }
     background: linear-gradient(90deg,
       rgba(0, 0, 0, 0) 0%,
       rgba(0, 0, 0, 0.05) 36%,
-      rgba(255, 255, 255, 0.6) 50%,
+      rgba(255, 255, 255, 0.25) 50%,
       rgba(0, 0, 0, 0.05) 64%,
       rgba(0, 0, 0, 0) 100%);
   }

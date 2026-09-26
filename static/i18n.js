@@ -39,7 +39,7 @@ export const translations = {
     roleQuestion: "What would you like to do?",
     roleEat: "I want to eat",
     roleEatSubtitle: "Order from campus restaurants",
-    roleDelivery: "Delivery",
+    roleDelivery: "I want to delivery",
     roleDeliverySubtitle: "View and fulfil customer orders",
     deliveryOrdersTitle: "Orders to deliver",
     deliveryExampleBanner: "Example orders shown for preview -- not real customer data.",
