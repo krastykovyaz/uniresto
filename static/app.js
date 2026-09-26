@@ -1190,26 +1190,54 @@ const EXAMPLE_ORDERS = [
   { restaurant: "Brasserie John's", items: "3× Wrap aux falafels", location: "Weicker Building" },
 ];
 
+// Groups orders under their canteen name, each group collapsible on its
+// own (tap the canteen name) -- reads as a per-canteen queue instead of
+// one flat list once there's more than a couple of orders. Preserves
+// EXAMPLE_ORDERS' own order for which canteen appears first.
+function groupOrdersByCanteen(orders) {
+  const groups = new Map();
+  for (const order of orders) {
+    if (!groups.has(order.restaurant)) groups.set(order.restaurant, []);
+    groups.get(order.restaurant).push(order);
+  }
+  return groups;
+}
+
 function renderDelivery() {
   app.innerHTML = "";
   app.append(header({ title: tr("deliveryOrdersTitle"), back: () => goTo("role") }));
   app.append(el(`<p class="example-banner">${escapeHtml(tr("deliveryExampleBanner"))}</p>`));
 
   const list = el(`<div class="order-list"></div>`);
-  for (const order of EXAMPLE_ORDERS) {
-    const card = el(`
-      <div class="restaurant-card">
-        <div class="restaurant-card-main">
-          <div class="icon-avatar is-other">${icon("receipt", 20)}</div>
-          <div>
-            <h2>${escapeHtml(order.restaurant)} <span class="example-badge">${escapeHtml(tr("exampleBadge"))}</span></h2>
-            <p class="kind">${escapeHtml(order.items)}</p>
-            <p class="kind">${escapeHtml(order.location)}</p>
-          </div>
-        </div>
+  for (const [restaurant, orders] of groupOrdersByCanteen(EXAMPLE_ORDERS)) {
+    const group = el(`
+      <div class="canteen-group">
+        <button type="button" class="canteen-group-header">
+          <span class="canteen-group-name">${escapeHtml(restaurant)}</span>
+          <span class="canteen-group-count">${escapeHtml(tr("orderCount", { n: orders.length }))}</span>
+          <span class="canteen-group-chevron">${icon("chevron", 16)}</span>
+        </button>
+        <div class="canteen-group-body"></div>
       </div>
     `);
-    list.append(card);
+    const body = group.querySelector(".canteen-group-body");
+    for (const order of orders) {
+      body.append(
+        el(`
+          <div class="restaurant-card">
+            <div class="restaurant-card-main">
+              <div class="icon-avatar is-other">${icon("receipt", 20)}</div>
+              <div>
+                <h2>${escapeHtml(order.location)} <span class="example-badge">${escapeHtml(tr("exampleBadge"))}</span></h2>
+                <p class="kind">${escapeHtml(order.items)}</p>
+              </div>
+            </div>
+          </div>
+        `)
+      );
+    }
+    group.querySelector(".canteen-group-header").addEventListener("click", () => group.classList.toggle("is-collapsed"));
+    list.append(group);
   }
   app.append(list);
 }

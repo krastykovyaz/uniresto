@@ -296,6 +296,37 @@ svg { display: block; }
 .icon-avatar.is-drink { background: var(--color-cat-drink-bg); color: var(--color-cat-drink); }
 .icon-avatar.is-other { background: var(--color-cat-other-bg); color: var(--color-cat-other); }
 
+/* Delivery's order list, grouped by canteen: each group's own orders
+   collapse/expand independently, tapping the canteen name as the
+   header -- useful once there are enough real orders that seeing every
+   canteen's queue at once gets noisy. .order-list's own grid gap already
+   spaces one group from the next. */
+.canteen-group-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) 0;
+  background: none;
+  border: 0;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+.canteen-group-name { font-size: 1rem; font-weight: 700; }
+.canteen-group-count { color: var(--color-text-muted); font-size: 0.85rem; margin-right: auto; }
+.canteen-group-chevron { display: flex; color: #c4c7cc; transform: rotate(90deg); transition: transform 0.15s ease; }
+.canteen-group.is-collapsed .canteen-group-chevron { transform: rotate(0deg); }
+[dir="rtl"] .canteen-group-chevron { transform: rotate(-90deg); }
+[dir="rtl"] .canteen-group.is-collapsed .canteen-group-chevron { transform: rotate(0deg); }
+.canteen-group-body {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+}
+.canteen-group.is-collapsed .canteen-group-body { display: none; }
+
 /* ----------------------------------------------------------------- Chips */
 
 .status-chip {
