@@ -237,6 +237,26 @@ const NAME_PRICED_GROUPS = [
 ];
 
 /**
+ * The single, real adultes-tier price for ONE item ({ category, name }),
+ * or null when this module doesn't have a fixed per-item price for it --
+ * either because its category is bundle-priced (main/starter/dessert:
+ * the real price depends on what else is in the order, see
+ * computeFormulaTotal()) or because its exact name isn't in its
+ * category's price table. Used to show a real number on a food card
+ * instead of the generic "Canteen Price" label wherever one genuinely
+ * exists and doesn't depend on the rest of the cart.
+ */
+export function priceForItem(item) {
+  if (SNACK_CATEGORIES.has(item.category)) return SNACK_PRICE;
+  for (const [categories, prices] of NAME_PRICED_GROUPS) {
+    if (categories.has(item.category) && prices[item.name] !== undefined) {
+      return prices[item.name];
+    }
+  }
+  return null;
+}
+
+/**
  * lines: [{ category, name, quantity }] -- category/name are
  * Restopolis's raw strings. Returns { formulaCount, mainCount,
  * starterCount, dessertCount, sandwichCount, snackCount,

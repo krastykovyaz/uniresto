@@ -13,6 +13,7 @@ import {
   SNACK_CATEGORIES,
   STARTER_CATEGORIES,
   computeFormulaTotal,
+  priceForItem,
 } from "./pricing.js";
 import { LANGUAGES, allergenLabel, categoryLabel, getLanguage, intlLocale, langInfo, setLanguage, t } from "./i18n.js";
 import {
@@ -2195,17 +2196,19 @@ function localizedWeightValue(value, unit) {
 // There's no per-dish Restopolis price (see static/pricing.js's module
 // docstring) -- but Féculents/Légumes are KNOWN to be bundled free with
 // any main dish (our own formula rule, not a guess), so those get an
-// honest "Included" instead of a generic "price not available".
-// Restopolis's OWN reservation flow (verified live, screenshots
-// compared 2026-09-24) never shows a per-item price either -- it only
-// shows the student's wallet balance, deducted at pickup, no number per
-// dish anywhere in its own "New reservation" screen. This mirrors that
-// exactly: the card shows the words "Canteen Price" only, never a euro
-// amount, for anything not bundled free -- the actual number (still OUR
-// OWN real course pricing, Part 18/26, computed the same as ever) only
-// shows up once it matters, in the cart/review/confirmation totals.
+// honest "Included" instead of a generic "price not available". Every
+// item with a fixed, real adultes-tier price (sandwiches, drinks,
+// viennoiseries, packaging, etc -- anything priceForItem() can look up)
+// shows that real number on its card. A main/starter/dessert still
+// shows the generic "Canteen Price" label instead of a number: its true
+// price depends on what else ends up in the order (the meal-formula
+// tier), so no single fixed number for it exists to show here -- the
+// real total for those still only appears once the combination is
+// known, in the cart/review/confirmation totals.
 function priceText(item) {
   if (INCLUDED_SIDE_CATEGORIES.has(item.category)) return tr("included");
+  const known = priceForItem(item);
+  if (known != null) return `€${known.toFixed(2)}`;
   return tr("canteenPrice");
 }
 
