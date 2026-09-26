@@ -129,6 +129,14 @@ class OrderabilityService:
     def _today(self) -> date:
         return self._today_override or date.today()
 
+    def today(self) -> date:
+        """The service's notion of today, honoring an injected override --
+        for callers OUTSIDE this class (app.py's admin page) that scan
+        forward from "today", so they anchor on the same clock as every
+        check_orderability() call rather than reading the wall clock
+        themselves and disagreeing with it."""
+        return self._today()
+
     def _now(self) -> datetime:
         return self._now_override or datetime.now(TZINFO)
 
@@ -287,7 +295,11 @@ class OrderabilityService:
         `max_days_to_scan` calendar days have been tried, or Restopolis's
         browsable horizon is exhausted (status stays 'unknown' because of
         HorizonExceededError) for several consecutive days."""
-        now = current_datetime or datetime.now(TZINFO)
+        # self._now(), not datetime.now(): honors the injected clock the
+        # same way check_orderability does, so a pinned test "today"
+        # actually pins where this scan starts too (the real clock would
+        # otherwise walk off the end of the registered fixture weeks).
+        now = current_datetime or self._now()
         start = now.date()
 
         found: list[OrderabilityResult] = []

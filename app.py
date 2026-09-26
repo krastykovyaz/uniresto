@@ -25,7 +25,7 @@ from orderability_engine.mailer import (
     send_verification_code,
 )
 from orderability_engine.menu_service import flatten_menu_items, get_customer_menu
-from orderability_engine.models import STATUS_VALUES, TZINFO
+from orderability_engine.models import STATUS_VALUES
 from orderability_engine.orders import MAX_QUANTITY, OrderStore, OrderValidationError, recalculate_order
 from orderability_engine.service import OrderabilityService
 from orderability_engine.smart_lunch import TIER_ORDER, find_smart_lunch
@@ -480,7 +480,7 @@ def create_app(
     @app.get("/admin/orderability")
     def admin_orderability():
         rows = []
-        today = datetime.now(TZINFO).date()
+        today = svc().today()
         for restaurant in by_slug.values():
             for offset in range(ADMIN_LOOKAHEAD_DAYS):
                 d = today + timedelta(days=offset)
