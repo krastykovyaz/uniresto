@@ -1422,6 +1422,45 @@ function shortName(fullName) {
 
 const DATE_PICKER_DAYS = 10;
 
+// ------------------------------------------------------ Menu prefetch cache
+//
+// renderDates() fires these off in the background the moment the date
+// picker renders (one request per orderable day shown there, never
+// gated on anything the person does) -- so by the time someone actually
+// taps a day, its menu is often already in hand and selectDate() can
+// skip straight to it instead of showing "Loading menu...". Purely an
+// in-memory cache for this one browsing session (a page reload starts
+// empty again): real menu data can change between visits, so this only
+// ever saves the round trip within one continuous dates -> menu browse,
+// never used to skip a genuinely fresh fetch later.
+const menuCache = new Map(); // "slug::date" -> resolved menu response
+const menuFetchesInFlight = new Map(); // "slug::date" -> pending promise
+
+function menuCacheKey(slug, date) {
+  return `${slug}::${date}`;
+}
+
+function prefetchMenu(slug, date) {
+  const key = menuCacheKey(slug, date);
+  if (menuCache.has(key) || menuFetchesInFlight.has(key)) return;
+  const promise = api(`/api/restaurants/${slug}/menu/${date}`)
+    .then((menu) => {
+      menuCache.set(key, menu);
+      return menu;
+    })
+    .finally(() => menuFetchesInFlight.delete(key));
+  menuFetchesInFlight.set(key, promise);
+}
+
+// Reuses whatever prefetchMenu() already started/finished instead of
+// ever firing a second, duplicate request for the same (slug, date).
+function getMenu(slug, date) {
+  const key = menuCacheKey(slug, date);
+  if (menuCache.has(key)) return Promise.resolve(menuCache.get(key));
+  prefetchMenu(slug, date);
+  return menuFetchesInFlight.get(key);
+}
+
 async function selectRestaurant(restaurant) {
   state.slug = restaurant.slug;
   state.restaurantName = restaurant.name;
@@ -1506,6 +1545,10 @@ function renderDates() {
     // never just hidden -- tapping an unavailable day still opens the
     // menu screen, which shows the specific empty state for it.
     card.addEventListener("click", () => selectDate(d));
+    // Only orderable days: an unavailable one's menu is never shown
+    // anyway (see the empty state selectDate()/renderMenu() render for
+    // it instead), so prefetching it would just waste a request.
+    if (isAvailable) prefetchMenu(state.slug, d.date);
     scroller.append(card);
   }
   app.append(scroller);
@@ -1522,9 +1565,17 @@ async function selectDate(dateInfo) {
   state.searchQuery = "";
   state.smartLunchForm = null;
   state.smartLunchResult = null;
-  goTo("menu-loading");
+  // Skips the "Loading menu..." screen entirely when renderDates()'s
+  // background prefetch for this exact (slug, date) already finished --
+  // the fetch happened silently while the person was still looking at
+  // the date picker, so choosing a day they've effectively already
+  // "loaded" feels instant. Still shows it the normal way on a cache
+  // miss (a disabled/unavailable day, an in-flight prefetch that hasn't
+  // resolved yet, or reorderPastOrder()/goToFavoriteToday() jumping
+  // straight here without ever visiting the date picker at all).
+  if (!menuCache.has(menuCacheKey(state.slug, state.targetDate))) goTo("menu-loading");
   try {
-    state.menu = await api(`/api/restaurants/${state.slug}/menu/${state.targetDate}`);
+    state.menu = await getMenu(state.slug, state.targetDate);
   } catch (err) {
     state.menuError = { status: err.body && err.body.status, reason: err.message };
   }
