@@ -2426,33 +2426,49 @@ function categoryIconClass(item) {
   return "is-other";
 }
 
+// A flat, deliberately abstract "plate" illustration -- tinted via
+// currentColor, so it inherits categoryIconClass()'s color the same way
+// the old small icon-avatar glyph did. Stands in for a real photo,
+// which Restopolis simply doesn't provide (see .food-card-photo's own
+// comment in app.css) -- never a fabricated picture of the specific dish.
+function dishIllustrationSvg() {
+  return `
+    <svg class="food-card-illus" viewBox="0 0 64 64" aria-hidden="true">
+      <circle cx="24" cy="26" r="8" fill="currentColor" opacity="0.85"></circle>
+      <circle cx="40" cy="22" r="6" fill="currentColor" opacity="0.5"></circle>
+      <circle cx="36" cy="40" r="11" fill="currentColor" opacity="0.7"></circle>
+      <circle cx="18" cy="42" r="4" fill="currentColor" opacity="0.45"></circle>
+    </svg>
+  `;
+}
+
 function foodCard(item) {
   const sel = selectionFor(item.id);
   const isSelected = !!sel;
   const isFav = isFavorite(state.slug, item.category, item.name);
+  const metaParts = [weightText(item), caloriesText(item)].filter(Boolean);
   const card = el(`
     <article class="food-card ${isSelected ? "is-selected" : ""}" data-item-id="${item.id}">
-      <div class="select-check" aria-hidden="true">${icon(isSelected ? "check" : "plus", 16)}</div>
-      <button type="button" class="heart-btn ${isFav ? "is-favorite" : ""}" aria-label="${escapeHtml(tr(isFav ? "removeFavorite" : "addFavorite", { name: dishNameLabel(item.name, state.lang) }))}" aria-pressed="${isFav}">${icon(isFav ? "heartFilled" : "heart", 20)}</button>
-      <div class="card-head">
-        <div class="icon-avatar ${categoryIconClass(item)}">${icon("fork", 18)}</div>
-        <div class="card-title">
-          <p class="name">${escapeHtml(dishNameLabel(item.name, state.lang))}</p>
-          ${item.description ? `<p class="description">${escapeHtml(item.description)}</p>` : ""}
-        </div>
-      </div>
-      <div class="card-body">
-        <div class="weight-price-row">
-          ${weightText(item) ? `<span class="weight">${escapeHtml(weightText(item))}</span><span class="dot">·</span>` : ""}
-          <span class="price ${priceIsUnspecified(item) ? "is-unspecified" : ""}">${escapeHtml(priceText(item))}</span>
-          ${caloriesText(item) ? `<span class="dot">·</span><span class="calories">${escapeHtml(caloriesText(item))}</span>` : ""}
-        </div>
+      <div class="food-card-photo icon-avatar ${categoryIconClass(item)}">
+        ${dishIllustrationSvg()}
+        <button type="button" class="heart-btn ${isFav ? "is-favorite" : ""}" aria-label="${escapeHtml(tr(isFav ? "removeFavorite" : "addFavorite", { name: dishNameLabel(item.name, state.lang) }))}" aria-pressed="${isFav}">${icon(isFav ? "heartFilled" : "heart", 18)}</button>
         ${
           item.vegan || item.vegetarian
             ? `<div class="badge-row"><span class="badge">${escapeHtml(tr(item.vegan ? "vegan" : "vegetarian"))}</span></div>`
             : ""
         }
+      </div>
+      <div class="card-body">
+        <div class="card-title">
+          <p class="name">${escapeHtml(dishNameLabel(item.name, state.lang))}</p>
+          ${item.description ? `<p class="description">${escapeHtml(item.description)}</p>` : ""}
+        </div>
+        ${metaParts.length ? `<p class="meta-row">${metaParts.map((p) => escapeHtml(p)).join(" · ")}</p>` : ""}
         ${item.allergens && item.allergens.length ? `<p class="allergen-line">${escapeHtml(tr("allergens"))} ${item.allergens.map((a) => escapeHtml(allergenLabel(a, state.lang))).join(" · ")}</p>` : ""}
+        <div class="add-row">
+          <span class="price ${priceIsUnspecified(item) ? "is-unspecified" : ""}">${escapeHtml(priceText(item))}</span>
+          <div class="select-check" aria-hidden="true">${icon(isSelected ? "check" : "plus", 14)}</div>
+        </div>
       </div>
     </article>
   `);

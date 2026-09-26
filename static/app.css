@@ -117,8 +117,8 @@ a { color: inherit; }
 
 svg { display: block; }
 
-[dir="rtl"] .select-check { right: auto; left: var(--space-4); }
-[dir="rtl"] .heart-btn { right: auto; left: 50px; }
+[dir="rtl"] .food-card-photo .heart-btn { right: auto; left: 8px; }
+[dir="rtl"] .food-card-photo .badge-row { left: auto; right: 8px; }
 [dir="rtl"] .quantity-row { justify-content: flex-start; }
 [dir="rtl"] .summary-bar,
 [dir="rtl"] .review-line,
@@ -425,54 +425,91 @@ svg { display: block; }
 
 /* ---------------------------------------------------------------- Cards */
 
-/* No horizontal padding of its own -- .category-section already insets
-   by --space-4, so cards line up with the section heading, search bar
-   and chips instead of sitting a second 16px further in. */
+/* Two-column photo grid (matches a real delivery-app menu): every dish
+   gets a big, category-tinted tile up top instead of a small inline
+   icon -- Restopolis gives us no real per-dish photo (verified: every
+   scraped image/price field comes back empty), so the tile is an
+   honest flat illustration, tinted by categoryIconClass() the same way
+   the old small icon-avatar was, never a fabricated photo of the dish.
+   No horizontal padding on .food-grid itself -- .category-section
+   already insets by --space-4, so the grid lines up with the section
+   heading, search bar and chips instead of sitting a second 16px
+   further in. */
 .food-grid {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-3);
   padding: 0 0 var(--space-2);
-}
-
-@media (min-width: 640px) {
-  .food-grid { grid-template-columns: 1fr 1fr; }
 }
 
 .food-card {
   background: var(--color-surface);
   border: 1.5px solid var(--color-border);
   border-radius: var(--radius-lg);
-  padding: var(--space-4);
+  overflow: hidden;
   text-align: left;
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  position: relative;
 }
 
 .food-card.is-selected { border-color: var(--color-primary); box-shadow: 0 0 0 1px var(--color-primary); }
 
-.food-card .card-head { display: flex; align-items: center; gap: var(--space-3); min-height: 36px; padding-right: 78px; }
-[dir="rtl"] .food-card .card-head { padding-right: 0; padding-left: 78px; }
-/* Fixed size: a long dish name must never squeeze the icon into an oval. */
-.food-card .card-head .icon-avatar { flex: 0 0 36px; width: 36px; height: 36px; }
-.food-card .card-title { min-width: 0; }
-.food-card .name { font-size: 1.02rem; font-weight: 700; line-height: 1.3; margin: 0; overflow-wrap: break-word; }
-.food-card .description { font-size: 0.85rem; color: var(--color-text-muted); margin: 2px 0 0; }
+.food-card-photo {
+  position: relative;
+  width: 100%;
+  height: 110px;
+  border-radius: 0;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.food-card-photo .food-card-illus { width: 52px; height: 52px; }
 
-/* Everything below the name starts on the same vertical line as the name
-   itself (icon 36px + gap 12px), so the card reads as one straight text
-   column instead of the name indented and the rest flush to the edge. */
 .food-card .card-body {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  padding-inline-start: 48px;
+  gap: 6px;
+  padding: var(--space-3);
 }
-.food-card .allergen-line { margin: auto 0 0; }
+.food-card .card-title { min-width: 0; }
+/* Clamped to 2 lines: a real French dish name routinely runs long
+   ("Rôti de porc Orloff, jus lié"), and a narrower two-column card has
+   far less width than the old single-column one did. */
+.food-card .name {
+  font-size: 0.92rem;
+  font-weight: 700;
+  line-height: 1.3;
+  margin: 0;
+  overflow-wrap: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.food-card .description { font-size: 0.78rem; color: var(--color-text-muted); margin: 0; }
+.food-card .meta-row { margin: 0; font-size: 0.78rem; color: var(--color-text-muted); }
+.food-card .meta-row .dot { margin: 0 2px; }
+.food-card .allergen-line { font-size: 0.72rem; line-height: 1.4; color: var(--color-text-muted); margin: auto 0 0; }
+
+/* The bottom row: price + the add indicator, always pinned to the
+   card's bottom edge (margin-top: auto on .allergen-line above already
+   pushes it there when there's room to spare). */
+.food-card .add-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-top: 4px;
+}
+/* "Canteen Price" (see priceText() in app.js) is a label, not a number
+   on the card itself -- set in italics, not bold, to read as a note
+   rather than a headline figure. The real €X.XX only ever appears
+   bold in the cart/review/confirmation totals, a different class. */
+.food-card .add-row .price { font-size: 0.85rem; font-weight: 700; color: var(--color-primary-dark); }
+.food-card .add-row .price.is-unspecified { font-weight: 400; font-style: italic; color: var(--color-text-muted); }
 
 .weight-price-row {
   display: flex;
@@ -482,36 +519,32 @@ svg { display: block; }
   font-size: 0.95rem;
 }
 .weight-price-row .weight { font-weight: 700; }
-/* "Canteen Price" (see priceText() in app.js) is a label, not a number
-   on the card itself -- set in italics, not bold, to read as a note
-   rather than a headline figure. The real €X.XX only ever appears
-   bold in the cart/review/confirmation totals, a different class. */
 .weight-price-row .price { font-weight: 400; font-style: italic; }
 .weight-price-row .price.is-unspecified { font-weight: 400; font-style: italic; color: var(--color-text-muted); font-size: 0.85rem; }
 .weight-price-row .calories { font-weight: 400; color: var(--color-text-muted); font-size: 0.85rem; }
 .weight-price-row .dot { color: var(--color-text-muted); }
 
-.badge-row { display: flex; flex-wrap: wrap; gap: 6px; }
+/* Overlaid on the photo tile, bottom-left -- see .food-card-photo. */
+.food-card-photo .badge-row { position: absolute; bottom: 8px; left: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
 .badge {
-  font-size: 0.68rem;
+  font-size: 0.65rem;
   font-weight: 700;
   letter-spacing: 0.03em;
   padding: 3px 8px;
   border-radius: 999px;
-  background: var(--color-available-bg);
+  background: rgba(255, 255, 255, 0.92);
   color: var(--color-available);
 }
 
 .allergen-line { font-size: 0.78rem; line-height: 1.45; color: var(--color-text-muted); margin: 0; }
 
-/* top: 20px centers the 28px buttons on the 36px icon-avatar (card
-   padding 16 + 36/2 - 28/2), so icon, name and both buttons sit on one line. */
+/* A flat visual indicator only (never its own click target -- the
+   WHOLE card is the button, see foodCard() in app.js), so it sits
+   inline in .add-row now rather than floating absolute over the name. */
 .select-check {
-  position: absolute;
-  top: 20px;
-  right: var(--space-4);
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
   border-radius: 50%;
   border: 1.5px solid var(--color-border);
   display: flex;
@@ -522,16 +555,7 @@ svg { display: block; }
 }
 .food-card.is-selected .select-check { background: var(--color-primary); color: var(--color-primary-contrast); border-color: var(--color-primary); }
 
-/* Sits beside .select-check (both top-right) rather than the top-left,
-   which the card's leading category icon-avatar now occupies -- see
-   .food-card .card-head. */
 .heart-btn {
-  position: absolute;
-  top: 20px;
-  right: 50px;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
   border: none;
   background: none;
   display: flex;
@@ -542,6 +566,17 @@ svg { display: block; }
   z-index: 1;
 }
 .heart-btn.is-favorite { color: var(--color-closed); }
+/* Overlaid on the photo tile, top-right -- see .food-card-photo. */
+.food-card-photo .heart-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 1px 4px rgba(20, 23, 26, 0.16);
+}
 
 .quantity-row {
   display: flex;
@@ -1322,9 +1357,6 @@ svg { display: block; }
   .scroller::-webkit-scrollbar { display: none; }
 
   #app { min-height: 0; }
-
-  /* One food column per half of the unfolded screen. */
-  .food-grid { grid-template-columns: 1fr 1fr; }
 
   /* iPad-style centered tab bar and sheet instead of edge-to-edge. */
   #bottom-nav { justify-content: center; }
