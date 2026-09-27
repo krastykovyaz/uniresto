@@ -2268,8 +2268,6 @@ function renderProfile() {
   app.innerHTML = "";
   app.append(header({ title: tr("profile"), back: () => goTo("restaurants") }));
 
-  app.append(el(`<p class="eyebrow" style="padding-top:0">${escapeHtml(tr("tagline"))}</p>`));
-
   const rows = el(`<div class="profile-rows"></div>`);
 
   const favRow = el(`
