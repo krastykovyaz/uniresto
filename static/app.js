@@ -1077,8 +1077,12 @@ function openCommunicationEmailSheet(trigger) {
     if (email) saveCommunicationEmail(email);
     else clearCommunicationEmail();
     close();
-    document.querySelector(".profile-row-communication-email")?.focus();
-    renderProfile();
+    trigger?.focus();
+    // Re-renders whichever screen is actually current (Profile, but also
+    // the checkout review screen's own "add a private email" shortcut,
+    // Part 61) rather than assuming Profile -- this sheet is opened from
+    // both places now.
+    render();
   }
 
   sheet.querySelector(".comm-email-sheet-save").addEventListener("click", () => {
@@ -1416,50 +1420,58 @@ function deliveryRegisterCard() {
     return el(`<p class="info-banner">${escapeHtml(tr("deliveryRegisteredAs", { email: registeredEmail }))}</p>`);
   }
 
-  // Skip the whole send-code/verify-code dance when a University Email
-  // is already verified on this device (Profile, Part 25) -- see
-  // /api/delivery/register/quick's own docstring for why re-proving
-  // control of that SAME address here would just be a needless second
-  // code, not real extra security.
-  if (state.registeredEmail) {
-    const quickCard = el(`
-      <div class="delivery-register-card">
-        <p class="delivery-register-hint">${escapeHtml(tr("deliveryQuickRegisterHint", { email: state.registeredEmail }))}</p>
-        <button type="button" class="primary-button delivery-register-quick-enable">${escapeHtml(tr("enableDeliveryEmails"))}</button>
-      </div>
-    `);
-    quickCard.querySelector(".delivery-register-quick-enable").addEventListener("click", async (e) => {
-      e.target.disabled = true;
-      try {
-        await api("/api/delivery/register/quick", { method: "POST", body: JSON.stringify({ email: state.registeredEmail }) });
-        saveDeliveryRegisteredEmail(state.registeredEmail);
-        quickCard.replaceWith(deliveryRegisterCard());
-      } catch {
-        showToast(tr("verificationFailed"));
-        e.target.disabled = false;
-      }
-    });
-    return quickCard;
-  }
-
   const card = el(`<div class="delivery-register-card"></div>`);
   let step = "enter";
   let pendingEmail = "";
+
+  // Reused by both the manual form below and the University-email
+  // shortcut -- one place that actually saves a successful registration
+  // and swaps this card out for the "You'll get emails at..." banner.
+  function finishRegistering(email) {
+    saveDeliveryRegisteredEmail(email);
+    card.replaceWith(deliveryRegisterCard());
+  }
+
+  // The University Email already verified on this device (Profile, Part
+  // 25) -- offered as a one-tap ALTERNATIVE, not the default, since a
+  // personal address is the more reliable delivery destination (Part
+  // 61): university inboxes sometimes block this app's automated mail,
+  // which a private address never has to worry about. Still needs no
+  // second code -- see /api/delivery/register/quick's own docstring for
+  // why re-proving control of the SAME address here would add nothing.
+  async function useUniEmailInstead() {
+    if (!state.registeredEmail) return;
+    const btn = card.querySelector(".delivery-register-use-uni");
+    if (btn) btn.disabled = true;
+    try {
+      await api("/api/delivery/register/quick", { method: "POST", body: JSON.stringify({ email: state.registeredEmail }) });
+      finishRegistering(state.registeredEmail);
+    } catch {
+      showToast(tr("verificationFailed"));
+      if (btn) btn.disabled = false;
+    }
+  }
 
   function renderStep() {
     if (step === "enter") {
       card.innerHTML = `
         <p class="delivery-register-hint">${escapeHtml(tr("deliveryRegisterHint"))}</p>
         <div class="field-block">
-          <input type="email" inputmode="email" class="delivery-register-input" placeholder="${escapeHtml(tr("customerEmailPlaceholder"))}">
+          <input type="email" inputmode="email" class="delivery-register-input" placeholder="${escapeHtml(tr("communicationEmailPlaceholder"))}">
         </div>
         <button type="button" class="primary-button delivery-register-send">${escapeHtml(tr("sendCode"))}</button>
+        ${
+          state.registeredEmail
+            ? `<button type="button" class="secondary-button delivery-register-use-uni">${escapeHtml(tr("deliveryUseUniEmailInstead", { email: state.registeredEmail }))}</button>`
+            : ""
+        }
       `;
       const input = card.querySelector(".delivery-register-input");
       card.querySelector(".delivery-register-send").addEventListener("click", () => requestCode(input.value.trim()));
       input.addEventListener("keydown", (e) => {
         if (e.key === "Enter") requestCode(input.value.trim());
       });
+      card.querySelector(".delivery-register-use-uni")?.addEventListener("click", useUniEmailInstead);
     } else {
       card.innerHTML = `
         <p class="delivery-register-hint">${escapeHtml(tr("codeSentHint", { email: pendingEmail }))}</p>
@@ -1480,8 +1492,8 @@ function deliveryRegisterCard() {
 
   async function requestCode(email) {
     if (!email) return;
-    if (!isAllowedUniLuEmail(email)) {
-      showToast(tr("invalidUniLuEmail"));
+    if (!isValidEmailFormat(email)) {
+      showToast(tr("invalidEmailFormat"));
       return;
     }
     const sendBtn = card.querySelector(".delivery-register-send, .delivery-register-resend");
@@ -1527,8 +1539,7 @@ function deliveryRegisterCard() {
         if (confirmBtn) confirmBtn.disabled = false;
         return;
       }
-      saveDeliveryRegisteredEmail(pendingEmail);
-      card.replaceWith(deliveryRegisterCard());
+      finishRegistering(pendingEmail);
     } catch {
       showToast(tr("verificationFailed"));
       if (confirmBtn) confirmBtn.disabled = false;
@@ -3505,10 +3516,23 @@ async function renderReview() {
     <div class="field-block">
       <label for="customer-email">${escapeHtml(tr("customerEmail"))}</label>
       <input id="customer-email" type="email" inputmode="email" placeholder="${escapeHtml(tr("customerEmailPlaceholder"))}" value="${escapeHtml(state.customerEmail)}">
+      ${
+        // Only shown while this field is still defaulting to the
+        // University email (no Communication email saved yet, Part 61) --
+        // the actual reliability concern doesn't apply once a private
+        // address is already in play, so this stops nudging as soon as
+        // one's set, from here or from Profile.
+        !state.communicationEmail && state.registeredEmail && state.customerEmail === state.registeredEmail
+          ? `<p class="field-hint checkout-private-email-hint">${escapeHtml(tr("checkoutPreferPrivateEmailHint"))} <button type="button" class="link-button checkout-add-private-email">${escapeHtml(tr("addPrivateEmailLink"))}</button></p>`
+          : ""
+      }
     </div>
   `);
   emailBlock.querySelector("input").addEventListener("input", (e) => {
     state.customerEmail = e.target.value;
+  });
+  emailBlock.querySelector(".checkout-add-private-email")?.addEventListener("click", (e) => {
+    openCommunicationEmailSheet(e.target);
   });
   app.append(emailBlock);
 

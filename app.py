@@ -431,13 +431,19 @@ def create_app(
         SEPARATE EmailVerificationStore instance -- a code issued for
         customer checkout must never also verify a courier registration,
         or vice versa), for a courier proving they can read mail at the
-        address they want order notifications sent to."""
+        address they want order notifications sent to. Deliberately NOT
+        restricted to a uni.lu domain (Part 61) -- unlike the University
+        Email (which proves campus affiliation and stays uni.lu-only),
+        this is just the delivery destination, and a personal address is
+        actually the MORE reliable choice here: university mail systems
+        sometimes reject automated mail from this app's sender. Still
+        code-verified, just not domain-gated."""
         body = request.get_json(force=True, silent=True) or {}
         email = (body.get("email") or "").strip()
         if not email:
             abort(400, description="Body must include 'email'")
-        if not _is_allowed_customer_email(email):
-            abort(400, description=f"'email' must be a valid address ending in {' or '.join(ALLOWED_EMAIL_DOMAINS)}")
+        if not _is_valid_email_format(email):
+            abort(400, description="'email' must be a valid email address")
 
         remaining = delivery_verification().seconds_until_resend_allowed(email)
         if remaining > 0:

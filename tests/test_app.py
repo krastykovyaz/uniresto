@@ -643,8 +643,21 @@ def test_verify_code_missing_fields_is_400(client):
 # ---------------------------------------------------------------------------
 
 
-def test_delivery_register_send_code_rejects_non_uni_lu_email(client):
-    resp = client.post("/api/delivery/register/send-code", json={"email": "courier@gmail.com"})
+def test_delivery_register_send_code_allows_non_uni_lu_email(client):
+    # Deliberately relaxed (Part 61): a personal address is the MORE
+    # reliable destination for delivery notifications, since university
+    # inboxes sometimes block this app's automated mail. Still code-
+    # verified -- only the domain restriction is gone.
+    with patch("app.generate_verification_code", return_value="654321"), patch(
+        "app.send_verification_code", return_value=(True, None)
+    ):
+        resp = client.post("/api/delivery/register/send-code", json={"email": "courier@gmail.com"})
+    assert resp.status_code == 200
+    assert resp.get_json()["sent"] is True
+
+
+def test_delivery_register_send_code_rejects_malformed_email(client):
+    resp = client.post("/api/delivery/register/send-code", json={"email": "not-an-email"})
     assert resp.status_code == 400
 
 
@@ -656,6 +669,16 @@ def test_delivery_register_verify_code_persists_the_subscriber(client):
     resp = client.post("/api/delivery/register/verify-code", json={"email": "courier@uni.lu", "code": "654321"})
     assert resp.get_json()["verified"] is True
     assert "courier@uni.lu" in client.application.config["DELIVERY_SUBSCRIBER_STORE"].list_emails()
+
+
+def test_delivery_register_verify_code_persists_a_private_address_too(client):
+    with patch("app.generate_verification_code", return_value="654321"), patch(
+        "app.send_verification_code", return_value=(True, None)
+    ):
+        client.post("/api/delivery/register/send-code", json={"email": "courier@gmail.com"})
+    resp = client.post("/api/delivery/register/verify-code", json={"email": "courier@gmail.com", "code": "654321"})
+    assert resp.get_json()["verified"] is True
+    assert "courier@gmail.com" in client.application.config["DELIVERY_SUBSCRIBER_STORE"].list_emails()
 
 
 def test_delivery_register_verify_code_wrong_code_does_not_persist(client):

@@ -828,6 +828,8 @@ svg { display: block; }
   font-family: inherit;
 }
 .field-block textarea { resize: vertical; line-height: 1.4; }
+.field-hint { margin: 6px 0 0; font-size: 0.8rem; color: var(--color-text-muted); line-height: 1.4; }
+.field-hint .link-button { font-size: inherit; min-height: 0; }
 /* Native <select> chrome (grey fill, square corners, OS-drawn arrow)
    otherwise overrides the rules above in most browsers unless the
    default appearance is explicitly turned off first. */
