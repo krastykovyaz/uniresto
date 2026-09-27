@@ -267,6 +267,20 @@ svg { display: block; }
 .delivery-earn-banner-title { margin: 0 0 2px; font-size: 0.95rem; font-weight: 700; color: var(--color-primary-dark); }
 .delivery-earn-banner-body { margin: 0; font-size: 0.8rem; line-height: 1.4; color: var(--color-primary-dark); }
 
+/* Short version of the same line, on the role picker's own Delivery
+   card (see renderRole()'s earnBadgeKey) -- a small pill, not another
+   full sentence, so the card itself stays scannable. */
+.role-earn-badge {
+  display: inline-block;
+  margin: 6px 0 0;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--color-primary-bg);
+  color: var(--color-primary-dark);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
 /* Delivery's own courier-registration form (Part 52+): inline on the
    page, not a bottom sheet -- registering is the primary reason to be
    on this screen, not a secondary settings action. Once registered,

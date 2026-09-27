@@ -1156,7 +1156,19 @@ function renderRole() {
   const grid = el(`<div class="restaurant-grid"></div>`);
   const roles = [
     { key: "eat", titleKey: "roleEat", subtitleKey: "roleEatSubtitle", iconName: "fork", colorClass: "is-veg", go: () => goTo("restaurants") },
-    { key: "delivery", titleKey: "roleDelivery", subtitleKey: "roleDeliverySubtitle", iconName: "delivery", colorClass: "is-drink", go: () => goTo("delivery") },
+    {
+      key: "delivery",
+      titleKey: "roleDelivery",
+      subtitleKey: "roleDeliverySubtitle",
+      iconName: "delivery",
+      colorClass: "is-drink",
+      go: () => goTo("delivery"),
+      // Short version of the same recruiting line as the full banner on
+      // the Delivery screen itself (deliveryEarnBannerTitle/Body) -- see
+      // that banner's own comment in app.css for why this doesn't
+      // conflict with the app's "no payment taken" disclaimers.
+      earnBadgeKey: "deliveryEarnBadge",
+    },
   ];
   for (const role of roles) {
     const card = el(`
@@ -1166,6 +1178,7 @@ function renderRole() {
           <div>
             <h2>${escapeHtml(tr(role.titleKey))}</h2>
             <p class="kind">${escapeHtml(tr(role.subtitleKey))}</p>
+            ${role.earnBadgeKey ? `<p class="role-earn-badge">${escapeHtml(tr(role.earnBadgeKey))}</p>` : ""}
           </div>
         </div>
       </button>
