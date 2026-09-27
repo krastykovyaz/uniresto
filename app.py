@@ -184,6 +184,21 @@ def create_app(
         daily_menus = get_customer_menu(svc(), restaurant, d)
         return flatten_menu_items(daily_menus), daily_menus
 
+    def _early_cutoff_violations(flat_items, selection, early_cutoff_available):
+        """Names of selected items that require the earlier 08:00 cutoff
+        (see menu_service.requires_early_order()) once that cutoff has
+        actually passed -- [] otherwise, including whenever
+        early_cutoff_available is still True (no need to even look)."""
+        if early_cutoff_available:
+            return []
+        by_id = {it["id"]: it for it in flat_items}
+        names = []
+        for entry in selection:
+            item = by_id.get(entry.get("id"))
+            if item and item["requires_early_order"]:
+                names.append(item["name"])
+        return names
+
     @app.get("/api/restaurants/<slug>/menu/<target_date>")
     def api_menu(slug, target_date):
         restaurant = get_restaurant_or_404(slug)
@@ -235,6 +250,14 @@ def create_app(
         d = parse_date_arg(date_str)
 
         flat_items, _ = _load_flat_menu(restaurant, d)
+        result = svc().check_orderability(restaurant, d)
+        offending = _early_cutoff_violations(flat_items, selection, result.early_cutoff.available)
+        if offending:
+            return jsonify({
+                "error": "early_cutoff_passed",
+                "message": f"These items had to be ordered before 08:00 today: {', '.join(offending)}",
+                "items": offending,
+            }), 409
         try:
             quote = recalculate_order(flat_items, selection)
         except OrderValidationError as exc:
@@ -274,7 +297,7 @@ def create_app(
         if result.status != "available":
             return jsonify({"error": "date_not_available", "status": result.status, "reason": result.reason}), 409
         # Restopolis's own signals can say available while OUR same-day
-        # 08:00 cutoff has already passed (evaluate_our_delivery) -- the
+        # 13:00 cutoff has already passed (evaluate_our_delivery) -- the
         # menu stays browsable past that point (see api_menu above, never
         # gated on our_delivery), but an order must never actually be
         # created once we've told the customer it's closed.
@@ -282,6 +305,13 @@ def create_app(
             return jsonify({"error": "date_not_available", "status": "closed", "reason": "Our ordering deadline for this date has passed."}), 409
 
         flat_items, _ = _load_flat_menu(restaurant, d)
+        offending = _early_cutoff_violations(flat_items, selection, result.early_cutoff.available)
+        if offending:
+            return jsonify({
+                "error": "early_cutoff_passed",
+                "message": f"These items had to be ordered before 08:00 today: {', '.join(offending)}",
+                "items": offending,
+            }), 409
         try:
             quote = recalculate_order(flat_items, selection)
         except OrderValidationError as exc:

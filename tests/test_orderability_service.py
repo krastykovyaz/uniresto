@@ -97,10 +97,21 @@ def test_network_failure_is_unknown_not_closed_or_available(
 
 def test_restopolis_orderable_but_our_deadline_passed(cache, altius_html, altius_closed_week_html, altius_config, fixture_today):
     service, _ = make_service(cache, altius_html, altius_closed_week_html, altius_config, fixture_today)
-    now = datetime.datetime(2026, 9, 24, 8, 15, tzinfo=TZINFO)  # after that same day's 08:00 deadline
+    now = datetime.datetime(2026, 9, 24, 13, 15, tzinfo=TZINFO)  # after that same day's 13:00 deadline
     result = service.check_orderability(altius_config, datetime.date(2026, 9, 24), now=now)
     assert result.status == "available"          # Restopolis says yes
     assert result.our_delivery.available is False  # but our cutoff already passed
+
+
+def test_early_cutoff_separately_reported_on_the_result(cache, altius_html, altius_closed_week_html, altius_config, fixture_today):
+    # 09:00: general (13:00) deadline hasn't passed, but the early
+    # grill/BBQ/salmon-only one (08:00) has -- both are on the result,
+    # never merged into one signal.
+    service, _ = make_service(cache, altius_html, altius_closed_week_html, altius_config, fixture_today)
+    now = datetime.datetime(2026, 9, 24, 9, 0, tzinfo=TZINFO)
+    result = service.check_orderability(altius_config, datetime.date(2026, 9, 24), now=now)
+    assert result.our_delivery.available is True
+    assert result.early_cutoff.available is False
 
 
 # ---------------------------------------------------------------------------

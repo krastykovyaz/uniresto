@@ -27,9 +27,10 @@ def _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, 
         cache=OrderabilityCache(tmp_path / "cache.db", ttl_seconds=900),
         restaurants=restaurants,
         today=fixture_today,
-        # Pinned well before ANY test date's 08:00 same-day ordering
-        # deadline (evaluate_our_delivery) -- without this, every route
-        # here would compare against the REAL wall clock (check_orderability
+        # Pinned to the day BEFORE any test date, so it's before ANY test
+        # date's same-day ordering deadline (evaluate_our_delivery)
+        # regardless of that deadline's own cutoff time -- without this,
+        # every route here would compare against the REAL wall clock (check_orderability
         # is always called with no explicit `now`, matching production),
         # making order-creation tests flaky/date-dependent on whenever the
         # suite happens to run rather than on the fixture's own "today".
@@ -353,13 +354,13 @@ def test_create_order_after_our_deadline_is_409_even_though_restopolis_still_say
     tmp_path, altius_html, altius_closed_week_html, fixture_today
 ):
     # Restopolis's own status for 2026-09-24 is "available" all day (see
-    # test_api_status_available) -- but OUR same-day 08:00 cutoff
+    # test_api_status_available) -- but OUR same-day 13:00 cutoff
     # (evaluate_our_delivery) has its own, stricter deadline. The menu
     # stays browsable past that point (see
     # test_api_menu_still_available_after_our_deadline_has_passed below),
     # but creating an order must not silently succeed once we've told the
     # customer ordering is closed.
-    after_deadline = datetime.datetime(2026, 9, 24, 8, 15, tzinfo=TZINFO)
+    after_deadline = datetime.datetime(2026, 9, 24, 13, 15, tzinfo=TZINFO)
     with _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, now=after_deadline) as late_client:
         resp = late_client.post(
             "/api/orders",
@@ -374,7 +375,7 @@ def test_api_menu_still_available_after_our_deadline_has_passed(tmp_path, altius
     # api_menu only ever gates on Restopolis's own status (never
     # our_delivery) -- a customer can still see what was on the menu even
     # once ordering has closed for the day.
-    after_deadline = datetime.datetime(2026, 9, 24, 8, 15, tzinfo=TZINFO)
+    after_deadline = datetime.datetime(2026, 9, 24, 13, 15, tzinfo=TZINFO)
     with _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, now=after_deadline) as late_client:
         resp = late_client.get("/api/restaurants/altius/menu/2026-09-24")
     assert resp.status_code == 200
@@ -383,12 +384,75 @@ def test_api_menu_still_available_after_our_deadline_has_passed(tmp_path, altius
 def test_api_status_reports_restopolis_available_but_our_delivery_closed_after_deadline(
     tmp_path, altius_html, altius_closed_week_html, fixture_today
 ):
-    after_deadline = datetime.datetime(2026, 9, 24, 8, 15, tzinfo=TZINFO)
+    after_deadline = datetime.datetime(2026, 9, 24, 13, 15, tzinfo=TZINFO)
     with _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, now=after_deadline) as late_client:
         resp = late_client.get("/api/restaurants/altius/status?date=2026-09-24")
     body = resp.get_json()
     assert body["status"] == "available"
     assert body["our_delivery"]["available"] is False
+
+
+def test_api_status_reports_early_cutoff_separately(tmp_path, altius_html, altius_closed_week_html, fixture_today):
+    # 09:00: past the early (08:00) grill/BBQ/salmon-only cutoff, but not
+    # yet the general (13:00) one -- both are reported, never merged.
+    past_early_cutoff = datetime.datetime(2026, 9, 24, 9, 0, tzinfo=TZINFO)
+    with _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, now=past_early_cutoff) as c:
+        resp = c.get("/api/restaurants/altius/status?date=2026-09-24")
+    body = resp.get_json()
+    assert body["our_delivery"]["available"] is True
+    assert body["early_cutoff"]["available"] is False
+
+
+# ---------------------------------------------------------------------------
+# Early-cutoff dishes (grill/BBQ mains, salmon) needing the 08:00 deadline
+# (Part 59) -- requires_early_order() is patched here rather than depending
+# on a real fixture dish matching its keyword rule (already covered
+# precisely in tests/test_menu_service.py); this only exercises the
+# integration: app.py actually enforcing it once flagged.
+# ---------------------------------------------------------------------------
+
+
+def test_menu_items_carry_the_early_order_flag(client):
+    with patch("orderability_engine.menu_service.requires_early_order", return_value=True):
+        resp = client.get("/api/restaurants/altius/menu/2026-09-24")
+    body = resp.get_json()
+    assert body["items"]
+    assert all(it["requires_early_order"] is True for it in body["items"])
+
+
+def test_create_order_rejects_early_cutoff_item_once_0800_has_passed(tmp_path, altius_html, altius_closed_week_html, fixture_today):
+    after_early_cutoff = datetime.datetime(2026, 9, 24, 9, 0, tzinfo=TZINFO)  # past 08:00, before the general 13:00 deadline
+    with _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, now=after_early_cutoff) as late_client:
+        with patch("orderability_engine.menu_service.requires_early_order", return_value=True):
+            resp = late_client.post(
+                "/api/orders",
+                json={"restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}]},
+            )
+    assert resp.status_code == 409
+    assert resp.get_json()["error"] == "early_cutoff_passed"
+
+
+def test_create_order_allows_early_cutoff_item_before_0800(tmp_path, altius_html, altius_closed_week_html, fixture_today):
+    before_early_cutoff = datetime.datetime(2026, 9, 24, 7, 0, tzinfo=TZINFO)
+    with _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, now=before_early_cutoff) as early_client:
+        with patch("orderability_engine.menu_service.requires_early_order", return_value=True):
+            resp = early_client.post(
+                "/api/orders",
+                json={"restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}]},
+            )
+    assert resp.status_code == 201
+
+
+def test_quote_rejects_early_cutoff_item_once_0800_has_passed(tmp_path, altius_html, altius_closed_week_html, fixture_today):
+    after_early_cutoff = datetime.datetime(2026, 9, 24, 9, 0, tzinfo=TZINFO)
+    with _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, now=after_early_cutoff) as late_client:
+        with patch("orderability_engine.menu_service.requires_early_order", return_value=True):
+            resp = late_client.post(
+                "/api/orders/quote",
+                json={"restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}]},
+            )
+    assert resp.status_code == 409
+    assert resp.get_json()["error"] == "early_cutoff_passed"
 
 
 def test_create_order_without_items_is_400(client):

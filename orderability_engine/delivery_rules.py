@@ -6,11 +6,20 @@ and this deadline can disagree, and the orderability service reports both
 independently rather than letting one overwrite the other (see task spec
 §7/§12 and orderability/models.py's OrderabilityResult).
 
-Current rule: orders for date D must be placed by 08:00 Europe/Luxembourg
+Current rule: orders for date D must be placed by 13:00 Europe/Luxembourg
 on D itself, the SAME day -- e.g. an order for 2026-09-24 is possible up
-until 08:00 on 2026-09-24; an order for 2026-09-25 up until 08:00 on
+until 13:00 on 2026-09-24; an order for 2026-09-25 up until 13:00 on
 2026-09-25. (An earlier v1 rule required ordering by 08:30 the day
-*before* D; this supersedes it -- see README.md Part 20.)
+*before* D, then a v2 rule tightened the same-day cutoff to 08:00;
+this supersedes both -- see README.md Part 20/59.)
+
+Part 59 adds a SECOND, earlier same-day cutoff (EARLY_CUTOFF_CONFIG,
+08:00) for specific dishes that need to be pre-ordered well before
+service because they're prepared to order (grill/BBQ mains, salmon) --
+confirmed by the admin as real campus-kitchen practice, not something
+Restopolis exposes either. Which dishes that applies to is decided by
+menu_service.requires_early_order(), never here -- this module only
+knows about TIMES, not which items they apply to.
 """
 
 from __future__ import annotations
@@ -23,11 +32,12 @@ from orderability_engine.models import OurDeliveryRule, TZINFO
 
 @dataclass
 class DeliveryRuleConfig:
-    cutoff_time: time = time(8, 0)
+    cutoff_time: time = time(13, 0)
     days_before: int = 0  # cutoff falls on target_date - days_before (0 = same day)
 
 
 DEFAULT_RULE_CONFIG = DeliveryRuleConfig()
+EARLY_CUTOFF_CONFIG = DeliveryRuleConfig(cutoff_time=time(8, 0))
 
 
 def compute_our_deadline(target_date: date, config: DeliveryRuleConfig = DEFAULT_RULE_CONFIG) -> datetime:

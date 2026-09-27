@@ -35,7 +35,7 @@ from restopolis.models import RestaurantConfig
 from restopolis.parser import MenuParseError
 
 from orderability_engine.cache import OrderabilityCache
-from orderability_engine.delivery_rules import DEFAULT_RULE_CONFIG, DeliveryRuleConfig, evaluate_our_delivery
+from orderability_engine.delivery_rules import DEFAULT_RULE_CONFIG, EARLY_CUTOFF_CONFIG, DeliveryRuleConfig, evaluate_our_delivery
 from orderability_engine.detector import (
     HorizonExceededError,
     PastDateError,
@@ -228,9 +228,13 @@ class OrderabilityService:
         our_delivery = evaluate_our_delivery(
             target_date, status.ordering_available, status.menu_available, now=now, config=self.delivery_config
         )
+        early_cutoff = evaluate_our_delivery(
+            target_date, status.ordering_available, status.menu_available, now=now, config=EARLY_CUTOFF_CONFIG
+        )
         logger.info(
-            "[OUR RULE]\ndeadline=%s\ndelivery_orderable=%s",
+            "[OUR RULE]\ndeadline=%s\ndelivery_orderable=%s\nearly_cutoff=%s\nearly_cutoff_orderable=%s",
             self.delivery_config.cutoff_time, our_delivery.available,
+            EARLY_CUTOFF_CONFIG.cutoff_time, early_cutoff.available,
         )
         logger.info("[RESULT]\n%s", final_status.upper())
 
@@ -248,6 +252,7 @@ class OrderabilityService:
             status=final_status,
             reason=reason,
             our_delivery=our_delivery,
+            early_cutoff=early_cutoff,
             checked_at=now,
             from_cache=from_cache,
         )
@@ -263,6 +268,7 @@ class OrderabilityService:
     ) -> OrderabilityResult:
         logger.info("[RESULT]\n%s", status.upper())
         our_delivery = evaluate_our_delivery(target_date, None, None, now=now, config=self.delivery_config)
+        early_cutoff = evaluate_our_delivery(target_date, None, None, now=now, config=EARLY_CUTOFF_CONFIG)
         return OrderabilityResult(
             restaurant_code=restaurant.code,
             restaurant_name=restaurant.name,
@@ -277,6 +283,7 @@ class OrderabilityService:
             status=status,
             reason=reason,
             our_delivery=our_delivery,
+            early_cutoff=early_cutoff,
             checked_at=now,
             from_cache=False,
             horizon_exceeded=horizon_exceeded,

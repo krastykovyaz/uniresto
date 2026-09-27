@@ -75,6 +75,11 @@ class OrderabilityResult:
     reason: str | None
 
     our_delivery: OurDeliveryRule
+    # Same shape as our_delivery, but for the EARLIER same-day cutoff
+    # (08:00) that only specific dishes (grill/BBQ mains, salmon -- see
+    # menu_service.requires_early_order()) need to respect, separate from
+    # the general 13:00 one above (Part 59).
+    early_cutoff: OurDeliveryRule
 
     source: str = "Restopolis"
     checked_at: datetime = field(default_factory=lambda: datetime.now())
@@ -100,6 +105,8 @@ class OrderabilityResult:
             "reason": self.reason,
             "our_order_deadline": self.our_delivery.deadline.isoformat() if self.our_delivery.deadline else None,
             "our_delivery_orderable": self.our_delivery.available,
+            "early_order_deadline": self.early_cutoff.deadline.isoformat() if self.early_cutoff.deadline else None,
+            "early_order_orderable": self.early_cutoff.available,
             "source": self.source,
             "checked_at": self.checked_at.isoformat(),
             "from_cache": self.from_cache,
@@ -121,6 +128,10 @@ class OrderabilityResult:
             "our_delivery": {
                 "deadline": self.our_delivery.deadline.isoformat() if self.our_delivery.deadline else None,
                 "available": self.our_delivery.available,
+            },
+            "early_cutoff": {
+                "deadline": self.early_cutoff.deadline.isoformat() if self.early_cutoff.deadline else None,
+                "available": self.early_cutoff.available,
             },
             "status": self.status,
             "reason": self.reason,

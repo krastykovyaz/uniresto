@@ -525,6 +525,11 @@ svg { display: block; }
 }
 
 .food-card.is-selected { border-color: var(--color-primary); box-shadow: 0 0 0 1px var(--color-primary); }
+/* Grill/BBQ/salmon mains once their own 08:00 cutoff has passed (Part
+   59) -- still shown (never hidden, same "explain why" principle as
+   .date-card.is-disabled), just visibly inert; selectOrExplain() in
+   app.js backs this up with a toast instead of silently doing nothing. */
+.food-card.is-early-cutoff-passed { opacity: 0.55; }
 
 .food-card-photo {
   position: relative;
@@ -606,6 +611,8 @@ svg { display: block; }
   background: rgba(255, 255, 255, 0.92);
   color: var(--color-available);
 }
+.badge.is-early-order { color: var(--color-unknown); }
+.badge.is-early-order-passed { color: var(--color-closed); }
 
 .allergen-line { font-size: 0.78rem; line-height: 1.45; color: var(--color-text-muted); margin: 0; }
 

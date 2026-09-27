@@ -16,7 +16,29 @@ from restopolis.weight import format_weight
 
 from orderability_engine.detector import MENU_SOURCE_URL
 from orderability_engine.nutrition import estimate_calories
+from orderability_engine.pricing import MAIN_CATEGORIES
 from orderability_engine.service import OrderabilityService
+
+# Confirmed by the admin as real campus-kitchen practice (Part 59): these
+# specific mains need to be pre-ordered well before service since they're
+# prepared to order, so they carry the EARLIER same-day cutoff
+# (delivery_rules.EARLY_CUTOFF_CONFIG, 08:00) instead of the general one
+# (13:00). Matched by keyword within the dish NAME rather than a real
+# Restopolis category -- Restopolis has no "grill"/"BBQ" category of its
+# own (every real dish seen with one of these words is already filed
+# under Non-végétarien/Végétarien/Végan like any other main). Scoped to
+# MAIN_CATEGORIES specifically so this never misfires on something that
+# merely shares the word, e.g. "Salade de quinoa au butternut grillé"
+# (an Entrée) or "1/2 Levain Humi (houmous aux légumes locaux grillés)"
+# (a sandwich) -- both real menu items, neither an early-cutoff dish.
+EARLY_ORDER_KEYWORDS = ("grill", "bbq", "barbecue", "saumon", "salmon")
+
+
+def requires_early_order(category: str, name: str) -> bool:
+    if category not in MAIN_CATEGORIES:
+        return False
+    lowered = name.lower()
+    return any(keyword in lowered for keyword in EARLY_ORDER_KEYWORDS)
 
 
 def get_menu_for_date(
@@ -90,6 +112,7 @@ def flatten_menu_items(daily_menus: list[DailyMenu]) -> list[dict]:
                     "dietary": item.dietary,
                     "vegetarian": item.is_vegetarian,
                     "vegan": item.is_vegan,
+                    "requires_early_order": requires_early_order(item.category, item.name),
                     "portions": [],
                     "calories": nutrition["calories"],
                     "calories_food_type": nutrition["food_type"],

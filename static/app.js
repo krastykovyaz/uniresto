@@ -1709,14 +1709,17 @@ async function selectRestaurant(restaurant) {
 
 // --------------------------------------------------------------- Screen: dates
 
-// The one true "can you actually order on this date" check, shared by
-// the date picker's display (renderDates() below) and reorderPastOrder():
-// Restopolis's own status can still say "available" once OUR same-day
-// 08:00 cutoff has already passed (see orderability_engine/delivery_rules.py)
-// -- the two signals are reported independently by the backend on
-// purpose (never merged into one), so the frontend has to combine them
-// itself everywhere it decides orderability, not just where it happens
-// to render a badge.
+// The one true "can you actually order on this date at all" check,
+// shared by the date picker's display (renderDates() below) and
+// reorderPastOrder(): Restopolis's own status can still say "available"
+// once OUR same-day 13:00 cutoff has already passed (see
+// orderability_engine/delivery_rules.py) -- the two signals are
+// reported independently by the backend on purpose (never merged into
+// one), so the frontend has to combine them itself everywhere it
+// decides orderability, not just where it happens to render a badge.
+// A SEPARATE, earlier 08:00 cutoff (dateInfo.early_cutoff) applies only
+// to specific dishes (grill/BBQ mains, salmon) -- see requiresEarlyOrder()
+// below, checked per-item, never here.
 function isDateOrderable(dateInfo) {
   const ourDeadlinePassed = dateInfo.status === "available" && dateInfo.our_delivery && dateInfo.our_delivery.available === false;
   return dateInfo.status === "available" && !ourDeadlinePassed;
@@ -2804,14 +2807,28 @@ function foodCard(item) {
   const isSelected = !!sel;
   const isFav = isFavorite(state.slug, item.category, item.name);
   const metaParts = [weightText(item), caloriesText(item)].filter(Boolean);
+  // Grill/BBQ mains and salmon (Part 59) -- confirmed real kitchen
+  // practice, not Restopolis data -- need to be ordered by 08:00, well
+  // before the general 13:00 cutoff (see delivery_rules.py). Checked
+  // against dateInfo.early_cutoff, the SAME same-day-deadline shape as
+  // our_delivery just computed against the earlier time.
+  const earlyCutoffPassed =
+    item.requires_early_order && state.dateInfo && state.dateInfo.early_cutoff && state.dateInfo.early_cutoff.available === false;
   const card = el(`
-    <article class="food-card ${isSelected ? "is-selected" : ""}" data-item-id="${item.id}">
+    <article class="food-card ${isSelected ? "is-selected" : ""} ${earlyCutoffPassed ? "is-early-cutoff-passed" : ""}" data-item-id="${item.id}">
       <div class="food-card-photo icon-avatar ${categoryIconClass(item)}">
         ${dishIllustrationSvg()}
         <button type="button" class="heart-btn ${isFav ? "is-favorite" : ""}" aria-label="${escapeHtml(tr(isFav ? "removeFavorite" : "addFavorite", { name: dishNameLabel(item.name, state.lang) }))}" aria-pressed="${isFav}">${icon(isFav ? "heartFilled" : "heart", 18)}</button>
         ${
-          item.vegan || item.vegetarian
-            ? `<div class="badge-row"><span class="badge">${escapeHtml(tr(item.vegan ? "vegan" : "vegetarian"))}</span></div>`
+          item.vegan || item.vegetarian || item.requires_early_order
+            ? `<div class="badge-row">
+                ${item.vegan || item.vegetarian ? `<span class="badge">${escapeHtml(tr(item.vegan ? "vegan" : "vegetarian"))}</span>` : ""}
+                ${
+                  item.requires_early_order
+                    ? `<span class="badge ${earlyCutoffPassed ? "is-early-order-passed" : "is-early-order"}">${escapeHtml(tr(earlyCutoffPassed ? "earlyOrderPassedBadge" : "earlyOrderBadge"))}</span>`
+                    : ""
+                }
+              </div>`
             : ""
         }
       </div>
@@ -2859,15 +2876,24 @@ function foodCard(item) {
     card.replaceWith(foodCard(item));
   });
 
-  card.addEventListener("click", () => toggleSelection(item.id));
+  function selectOrExplain() {
+    if (earlyCutoffPassed) {
+      showToast(tr("earlyOrderPassedToast"));
+      return;
+    }
+    toggleSelection(item.id);
+  }
+
+  card.addEventListener("click", selectOrExplain);
   card.setAttribute("role", "button");
   card.setAttribute("tabindex", "0");
   card.setAttribute("aria-pressed", String(isSelected));
+  card.setAttribute("aria-disabled", String(earlyCutoffPassed));
   card.setAttribute("aria-label", tr(isSelected ? "deselectItem" : "selectItem", { name: dishNameLabel(item.name, state.lang) }));
   card.addEventListener("keydown", (e) => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
-      toggleSelection(item.id);
+      selectOrExplain();
     }
   });
 
