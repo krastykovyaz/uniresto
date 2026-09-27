@@ -1320,8 +1320,7 @@ function buildingLabel(building) {
 // re-shown just because the user tapped "Home".
 function renderRole() {
   app.innerHTML = "";
-  app.append(el(`<p class="eyebrow" style="padding-top:28px">${escapeHtml(tr("tagline"))}</p>`));
-  app.append(el(`<h1 class="large-title">${escapeHtml(tr("roleQuestion"))}</h1>`));
+  app.append(el(`<h1 class="large-title" style="padding-top:28px">${escapeHtml(tr("roleQuestion"))}</h1>`));
 
   const grid = el(`<div class="restaurant-grid"></div>`);
   const roles = [
@@ -1572,6 +1571,7 @@ async function renderDelivery() {
     return;
   }
 
+  app.append(el(`<p class="eyebrow" style="margin-top:var(--space-3)">${escapeHtml(tr("tagline"))}</p>`));
   const list = el(`<div class="order-list"></div>`);
   for (const [restaurant, canteenOrders] of groupOrdersByCanteen(orders)) {
     const group = el(`
@@ -1627,8 +1627,8 @@ function renderRestaurants() {
   `);
   backRow.querySelector(".back-button").addEventListener("click", () => goTo("role"));
   app.append(backRow);
-  app.append(el(`<p class="eyebrow" style="padding-top:var(--space-3)">${escapeHtml(tr("tagline"))}</p>`));
-  app.append(el(`<h1 class="large-title">${escapeHtml(tr("whereToEat"))}</h1>`));
+  app.append(el(`<h1 class="large-title" style="padding-top:var(--space-3)">${escapeHtml(tr("whereToEat"))}</h1>`));
+  app.append(el(`<p class="eyebrow">${escapeHtml(tr("tagline"))}</p>`));
 
   const grid = el(`<div class="restaurant-grid"></div>`);
   for (const r of state.restaurants) {
@@ -1646,8 +1646,37 @@ function renderRestaurants() {
     card.addEventListener("click", () => selectRestaurant(r));
     grid.append(card);
   }
+  for (const location of COMING_SOON_LOCATIONS) {
+    const card = el(`
+      <button class="restaurant-card is-coming-soon" aria-label="${escapeHtml(location.name)}: ${escapeHtml(tr("comingSoonBadge"))}">
+        <div class="restaurant-card-main">
+          <div class="icon-avatar is-other">${icon("fork", 20)}</div>
+          <div>
+            <h2>${escapeHtml(location.name)}</h2>
+            <p class="kind">${escapeHtml(tr(location.kindKey))} · ${escapeHtml(location.building)}</p>
+            <p class="coming-soon-badge">${escapeHtml(tr("comingSoonBadge"))}</p>
+          </div>
+        </div>
+      </button>
+    `);
+    card.addEventListener("click", () => showToast(tr("comingSoonToast")));
+    grid.append(card);
+  }
   app.append(grid);
 }
+
+// Not real Restopolis restaurants -- no menu, no orderability, never
+// selectable (clicking just shows comingSoonToast) -- shown de-emphasized
+// (.is-coming-soon) alongside the real ones so people can see more
+// locations are planned without mistaking these for orderable today.
+// Names/buildings given directly by the admin, not translated (same as
+// a real restaurant's own name/building proper nouns never are).
+const COMING_SOON_LOCATIONS = [
+  { name: "Food House", kindKey: "universityRestaurant", building: "Maison du Savoir" },
+  { name: "Food Café", kindKey: "cafeteria", building: "Maison du Savoir" },
+  { name: "Food Lab", kindKey: "universityRestaurant", building: "Maison des Sciences Humaines" },
+  { name: "Food Zone", kindKey: "universityRestaurant", building: "Maison de l'Innovation" },
+];
 
 function shortName(fullName) {
   // "UDL-CKB - Altius - Restaurant" -> "Altius" (Restopolis's own name,

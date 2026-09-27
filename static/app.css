@@ -324,6 +324,23 @@ svg { display: block; }
 .restaurant-card .delivery-early-order-note { color: var(--color-unknown); font-weight: 600; }
 .restaurant-card .delivery-green-box-note { color: var(--color-available); }
 
+/* Not a real, orderable restaurant -- de-emphasized (Part 66) so it
+   reads as "planned", not mistaken for a live option, matching the
+   same "never hide it, explain why" idea .date-card.is-disabled uses. */
+.restaurant-card.is-coming-soon { opacity: 0.55; }
+.restaurant-card .coming-soon-badge {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--color-border);
+  color: var(--color-text-muted);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
 .icon-avatar {
   width: 44px;
   height: 44px;
