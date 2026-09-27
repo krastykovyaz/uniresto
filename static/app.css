@@ -402,6 +402,45 @@ svg { display: block; }
 }
 .canteen-group.is-collapsed .canteen-group-body { display: none; }
 
+/* Delivery screen's 4 status sections (Part 73) -- Pending/Expired/
+   Closed/Delivered, each its own canteen-grouped list (.canteen-group*
+   above, unchanged, just now scoped inside one of these). Pending has no
+   .delivery-section-chevron/click handler at all (see DELIVERY_SECTIONS
+   in app.js), so it just never collapses; the other three default to
+   .is-collapsed and toggle on tapping the header row. */
+.delivery-section + .delivery-section { border-top: 1px solid var(--color-border); }
+.section-heading-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.delivery-section.is-static .section-heading-row { cursor: default; }
+.section-heading-row .section-heading { margin: 0; padding: 0; }
+.delivery-section-count { color: var(--color-text-muted); font-size: 0.85rem; margin-right: auto; }
+.delivery-section-chevron { display: flex; color: #c4c7cc; transform: rotate(90deg); transition: transform 0.15s ease; }
+.delivery-section.is-collapsed .delivery-section-chevron { transform: rotate(0deg); }
+[dir="rtl"] .delivery-section-chevron { transform: rotate(-90deg); }
+[dir="rtl"] .delivery-section.is-collapsed .delivery-section-chevron { transform: rotate(0deg); }
+.delivery-section.is-collapsed .delivery-section-body { display: none; }
+
+.delivery-order-card { flex-wrap: wrap; }
+.delivery-order-card .delivery-mark-delivered {
+  display: block;
+  width: auto;
+  margin: 0;
+  padding: 8px 14px;
+  font-size: 0.85rem;
+  min-height: 0;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.delivery-delivered-note { color: var(--color-primary-dark); font-weight: 600; }
+
 /* Basket screen: a "Current orders" heading + list (always expanded --
    these are the orders someone actually still needs to track) followed
    by a separate "Order history" group that starts COLLAPSED, since past

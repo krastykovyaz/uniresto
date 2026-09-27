@@ -612,17 +612,37 @@ def create_app(
     @app.get("/api/delivery/orders")
     def api_delivery_orders():
         """Real orders for the in-app Delivery screen (Part 52+) -- every
-        status except 'cancelled', newest first (see
-        OrderStore.list_recent_orders()). Deliberately strips
-        customer_email from every order before returning: a courier needs
-        to know WHERE to bring the order, never who placed it. Viewing
-        this list needs no registration/verification at all (see
-        delivery_subscribers.py's own docstring) -- registering only
-        controls whether an address gets emailed."""
+        order regardless of status, newest first (see
+        OrderStore.list_recent_orders()'s own docstring for why a
+        cancelled one is still included, for the screen's own "Closed"
+        section). Deliberately strips customer_email from every order
+        before returning: a courier needs to know WHERE to bring the
+        order, never who placed it. Viewing this list needs no
+        registration/verification at all (see delivery_subscribers.py's
+        own docstring) -- registering only controls whether an address
+        gets emailed."""
         orders = store().list_recent_orders()
         for order in orders:
             order.pop("customer_email", None)
         return jsonify(orders)
+
+    @app.post("/api/orders/<int:order_id>/mark-delivered")
+    def api_mark_order_delivered(order_id):
+        """Courier-facing (Part 73), same no-account/no-gate reasoning as
+        /api/delivery/orders above -- anyone looking at the Delivery
+        screen can mark an order delivered, same trust level as everyone
+        already seeing every order on it."""
+        if not store().mark_delivered(order_id):
+            abort(404, description=f"No order #{order_id}")
+        return jsonify({"delivered": True})
+
+    @app.post("/api/orders/<int:order_id>/mark-not-delivered")
+    def api_mark_order_not_delivered(order_id):
+        """Undoes the above -- a courier tapping the wrong order, or too
+        early, must be able to reverse it."""
+        if not store().mark_not_delivered(order_id):
+            abort(404, description=f"No order #{order_id}")
+        return jsonify({"delivered": False})
 
     # The exact 4 "coming soon" cards static/app.js's own
     # COMING_SOON_LOCATIONS list shows on the restaurant list (Part 66) --

@@ -745,13 +745,42 @@ def test_delivery_orders_returns_real_orders_and_strips_customer_email(client):
         assert "customer_email" not in o
 
 
-def test_delivery_orders_excludes_cancelled(client):
+def test_delivery_orders_includes_cancelled_as_closed(client):
+    # Part 73: the Delivery screen now buckets a cancelled order into its
+    # own "Closed" section (static/app.js's deliveryOrderSections())
+    # rather than hiding it outright -- the API itself has to keep
+    # returning it for that section to have anything to show.
     order_id = _create_basic_order(client)
     store = client.application.config["ORDER_STORE"]
     token = store.set_real_price(order_id, 6.70)
     store.cancel_order(order_id, token)
     resp = client.get("/api/delivery/orders")
-    assert order_id not in [o["id"] for o in resp.get_json()]
+    order = next(o for o in resp.get_json() if o["id"] == order_id)
+    assert order["status"] == "cancelled"
+
+
+def test_mark_order_delivered(client):
+    order_id = _create_basic_order(client)
+    resp = client.post(f"/api/orders/{order_id}/mark-delivered")
+    assert resp.status_code == 200
+    assert resp.get_json()["delivered"] is True
+    listed = next(o for o in client.get("/api/delivery/orders").get_json() if o["id"] == order_id)
+    assert listed["delivered_at"] is not None
+
+
+def test_mark_order_delivered_unknown_order_404s(client):
+    resp = client.post("/api/orders/999999/mark-delivered")
+    assert resp.status_code == 404
+
+
+def test_mark_order_not_delivered_undoes_it(client):
+    order_id = _create_basic_order(client)
+    client.post(f"/api/orders/{order_id}/mark-delivered")
+    resp = client.post(f"/api/orders/{order_id}/mark-not-delivered")
+    assert resp.status_code == 200
+    assert resp.get_json()["delivered"] is False
+    listed = next(o for o in client.get("/api/delivery/orders").get_json() if o["id"] == order_id)
+    assert listed["delivered_at"] is None
 
 
 def test_create_order_notifies_every_registered_courier(client):

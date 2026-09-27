@@ -69,6 +69,11 @@ CREATE TABLE IF NOT EXISTS orders (
                                         -- moment they placed this order (Part 72) -- used to
                                         -- personalize the courier's delivery-notification email,
                                         -- never re-derived/guessed later
+    delivered_at TEXT,                 -- NULL until a courier marks it delivered (Part 73) --
+                                        -- a courier-reported FACT, independent of `status` above
+                                        -- (which tracks the admin's real-price workflow, an
+                                        -- orthogonal concern: an order can be confirmed AND not
+                                        -- yet delivered, or delivered before it's confirmed)
     created_at TEXT NOT NULL
 );
 
@@ -97,6 +102,7 @@ _MIGRATIONS = [
     ("confirmation_token", "ALTER TABLE orders ADD COLUMN confirmation_token TEXT"),
     ("customer_note", "ALTER TABLE orders ADD COLUMN customer_note TEXT"),
     ("customer_lang", "ALTER TABLE orders ADD COLUMN customer_lang TEXT"),
+    ("delivered_at", "ALTER TABLE orders ADD COLUMN delivered_at TEXT"),
 ]
 
 
@@ -282,7 +288,7 @@ class OrderStore:
         with self._lock:
             row = self._conn.execute(
                 "SELECT id, restaurant_code, restaurant_name, order_date, delivery_location, customer_email, "
-                "status, real_price, created_at, customer_note, customer_lang FROM orders WHERE id = ?",
+                "status, real_price, created_at, customer_note, customer_lang, delivered_at FROM orders WHERE id = ?",
                 (order_id,),
             ).fetchone()
             if row is None:
@@ -331,6 +337,7 @@ class OrderStore:
             "created_at": row[8],
             "customer_note": row[9],
             "customer_lang": row[10],
+            "delivered_at": row[11],
             "items": line_items,
             "totals": aggregate_totals(line_items),
         }
@@ -345,20 +352,37 @@ class OrderStore:
         return [self.get_order(i) for i in ids]
 
     def list_recent_orders(self, limit: int = 100) -> list[dict]:
-        """Part 52+: real orders for the in-app Delivery (courier) screen
-        -- every status except 'cancelled' (a courier has nothing to do
-        with one that never happened), newest first. Unlike
-        list_orders_by_status() this deliberately isn't scoped to one
-        status: a courier benefits from seeing an order the moment it's
-        placed ('pending'), not only once an admin has actioned it."""
+        """Part 52+: real orders for the in-app Delivery (courier) screen,
+        newest first -- EVERY status, including 'cancelled' (Part 73):
+        the screen itself buckets these into Pending/Expired/Closed/
+        Delivered sections (static/app.js's deliveryOrderSections()), and
+        a cancelled order belongs in "Closed" there rather than
+        disappearing outright -- a courier who already started planning a
+        pickup benefits from seeing it was called off, not just silence.
+        Unlike list_orders_by_status() this deliberately isn't scoped to
+        one status: a courier benefits from seeing an order the moment
+        it's placed ('pending'), not only once an admin has actioned it."""
         with self._lock:
-            ids = [
-                r[0]
-                for r in self._conn.execute(
-                    "SELECT id FROM orders WHERE status != 'cancelled' ORDER BY id DESC LIMIT ?", (limit,)
-                ).fetchall()
-            ]
+            ids = [r[0] for r in self._conn.execute("SELECT id FROM orders ORDER BY id DESC LIMIT ?", (limit,)).fetchall()]
         return [self.get_order(i) for i in ids]
+
+    def mark_delivered(self, order_id: int) -> bool:
+        """Part 73: a courier-reported fact ("I physically handed this
+        over"), independent of `status`'s own admin-workflow state
+        machine -- see delivered_at's own schema comment. Idempotent:
+        marking an already-delivered order delivered again just refreshes
+        the timestamp, never an error."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock, self._transaction() as conn:
+            cur = conn.execute("UPDATE orders SET delivered_at = ? WHERE id = ?", (now, order_id))
+            return cur.rowcount > 0
+
+    def mark_not_delivered(self, order_id: int) -> bool:
+        """Undoes mark_delivered() above -- a courier tapping the wrong
+        order, or marking one delivered too early, must be reversible."""
+        with self._lock, self._transaction() as conn:
+            cur = conn.execute("UPDATE orders SET delivered_at = NULL WHERE id = ?", (order_id,))
+            return cur.rowcount > 0
 
     def mark_reviewing(self, order_id: int) -> bool:
         """Part 37: the admin has seen the order (typically via the

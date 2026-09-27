@@ -1607,16 +1607,121 @@ function campusFilterRow(stateKey, onChange) {
   return row;
 }
 
-function deliveryOrderListContent(orders) {
-  const wrap = el(`<div></div>`);
-  if (state.deliveryCampusFilter === "belval") {
-    wrap.append(emptyState("receipt", tr("deliveryBelvalComingSoonTitle"), tr("deliveryBelvalComingSoonBody")));
-    return wrap;
+// Which of the 4 status sections (Part 73) an order belongs in -- checked
+// in this order since they're not mutually independent facts (a
+// cancelled order can also be past its date; a delivered one always
+// wins, since a courier who already handed it over doesn't care that it
+// was also cancelled or expired afterwards):
+//   delivered  -- delivered_at is set (mark_delivered(), a courier fact)
+//   closed     -- status === 'cancelled' (the admin/customer called it off)
+//   expired    -- order_date is before today -- the delivery day itself
+//                 has passed, nothing left to act on
+//   pending    -- everything else: still needs a courier's attention
+function classifyDeliveryOrder(order, todayIso) {
+  if (order.delivered_at) return "delivered";
+  if (order.status === "cancelled") return "closed";
+  if (order.order_date < todayIso) return "expired";
+  return "pending";
+}
+
+// title/alwaysOpen per section -- Pending has no collapse toggle at all
+// (per the explicit instruction: "only pending always open"), since it's
+// the one section that's actually actionable; the other three start
+// collapsed, tap to unwrap.
+const DELIVERY_SECTIONS = [
+  { key: "pending", titleKey: "deliverySectionPending", alwaysOpen: true },
+  { key: "expired", titleKey: "deliverySectionExpired", alwaysOpen: false },
+  { key: "closed", titleKey: "deliverySectionClosed", alwaysOpen: false },
+  { key: "delivered", titleKey: "deliverySectionDelivered", alwaysOpen: false },
+];
+
+function fmtDateTime(isoString) {
+  return new Intl.DateTimeFormat(currentLocale(), { dateStyle: "medium", timeStyle: "short" }).format(new Date(isoString));
+}
+
+// One order's card, shared by every section -- only the action row at
+// the bottom differs: Pending/Expired offer "Mark as delivered" (the
+// courier's own fact, independent of `status` -- see orders.py's
+// delivered_at schema comment), Delivered shows when and offers Undo,
+// Closed (cancelled) has nothing left to do.
+function deliveryOrderCard(order, sectionKey, onChanged) {
+  const itemsSummary = order.items
+    .map((it) => `${dishNameLabel(it.name, state.lang)}${it.quantity > 1 ? ` ×${it.quantity}` : ""}`)
+    .join(", ");
+  // Grill/BBQ mains and salmon (Part 60) -- the courier needs to know
+  // this order includes one of those, since it had to be pre-ordered
+  // by 08:00 rather than the general 13:00 deadline (see
+  // menu_service.requires_early_order(), re-derived per item on
+  // OrderStore.get_order() rather than stored).
+  const hasEarlyOrderItem = order.items.some((it) => it.requires_early_order);
+  const card = el(`
+    <div class="restaurant-card delivery-order-card">
+      <div class="restaurant-card-main">
+        <div class="icon-avatar is-other">${icon("receipt", 20)}</div>
+        <div>
+          <h2>${escapeHtml(order.delivery_location || tr("deliveryLocationNotGiven"))}</h2>
+          <p class="kind">${escapeHtml(itemsSummary)}</p>
+          <p class="kind">${escapeHtml(fmtLong(order.order_date))} · ${escapeHtml(orderStatusLabel(order.status))}</p>
+          ${hasEarlyOrderItem ? `<p class="kind delivery-early-order-note">${escapeHtml(tr("deliveryEarlyOrderNote"))}</p>` : ""}
+          ${sectionKey === "delivered" ? `<p class="kind delivery-delivered-note">${escapeHtml(tr("deliveryDeliveredAt", { time: fmtDateTime(order.delivered_at) }))}</p>` : ""}
+        </div>
+      </div>
+    </div>
+  `);
+  if (sectionKey === "pending" || sectionKey === "expired") {
+    const btn = el(`<button type="button" class="secondary-button delivery-mark-delivered">${escapeHtml(tr("deliveryMarkDelivered"))}</button>`);
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      try {
+        await api(`/api/orders/${order.id}/mark-delivered`, { method: "POST" });
+        order.delivered_at = new Date().toISOString();
+        showToast(tr("deliveryMarkDeliveredToast"));
+        onChanged();
+      } catch {
+        showToast(tr("deliveryActionFailed"));
+        btn.disabled = false;
+      }
+    });
+    card.append(btn);
+  } else if (sectionKey === "delivered") {
+    const btn = el(`<button type="button" class="secondary-button delivery-mark-delivered">${escapeHtml(tr("deliveryMarkNotDelivered"))}</button>`);
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      try {
+        await api(`/api/orders/${order.id}/mark-not-delivered`, { method: "POST" });
+        order.delivered_at = null;
+        showToast(tr("deliveryMarkNotDeliveredToast"));
+        onChanged();
+      } catch {
+        showToast(tr("deliveryActionFailed"));
+        btn.disabled = false;
+      }
+    });
+    card.append(btn);
   }
-  if (orders.length === 0) {
-    wrap.append(emptyState("receipt", tr("deliveryOrdersEmptyTitle"), tr("deliveryOrdersEmptyBody")));
-    return wrap;
+  return card;
+}
+
+// One status section: canteen-grouped, same as before, just scoped to
+// this section's own orders. Pending renders with no collapse affordance
+// at all (see DELIVERY_SECTIONS above); the other three are a single
+// top-level toggle for the WHOLE section (its own canteen groups still
+// nest and collapse independently inside it, unchanged).
+function deliverySection(section, orders, onChanged) {
+  const wrap = el(`
+    <div class="delivery-section ${section.alwaysOpen ? "is-static" : "is-collapsed"}">
+      <div class="section-heading-row">
+        <h3 class="section-heading">${escapeHtml(tr(section.titleKey))}</h3>
+        <span class="delivery-section-count">${escapeHtml(tr("orderCount", { n: orders.length }))}</span>
+        ${section.alwaysOpen ? "" : `<span class="delivery-section-chevron">${icon("chevron", 16)}</span>`}
+      </div>
+      <div class="delivery-section-body"></div>
+    </div>
+  `);
+  if (!section.alwaysOpen) {
+    wrap.querySelector(".section-heading-row").addEventListener("click", () => wrap.classList.toggle("is-collapsed"));
   }
+  const body = wrap.querySelector(".delivery-section-body");
   const list = el(`<div class="order-list"></div>`);
   for (const [restaurant, canteenOrders] of groupOrdersByCanteen(orders)) {
     const group = el(`
@@ -1629,37 +1734,36 @@ function deliveryOrderListContent(orders) {
         <div class="canteen-group-body"></div>
       </div>
     `);
-    const body = group.querySelector(".canteen-group-body");
+    const groupBody = group.querySelector(".canteen-group-body");
     for (const order of canteenOrders) {
-      const itemsSummary = order.items
-        .map((it) => `${dishNameLabel(it.name, state.lang)}${it.quantity > 1 ? ` ×${it.quantity}` : ""}`)
-        .join(", ");
-      // Grill/BBQ mains and salmon (Part 60) -- the courier needs to know
-      // this order includes one of those, since it had to be pre-ordered
-      // by 08:00 rather than the general 13:00 deadline (see
-      // menu_service.requires_early_order(), re-derived per item on
-      // OrderStore.get_order() rather than stored).
-      const hasEarlyOrderItem = order.items.some((it) => it.requires_early_order);
-      body.append(
-        el(`
-          <div class="restaurant-card">
-            <div class="restaurant-card-main">
-              <div class="icon-avatar is-other">${icon("receipt", 20)}</div>
-              <div>
-                <h2>${escapeHtml(order.delivery_location || tr("deliveryLocationNotGiven"))}</h2>
-                <p class="kind">${escapeHtml(itemsSummary)}</p>
-                <p class="kind">${escapeHtml(fmtLong(order.order_date))} · ${escapeHtml(orderStatusLabel(order.status))}</p>
-                ${hasEarlyOrderItem ? `<p class="kind delivery-early-order-note">${escapeHtml(tr("deliveryEarlyOrderNote"))}</p>` : ""}
-              </div>
-            </div>
-          </div>
-        `)
-      );
+      groupBody.append(deliveryOrderCard(order, section.key, onChanged));
     }
     group.querySelector(".canteen-group-header").addEventListener("click", () => group.classList.toggle("is-collapsed"));
     list.append(group);
   }
-  wrap.append(list);
+  body.append(list);
+  return wrap;
+}
+
+function deliveryOrderListContent(orders, onChanged) {
+  const wrap = el(`<div></div>`);
+  if (state.deliveryCampusFilter === "belval") {
+    wrap.append(emptyState("receipt", tr("deliveryBelvalComingSoonTitle"), tr("deliveryBelvalComingSoonBody")));
+    return wrap;
+  }
+  if (orders.length === 0) {
+    wrap.append(emptyState("receipt", tr("deliveryOrdersEmptyTitle"), tr("deliveryOrdersEmptyBody")));
+    return wrap;
+  }
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const buckets = { pending: [], expired: [], closed: [], delivered: [] };
+  for (const order of orders) buckets[classifyDeliveryOrder(order, todayIso)].push(order);
+
+  for (const section of DELIVERY_SECTIONS) {
+    const sectionOrders = buckets[section.key];
+    if (sectionOrders.length === 0) continue;
+    wrap.append(deliverySection(section, sectionOrders, onChanged));
+  }
   return wrap;
 }
 
@@ -1681,11 +1785,15 @@ async function renderDelivery() {
   app.querySelector(".loading-state")?.remove();
 
   const body = el(`<div class="delivery-campus-body"></div>`);
-  app.append(campusFilterRow("deliveryCampusFilter", () => {
+  // Re-renders in place after a mark-(not-)delivered action -- orders'
+  // own objects are mutated directly (see deliveryOrderCard()) rather
+  // than re-fetched, so this just re-buckets/re-sections the same list.
+  const rerenderBody = () => {
     body.innerHTML = "";
-    body.append(deliveryOrderListContent(orders));
-  }));
-  body.append(deliveryOrderListContent(orders));
+    body.append(deliveryOrderListContent(orders, rerenderBody));
+  };
+  app.append(campusFilterRow("deliveryCampusFilter", rerenderBody));
+  rerenderBody();
   app.append(body);
 }
 

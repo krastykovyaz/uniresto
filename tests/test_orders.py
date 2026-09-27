@@ -287,6 +287,39 @@ def test_mark_reviewing_after_a_price_was_already_recorded_does_not_move_it_back
     assert store.get_order(order_id)["status"] == "awaiting_confirmation"
 
 
+def test_mark_delivered_sets_a_timestamp(store):
+    order_id = _basic_order_id(store)
+    assert store.get_order(order_id)["delivered_at"] is None
+    assert store.mark_delivered(order_id) is True
+    assert store.get_order(order_id)["delivered_at"] is not None
+
+
+def test_mark_delivered_on_unknown_order_returns_false(store):
+    assert store.mark_delivered(999999) is False
+
+
+def test_mark_delivered_is_independent_of_status(store):
+    # delivered_at is orthogonal to the admin-price status machine (see
+    # its own schema comment) -- marking delivered must never touch
+    # `status`, and vice versa.
+    order_id = _basic_order_id(store)
+    store.mark_delivered(order_id)
+    order = store.get_order(order_id)
+    assert order["status"] == "pending"
+    assert order["delivered_at"] is not None
+
+
+def test_mark_not_delivered_clears_the_timestamp(store):
+    order_id = _basic_order_id(store)
+    store.mark_delivered(order_id)
+    assert store.mark_not_delivered(order_id) is True
+    assert store.get_order(order_id)["delivered_at"] is None
+
+
+def test_mark_not_delivered_on_unknown_order_returns_false(store):
+    assert store.mark_not_delivered(999999) is False
+
+
 def test_set_real_price_from_reviewing_also_moves_to_awaiting_confirmation(store):
     order_id = _basic_order_id(store)
     store.mark_reviewing(order_id)
