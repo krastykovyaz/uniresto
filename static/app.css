@@ -253,6 +253,20 @@ svg { display: block; }
   line-height: 1.4;
 }
 
+/* Delivery's own recruiting pitch (Part 54): a marketing line, not a
+   feature -- the app takes no payment and pays nothing itself (see the
+   Profile screen's own "About UniResto" text and every order-confirmation
+   email); any tip is a real-world arrangement between the two people,
+   made in person, that this banner just names as common practice. */
+.delivery-earn-banner {
+  margin: 0 var(--space-4) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-primary-bg);
+  border-radius: var(--radius-md);
+}
+.delivery-earn-banner-title { margin: 0 0 2px; font-size: 0.95rem; font-weight: 700; color: var(--color-primary-dark); }
+.delivery-earn-banner-body { margin: 0; font-size: 0.8rem; line-height: 1.4; color: var(--color-primary-dark); }
+
 /* Delivery's own courier-registration form (Part 52+): inline on the
    page, not a bottom sheet -- registering is the primary reason to be
    on this screen, not a secondary settings action. Once registered,

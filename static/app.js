@@ -1325,6 +1325,12 @@ function deliveryRegisterCard() {
 async function renderDelivery() {
   app.innerHTML = "";
   app.append(header({ title: tr("deliveryOrdersTitle"), back: () => goTo("role") }));
+  app.append(el(`
+    <div class="delivery-earn-banner">
+      <p class="delivery-earn-banner-title">${escapeHtml(tr("deliveryEarnBannerTitle"))}</p>
+      <p class="delivery-earn-banner-body">${escapeHtml(tr("deliveryEarnBannerBody"))}</p>
+    </div>
+  `));
   app.append(deliveryRegisterCard());
   app.append(loadingState(tr("loadingOrders")));
 
