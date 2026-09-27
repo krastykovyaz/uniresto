@@ -341,6 +341,33 @@ svg { display: block; }
   text-transform: uppercase;
 }
 
+/* Delivery screen's campus filter (Part 67) -- same one-row pill
+   pattern as .category-nav's chips, minus its sticky positioning
+   (tuned specifically for the menu screen's own header height). */
+.campus-filter {
+  display: flex;
+  gap: var(--space-2);
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: var(--space-3) var(--space-4) 0;
+}
+.campus-filter::-webkit-scrollbar { display: none; }
+.campus-filter-btn {
+  flex: 0 0 auto;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--color-text-muted);
+  min-height: 36px;
+}
+.campus-filter-btn.is-active { background: var(--color-primary); color: var(--color-primary-contrast); border-color: var(--color-primary); }
+
 .icon-avatar {
   width: 44px;
   height: 44px;

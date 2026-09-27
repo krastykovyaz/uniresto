@@ -139,6 +139,14 @@ const state = {
   smartLunchForm: null, // built lazily by openSmartLunch()
   smartLunchResult: null, // the POST /api/smart-lunch response, or null before searching
   smartLunchLoading: false,
+  // Which campus's orders renderDelivery() is showing (Part 67) --
+  // "belval" always shows the same coming-soon message (see
+  // deliveryOrderListContent()), never a real dataset. Deliberately
+  // persists across a re-render of the Delivery screen itself (e.g.
+  // navigating away and back) rather than resetting to "kirchberg"
+  // every time, the same way a filter selection anywhere else in this
+  // app survives leaving and returning to that screen.
+  deliveryCampusFilter: "kirchberg",
 };
 
 // Shorthand bound to the current language, used throughout the render
@@ -1549,29 +1557,42 @@ function deliveryRegisterCard() {
   return card;
 }
 
-async function renderDelivery() {
-  app.innerHTML = "";
-  app.append(header({ title: tr("deliveryOrdersTitle"), back: () => goTo("role") }));
-  app.append(deliveryRegisterCard());
-  app.append(loadingState(tr("loadingOrders")));
-
-  let orders;
-  try {
-    orders = await api("/api/delivery/orders");
-  } catch {
-    if (state.screen !== "delivery") return; // navigated away while this was in flight
-    app.querySelector(".loading-state")?.replaceWith(emptyState("receipt", tr("deliveryOrdersLoadFailedTitle"), tr("deliveryOrdersLoadFailedBody")));
-    return;
+// state.deliveryCampusFilter: the only campus this app actually has
+// real restaurants/orders for is Kirchberg (see README.md/
+// load_restaurants()) -- "belval" exists purely as a filter option
+// matching the Food House/Café/Lab/Zone "coming soon" cards on the
+// restaurant list (Part 66), never a real dataset, so selecting it
+// always shows the same coming-soon message rather than an empty "no
+// orders" one (that's reserved for a genuine zero-orders Kirchberg
+// state).
+function deliveryCampusFilterRow(onChange) {
+  const row = el(`
+    <div class="campus-filter">
+      <button type="button" class="campus-filter-btn ${state.deliveryCampusFilter === "kirchberg" ? "is-active" : ""}" data-campus="kirchberg">${escapeHtml(tr("campusKirchbergFilter"))}</button>
+      <button type="button" class="campus-filter-btn ${state.deliveryCampusFilter === "belval" ? "is-active" : ""}" data-campus="belval">${escapeHtml(tr("campusBelvalFilter"))}</button>
+    </div>
+  `);
+  for (const btn of row.querySelectorAll(".campus-filter-btn")) {
+    btn.addEventListener("click", () => {
+      if (state.deliveryCampusFilter === btn.dataset.campus) return;
+      state.deliveryCampusFilter = btn.dataset.campus;
+      for (const b of row.querySelectorAll(".campus-filter-btn")) b.classList.toggle("is-active", b === btn);
+      onChange();
+    });
   }
-  if (state.screen !== "delivery") return; // navigated away while this was in flight
-  app.querySelector(".loading-state")?.remove();
+  return row;
+}
 
+function deliveryOrderListContent(orders) {
+  const wrap = el(`<div></div>`);
+  if (state.deliveryCampusFilter === "belval") {
+    wrap.append(emptyState("receipt", tr("deliveryBelvalComingSoonTitle"), tr("deliveryBelvalComingSoonBody")));
+    return wrap;
+  }
   if (orders.length === 0) {
-    app.append(emptyState("receipt", tr("deliveryOrdersEmptyTitle"), tr("deliveryOrdersEmptyBody")));
-    return;
+    wrap.append(emptyState("receipt", tr("deliveryOrdersEmptyTitle"), tr("deliveryOrdersEmptyBody")));
+    return wrap;
   }
-
-  app.append(el(`<p class="eyebrow" style="margin-top:var(--space-3)">${escapeHtml(tr("tagline"))}</p>`));
   const list = el(`<div class="order-list"></div>`);
   for (const [restaurant, canteenOrders] of groupOrdersByCanteen(orders)) {
     const group = el(`
@@ -1615,7 +1636,34 @@ async function renderDelivery() {
     group.querySelector(".canteen-group-header").addEventListener("click", () => group.classList.toggle("is-collapsed"));
     list.append(group);
   }
-  app.append(list);
+  wrap.append(list);
+  return wrap;
+}
+
+async function renderDelivery() {
+  app.innerHTML = "";
+  app.append(header({ title: tr("deliveryOrdersTitle"), back: () => goTo("role") }));
+  app.append(deliveryRegisterCard());
+  app.append(loadingState(tr("loadingOrders")));
+
+  let orders;
+  try {
+    orders = await api("/api/delivery/orders");
+  } catch {
+    if (state.screen !== "delivery") return; // navigated away while this was in flight
+    app.querySelector(".loading-state")?.replaceWith(emptyState("receipt", tr("deliveryOrdersLoadFailedTitle"), tr("deliveryOrdersLoadFailedBody")));
+    return;
+  }
+  if (state.screen !== "delivery") return; // navigated away while this was in flight
+  app.querySelector(".loading-state")?.remove();
+
+  const body = el(`<div class="delivery-campus-body"></div>`);
+  app.append(deliveryCampusFilterRow(() => {
+    body.innerHTML = "";
+    body.append(deliveryOrderListContent(orders));
+  }));
+  body.append(deliveryOrderListContent(orders));
+  app.append(body);
 }
 
 function renderRestaurants() {
