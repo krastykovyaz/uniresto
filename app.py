@@ -95,6 +95,7 @@ def create_app(
     service: OrderabilityService | None = None,
     order_store: OrderStore | None = None,
     email_verification_store: EmailVerificationStore | None = None,
+    delivery_verification_store: EmailVerificationStore | None = None,
     delivery_subscriber_store: DeliverySubscriberStore | None = None,
     enable_cache_warmer: bool = True,
 ) -> Flask:
@@ -107,12 +108,23 @@ def create_app(
         cache=OrderabilityCache("orderability.db"), restaurants=restaurants
     )
     app.config["ORDER_STORE"] = order_store or OrderStore("orders.db")
-    app.config["EMAIL_VERIFICATION_STORE"] = email_verification_store or EmailVerificationStore()
+    # Real file paths (not EmailVerificationStore's own ":memory:"
+    # default) so a code issued by one gunicorn worker process is
+    # visible to whichever worker handles the matching /verify-code
+    # request -- see that module's own docstring for the real bug this
+    # fixes. Tests inject their own ":memory:"-backed instances instead
+    # (see tests/test_app.py's _make_client()), same reasoning as every
+    # other *_store parameter here.
+    app.config["EMAIL_VERIFICATION_STORE"] = email_verification_store or EmailVerificationStore("email_verification.db")
     # Reuses the SAME verification-code flow as the customer checkout
     # email (Part 27) -- see EmailVerificationStore itself, and
     # delivery_subscribers.py's own docstring for why registering is
-    # just "prove you can read this address", never a real login.
-    app.config["DELIVERY_VERIFICATION_STORE"] = EmailVerificationStore()
+    # just "prove you can read this address", never a real login. A
+    # SEPARATE file from the customer store above -- a code issued for
+    # customer checkout must never also verify a courier registration.
+    app.config["DELIVERY_VERIFICATION_STORE"] = delivery_verification_store or EmailVerificationStore(
+        "delivery_email_verification.db"
+    )
     app.config["DELIVERY_SUBSCRIBER_STORE"] = delivery_subscriber_store or DeliverySubscriberStore("orders.db")
     app.config["RESTAURANTS_BY_SLUG"] = by_slug
 

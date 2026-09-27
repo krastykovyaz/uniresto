@@ -6,6 +6,7 @@ import pytest
 from app import create_app
 from orderability_engine.cache import OrderabilityCache
 from orderability_engine.delivery_subscribers import DeliverySubscriberStore
+from orderability_engine.email_verification import EmailVerificationStore
 from orderability_engine.models import TZINFO
 from orderability_engine.orders import OrderStore
 from orderability_engine.service import OrderabilityService
@@ -42,6 +43,11 @@ def _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, 
         service=service,
         order_store=order_store,
         delivery_subscriber_store=delivery_subscriber_store,
+        # Explicit ":memory:" instances -- isolated per test, never the
+        # real email_verification.db/delivery_email_verification.db
+        # files create_app() defaults to for the real app.
+        email_verification_store=EmailVerificationStore(),
+        delivery_verification_store=EmailVerificationStore(),
         # No background cache-warmer thread here -- this app/FakeRestopolisClient
         # only lives for one test, and the warmer's own behavior is covered
         # directly in tests/test_cache_warmer.py instead.
