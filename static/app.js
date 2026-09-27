@@ -1130,6 +1130,7 @@ function renderBottomNav() {
       <button type="button" class="nav-tab ${isActive ? "is-active" : ""}" aria-label="${escapeHtml(tr(tab.labelKey))}" aria-current="${isActive}">
         ${icon(tab.iconName, 22)}
         ${tab.screen === "favorites" && state.favorites.length > 0 ? `<span class="nav-tab-badge">${state.favorites.length}</span>` : ""}
+        ${tab.screen === "order-history" && state.selection.length > 0 ? `<span class="nav-tab-dot" aria-hidden="true"></span>` : ""}
         <span class="nav-tab-label">${escapeHtml(tr(tab.labelKey))}</span>
       </button>
     `);
@@ -2825,6 +2826,7 @@ function toggleSelection(itemId) {
   state.serverQuote = null;
   saveCart();
   refreshMenuScreen();
+  renderBottomNav(); // keeps the Basket tab's dot (state.selection.length > 0) in sync
 }
 
 function changeQuantity(itemId, delta) {
@@ -2832,7 +2834,8 @@ function changeQuantity(itemId, delta) {
   if (!existing) return;
   const maxQ = (state.menu && state.menu.max_quantity) || 10;
   const next = existing.quantity + delta;
-  if (next < 1) {
+  const wasRemoved = next < 1;
+  if (wasRemoved) {
     state.selection = state.selection.filter((s) => s.menuItemId !== itemId);
   } else {
     existing.quantity = clampQuantity(next, maxQ);
@@ -2840,6 +2843,7 @@ function changeQuantity(itemId, delta) {
   state.serverQuote = null;
   saveCart();
   refreshMenuScreen();
+  if (wasRemoved) renderBottomNav(); // only the empty-selection case can flip the Basket tab's dot off
 }
 
 function refreshMenuScreen() {
