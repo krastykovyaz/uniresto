@@ -59,6 +59,22 @@ _BRAND_GREEN = "#1aa860"
 _BRAND_BG = "#f7f8fa"
 _BRAND_TEXT = "#14171a"
 
+# The real reusable-container deposit system (Part 63) -- ECOBOX is a
+# real, priced Restopolis "Constant products" item (see pricing.py's own
+# REUSABLE_PACKAGING_PRICES: "Consigne ECOBOX" +€5.00 / "Remboursement
+# Consigne ECOBOX" -€5.00), so the swap-or-pay-the-deposit mechanics
+# here are the real official policy, not invented -- this just relays it
+# to whichever human needs to act on it, matching this app's own English-
+# only mailer copy elsewhere (never localized server-side).
+GREEN_BOX_CONSUMER_NOTE = (
+    "Delivered in a reusable green box (ECOBOX). Have an empty one ready to swap, "
+    "or give the courier €5 if you don't have one -- save any box you keep for next time."
+)
+GREEN_BOX_COURIER_NOTE = (
+    "Bring the food in a green box (ECOBOX). Ask the customer to swap it for a clean one, "
+    "or take a €5 deposit instead and let them keep it. Bring a fresh box for your next delivery."
+)
+
 
 def _mail_config() -> dict | None:
     """Reads config fresh from the environment on every call (not cached
@@ -172,6 +188,9 @@ def _format_order_text(order: dict) -> str:
         lines.append(f"Your note: {order['customer_note']}")
 
     lines.append("")
+    lines.append(GREEN_BOX_CONSUMER_NOTE)
+
+    lines.append("")
     lines.append(f"Order #{order['id']} -- confirmed, no payment collected (see README.md Part 3 scope).")
     return "\n".join(lines)
 
@@ -219,6 +238,7 @@ def _format_order_html(order: dict) -> str:
         </table>
         {delivery}
         {note}
+        <p style="margin:16px 0 0;color:{_BRAND_GREEN};">{GREEN_BOX_CONSUMER_NOTE}</p>
         <p style="margin:20px 0 0;color:#6b7280;font-size:13px;">Order #{order['id']}</p>"""
 
 
@@ -311,6 +331,9 @@ def _format_delivery_text(order: dict, restopolis_url: str | None) -> str:
         lines.append("")
         lines.append(f"Customer note: {order['customer_note']}")
 
+    lines.append("")
+    lines.append(GREEN_BOX_COURIER_NOTE)
+
     return "\n".join(lines)
 
 
@@ -374,6 +397,7 @@ def _format_delivery_html(order: dict, restopolis_url: str | None) -> str:
         {restopolis_link}
         {delivery}
         {note}
+        <p style="margin:16px 0 0;color:{_BRAND_GREEN};">{GREEN_BOX_COURIER_NOTE}</p>
         <p style="margin:20px 0 0;color:#6b7280;font-size:13px;">Order #{order['id']}</p>"""
 
 

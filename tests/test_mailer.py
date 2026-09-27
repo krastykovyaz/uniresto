@@ -3,6 +3,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from orderability_engine.mailer import (
+    GREEN_BOX_CONSUMER_NOTE,
+    GREEN_BOX_COURIER_NOTE,
     generate_verification_code,
     is_configured,
     send_delivery_notification,
@@ -133,6 +135,15 @@ def test_email_body_never_invents_data_only_uses_the_orders_own_fields(monkeypat
     assert "€8.00" in html
 
 
+def test_order_confirmation_includes_green_box_note(monkeypatch):
+    monkeypatch.setenv("RESEND_API_KEY", "re_placeholder")
+    with patch("orderability_engine.mailer.requests.post", return_value=_mock_response()) as mock_post:
+        send_order_confirmation("student@uni.lu", _order())
+    payload = mock_post.call_args.kwargs["json"]
+    assert GREEN_BOX_CONSUMER_NOTE in payload["text"]
+    assert GREEN_BOX_CONSUMER_NOTE in payload["html"]
+
+
 def test_email_includes_customer_note_when_present(monkeypatch):
     monkeypatch.setenv("RESEND_API_KEY", "re_placeholder")
 
@@ -181,6 +192,16 @@ def test_delivery_notification_escapes_html_in_customer_supplied_fields(monkeypa
     assert "<script>evil()</script>" not in html
     assert "&lt;img src=x onerror=alert(1)&gt;" in html
     assert "&lt;script&gt;evil()&lt;/script&gt;" in html
+
+
+def test_delivery_notification_includes_green_box_note(monkeypatch):
+    monkeypatch.setenv("RESEND_API_KEY", "re_placeholder")
+    order = _order(items=[{"category": "Non-végétarien", "name": "Rôti de porc Orloff", "quantity": 1, "price": None}])
+    with patch("orderability_engine.mailer.requests.post", return_value=_mock_response()) as mock_post:
+        send_delivery_notification("courier@uni.lu", order)
+    payload = mock_post.call_args.kwargs["json"]
+    assert GREEN_BOX_COURIER_NOTE in payload["text"]
+    assert GREEN_BOX_COURIER_NOTE in payload["html"]
 
 
 def test_email_omits_total_line_when_formula_has_no_price(monkeypatch):

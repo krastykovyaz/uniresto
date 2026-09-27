@@ -1605,6 +1605,7 @@ async function renderDelivery() {
                 <p class="kind">${escapeHtml(itemsSummary)}</p>
                 <p class="kind">${escapeHtml(fmtLong(order.order_date))} · ${escapeHtml(orderStatusLabel(order.status))}</p>
                 ${hasEarlyOrderItem ? `<p class="kind delivery-early-order-note">${escapeHtml(tr("deliveryEarlyOrderNote"))}</p>` : ""}
+                <p class="kind delivery-green-box-note">${escapeHtml(tr("greenBoxCourierNote"))}</p>
               </div>
             </div>
           </div>
@@ -3602,6 +3603,7 @@ function renderConfirmation() {
       <p style="margin:0 0 8px"><strong>${escapeHtml(order.restaurant_name)}</strong><br>${fmtLong(order.order_date)}</p>
       ${order.delivery_location ? `<p style="margin:0 0 8px">${escapeHtml(tr("deliveryTo"))} ${escapeHtml(order.delivery_location)}</p>` : ""}
       ${order.customer_note ? `<p style="margin:0 0 8px">${escapeHtml(tr("yourComment"))} ${escapeHtml(order.customer_note)}</p>` : ""}
+      <p style="margin:0 0 8px;color:var(--color-unknown)">${escapeHtml(tr("greenBoxConsumerNote"))}</p>
       ${
         order.email_sent === true
           ? `<p style="margin:0" class="email-status">${escapeHtml(tr("confirmationEmailSent"))}</p>`
