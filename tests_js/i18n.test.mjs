@@ -248,7 +248,7 @@ test("registered-email strings exist for every configured language", () => {
 });
 
 test("registered-email strings spot-check in a few languages", () => {
-  assert.equal(t("en", "registeredEmail"), "Email");
+  assert.equal(t("en", "registeredEmail"), "University Email");
   assert.equal(t("en", "notSet"), "Not set");
   assert.equal(t("en", "save"), "Save");
   assert.equal(t("ru", "removeEmail"), "Удалить");

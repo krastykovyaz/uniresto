@@ -70,6 +70,9 @@ const ALLOWED_EMAIL_DOMAINS = ["@uni.lu", "@student.uni.lu"];
 // Same TDZ hazard again -- loadRegisteredPhone() also runs synchronously
 // while constructing `state` below.
 const PHONE_STORAGE_KEY = "uniresto.phone.v1";
+// Same TDZ hazard again -- loadCommunicationEmail() also runs
+// synchronously while constructing `state` below.
+const COMMUNICATION_EMAIL_STORAGE_KEY = "uniresto.communicationEmail.v1";
 
 const state = {
   screen: "restaurants",
@@ -89,19 +92,27 @@ const state = {
   deliveryBuilding: "", // canonical English label from DELIVERY_BUILDINGS, or ""
   deliveryLocationText: "", // free-text detail (room/office, or a building not in the list)
   // Optional -- only sent if filled in, so the confirmed order can be
-  // emailed (Part 23). Starts pre-filled from the Profile-registered
-  // email (Part 25) if one was saved, so a returning user doesn't have
-  // to retype it every order; editing it here for one order does NOT
-  // change what's registered (only Profile's own save does that -- see
-  // registeredEmail below and openEmailSheet()).
-  customerEmail: loadRegisteredEmail() || "",
-  // The Profile-registered default itself (Part 25) -- kept separate
-  // from customerEmail (above) specifically so it always reflects
-  // exactly what's saved, regardless of any per-order edit.
+  // emailed (Part 23). Starts pre-filled from whichever Profile email
+  // applies (Communication email, if set, else the University email --
+  // see loadCommunicationEmail()'s docstring) so a returning user
+  // doesn't have to retype it every order; editing it here for one
+  // order does NOT change what's registered (only Profile's own save
+  // does that -- see registeredEmail/communicationEmail below and
+  // openEmailSheet()/openCommunicationEmailSheet()).
+  customerEmail: loadCommunicationEmail() || loadRegisteredEmail() || "",
+  // The Profile-registered University email (Part 25) -- verified via a
+  // code, so it doubles as proof of University of Luxembourg
+  // affiliation. Kept separate from customerEmail (above) specifically
+  // so it always reflects exactly what's saved, regardless of any
+  // per-order edit.
   registeredEmail: loadRegisteredEmail(),
   // Profile-registered phone number (Part 28) -- optional, no
   // verification (see loadRegisteredPhone()'s docstring).
   registeredPhone: loadRegisteredPhone(),
+  // Profile-registered Communication email -- optional, no verification
+  // (see loadCommunicationEmail()'s docstring). Kept separate from
+  // customerEmail for the same reason registeredEmail is.
+  communicationEmail: loadCommunicationEmail(),
   confirmedOrder: null,
   serverQuote: null,
   favorites: loadFavorites(), // [{ slug, restaurantName, category, name }]
@@ -320,6 +331,46 @@ function saveRegisteredPhone(phone) {
 function clearRegisteredPhone() {
   try {
     localStorage.removeItem(PHONE_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+// ---------------------------------------------------- Communication email
+//
+// The University email (above) proves campus affiliation, but a student
+// may not want actual order mail landing in that inbox -- this is a
+// second, optional destination that, when set, is what order
+// confirmations pre-fill to instead (see state.customerEmail's own
+// comment). Same no-verification pattern as the registered phone above
+// (no reason to require a code just to pick where mail forwards to),
+// and deliberately NOT restricted to a uni.lu domain -- that restriction
+// exists on the University email to prove affiliation, which isn't the
+// point here.
+function isValidEmailFormat(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+}
+
+function loadCommunicationEmail() {
+  try {
+    const raw = localStorage.getItem(COMMUNICATION_EMAIL_STORAGE_KEY);
+    return raw && isValidEmailFormat(raw) ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveCommunicationEmail(email) {
+  try {
+    localStorage.setItem(COMMUNICATION_EMAIL_STORAGE_KEY, email);
+  } catch {
+    /* localStorage unavailable (private mode, quota, ...) -- just won't persist */
+  }
+}
+
+function clearCommunicationEmail() {
+  try {
+    localStorage.removeItem(COMMUNICATION_EMAIL_STORAGE_KEY);
   } catch {
     /* ignore */
   }
@@ -744,7 +795,9 @@ function openEmailSheet(trigger) {
   }
   function commit(email) {
     state.registeredEmail = email;
-    state.customerEmail = email || "";
+    // The Communication email (if set) still takes priority as the
+    // checkout pre-fill -- see state.customerEmail's own comment.
+    state.customerEmail = state.communicationEmail || email || "";
     if (email) saveRegisteredEmail(email);
     else clearRegisteredEmail();
     close();
@@ -955,6 +1008,80 @@ function openPhoneSheet(trigger) {
     commit(value);
   });
   sheet.querySelector(".phone-sheet-remove")?.addEventListener("click", () => commit(null));
+
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) {
+      close();
+      trigger?.focus();
+    }
+  });
+  sheet.querySelector(".filter-close").addEventListener("click", () => {
+    close();
+    trigger?.focus();
+  });
+  document.addEventListener("keydown", onKey);
+
+  overlay.append(sheet);
+  deviceScreen.append(overlay);
+  input.focus();
+}
+
+// ------------------------------------------------------ Communication email
+
+// Single-step sheet, same shell/behavior as openPhoneSheet() above -- no
+// verification (see loadCommunicationEmail()'s docstring for why).
+function openCommunicationEmailSheet(trigger) {
+  const overlay = el(`<div class="sheet-overlay"></div>`);
+  const sheet = el(`
+    <div class="lang-sheet" role="dialog" aria-modal="true" aria-label="${escapeHtml(tr("communicationEmail"))}">
+      <div class="sheet-grabber" aria-hidden="true"></div>
+      <div class="lang-sheet-header">
+        <p class="screen-title">${escapeHtml(tr("communicationEmail"))}</p>
+        <button type="button" class="filter-close" aria-label="${escapeHtml(tr("back"))}">${icon("close", 20)}</button>
+      </div>
+      <p class="email-sheet-hint">${escapeHtml(tr("communicationEmailHint"))}</p>
+      <div class="field-block">
+        <input type="email" inputmode="email" class="comm-email-sheet-input" placeholder="${escapeHtml(tr("communicationEmailPlaceholder"))}" value="${escapeHtml(state.communicationEmail || "")}">
+      </div>
+      <button type="button" class="primary-button comm-email-sheet-save">${escapeHtml(tr("save"))}</button>
+      ${state.communicationEmail ? `<button type="button" class="secondary-button comm-email-sheet-remove">${escapeHtml(tr("removeEmail"))}</button>` : ""}
+    </div>
+  `);
+  const input = sheet.querySelector(".comm-email-sheet-input");
+
+  function close() {
+    document.removeEventListener("keydown", onKey);
+    overlay.remove();
+  }
+  function onKey(e) {
+    if (e.key === "Escape") {
+      close();
+      trigger?.focus();
+    }
+  }
+  function commit(email) {
+    state.communicationEmail = email;
+    state.customerEmail = email || state.registeredEmail || "";
+    if (email) saveCommunicationEmail(email);
+    else clearCommunicationEmail();
+    close();
+    document.querySelector(".profile-row-communication-email")?.focus();
+    renderProfile();
+  }
+
+  sheet.querySelector(".comm-email-sheet-save").addEventListener("click", () => {
+    const value = input.value.trim();
+    if (!value) {
+      commit(null);
+      return;
+    }
+    if (!isValidEmailFormat(value)) {
+      showToast(tr("invalidEmailFormat"));
+      return;
+    }
+    commit(value);
+  });
+  sheet.querySelector(".comm-email-sheet-remove")?.addEventListener("click", () => commit(null));
 
   overlay.addEventListener("click", (e) => {
     if (e.target === overlay) {
@@ -1926,6 +2053,17 @@ function renderProfile() {
   `);
   emailRow.addEventListener("click", () => openEmailSheet(emailRow));
   rows.append(emailRow);
+
+  const communicationEmailRow = el(`
+    <button type="button" class="profile-row profile-row-communication-email" aria-haspopup="dialog">
+      <span class="profile-row-icon">${icon("mail", 20)}</span>
+      <span class="profile-row-label">${escapeHtml(tr("communicationEmail"))}</span>
+      <span class="profile-row-count">${state.communicationEmail ? escapeHtml(state.communicationEmail) : escapeHtml(tr("notSet"))}</span>
+      <span class="profile-row-chevron">${icon("chevron", 16)}</span>
+    </button>
+  `);
+  communicationEmailRow.addEventListener("click", () => openCommunicationEmailSheet(communicationEmailRow));
+  rows.append(communicationEmailRow);
 
   const phoneRow = el(`
     <button type="button" class="profile-row profile-row-phone" aria-haspopup="dialog">
@@ -3178,10 +3316,14 @@ async function renderReview() {
   app.append(buildDeliveryBuildingField());
   app.append(buildDeliveryLocationTextField());
 
-  // Optional -- only used to email the confirmation (Part 23). Campus-
-  // only audience, so it's validated against a uni.lu address, same as
-  // the backend re-validates on submit (never trusted from the client
-  // alone).
+  // Optional -- only used to email the confirmation (Part 23). Pre-
+  // filled from the Profile Communication email (if set) or else the
+  // University email, but editable per order; any well-formed address
+  // is accepted here (not restricted to uni.lu -- that restriction is
+  // what proves affiliation on the University email itself, not
+  // relevant to where confirmation mail actually gets sent). Re-
+  // validated the same way by the backend on submit (never trusted from
+  // the client alone).
   const emailBlock = el(`
     <div class="field-block">
       <label for="customer-email">${escapeHtml(tr("customerEmail"))}</label>
@@ -3210,8 +3352,8 @@ async function confirmOrder() {
   // which api()'s error handling can't pull a specific reason out of --
   // this catches it locally with a real, translated message instead of
   // falling back to a generic "Request failed (400)" toast.
-  if (email && !isAllowedUniLuEmail(email)) {
-    showToast(tr("invalidUniLuEmail"));
+  if (email && !isValidEmailFormat(email)) {
+    showToast(tr("invalidEmailFormat"));
     return;
   }
 

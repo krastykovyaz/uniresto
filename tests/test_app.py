@@ -240,17 +240,24 @@ def test_create_order_with_student_uni_lu_email_is_also_allowed(client):
     assert resp.status_code == 201
 
 
-def test_create_order_with_non_uni_lu_email_is_400(client):
-    resp = client.post(
-        "/api/orders",
-        json={
-            "restaurant": "altius",
-            "date": "2026-09-24",
-            "items": [{"id": SALAD_BAR_ID, "quantity": 1}],
-            "customer_email": "student@gmail.com",
-        },
-    )
-    assert resp.status_code == 400
+def test_create_order_with_non_uni_lu_email_is_allowed(client):
+    # customer_email is where confirmation mail actually gets sent, which
+    # may deliberately be a personal address (the Profile "Communication
+    # email" feature) -- only the University email itself (proving
+    # affiliation) is restricted to uni.lu domains.
+    with patch("app.send_order_confirmation", return_value=(True, None)) as mock_send:
+        resp = client.post(
+            "/api/orders",
+            json={
+                "restaurant": "altius",
+                "date": "2026-09-24",
+                "items": [{"id": SALAD_BAR_ID, "quantity": 1}],
+                "customer_email": "student@gmail.com",
+            },
+        )
+    assert resp.status_code == 201
+    mock_send.assert_called_once()
+    assert mock_send.call_args[0][0] == "student@gmail.com"
 
 
 def test_create_order_with_malformed_email_is_400(client):

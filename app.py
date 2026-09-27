@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import secrets
 from datetime import datetime, timedelta
 
@@ -58,6 +59,19 @@ def _is_allowed_customer_email(email: str) -> bool:
     if normalized.count("@") != 1 or normalized.startswith("@"):
         return False
     return normalized.endswith(ALLOWED_EMAIL_DOMAINS)
+
+
+_EMAIL_FORMAT_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _is_valid_email_format(email: str) -> bool:
+    """Looser than _is_allowed_customer_email above: no domain
+    restriction. Used for the order's own customer_email, which is
+    where confirmation mail actually gets sent -- a student may want
+    that at a personal address even though the University email domains
+    above are still required to prove campus affiliation elsewhere
+    (email verification, courier registration)."""
+    return bool(_EMAIL_FORMAT_RE.match(email.strip()))
 
 
 # Part 30's admin page (real-price entry) is more sensitive than
@@ -230,8 +244,8 @@ def create_app(
 
         if not slug or not date_str or not selection:
             abort(400, description="Body must include 'restaurant', 'date', and a non-empty 'items' list of {id, quantity}")
-        if customer_email is not None and not _is_allowed_customer_email(customer_email):
-            abort(400, description=f"'customer_email' must be a valid address ending in {' or '.join(ALLOWED_EMAIL_DOMAINS)}")
+        if customer_email is not None and not _is_valid_email_format(customer_email):
+            abort(400, description="'customer_email' must be a valid email address")
 
         restaurant = get_restaurant_or_404(slug)
         d = parse_date_arg(date_str)
