@@ -224,11 +224,23 @@ class OrderStore:
         self._migrate()
         self._conn.commit()
 
+    def _existing_columns(self) -> set[str]:
+        return {row[1] for row in self._conn.execute("PRAGMA table_info(orders)").fetchall()}
+
     def _migrate(self) -> None:
-        existing = {row[1] for row in self._conn.execute("PRAGMA table_info(orders)").fetchall()}
+        existing = self._existing_columns()
         for column_name, statement in _MIGRATIONS:
             if column_name not in existing:
-                self._conn.execute(statement)
+                try:
+                    self._conn.execute(statement)
+                except sqlite3.OperationalError as exc:
+                    # Both gunicorn workers run this at the same moment on
+                    # boot: each can see the column missing, then lose the
+                    # race to ADD it. That used to crash the worker (and
+                    # the whole gunicorn master) until systemd restarted
+                    # it. Already-added is exactly the state we want.
+                    if "duplicate column name" not in str(exc):
+                        raise
 
     def close(self) -> None:
         self._conn.close()

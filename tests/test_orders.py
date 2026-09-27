@@ -1,4 +1,5 @@
 import datetime
+from unittest.mock import patch
 
 import pytest
 
@@ -495,3 +496,15 @@ def test_migration_is_idempotent_reopening_the_same_db(tmp_path):
         assert order["real_price"] is None
     finally:
         second.close()
+
+
+def test_migrate_survives_another_worker_adding_the_column_first(tmp_path):
+    # Two gunicorn workers boot together: both read the columns as missing,
+    # one adds them, the other's ALTER then hits "duplicate column name".
+    # Simulated by making this store's column check stale.
+
+    db = tmp_path / "orders.db"
+    OrderStore(db)  # "the other worker" -- adds every migrated column
+    with patch.object(OrderStore, "_existing_columns", return_value=set()):
+        store = OrderStore(db)  # must not raise
+    assert "on_way_emailed_at" in store._existing_columns()
