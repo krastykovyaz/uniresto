@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 
 from dotenv import load_dotenv
 from flask import Flask, abort, jsonify, redirect, render_template, request, url_for
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from orderability_engine.cache import OrderabilityCache
 from orderability_engine.cache_warmer import start_cache_warmer
@@ -100,6 +101,12 @@ def create_app(
     enable_cache_warmer: bool = True,
 ) -> Flask:
     app = Flask(__name__)
+    # nginx (see the resto-unilu site config) terminates TLS and proxies
+    # to gunicorn over plain HTTP, forwarding the real scheme via
+    # X-Forwarded-Proto -- without trusting it here, request.scheme
+    # (and so url_for(..., _external=True), used for og:image/og:url
+    # below) would report "http" even on the real https:// site.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_for=1)
 
     restaurants = load_restaurants()
     by_slug = {slug_for(code): cfg for code, cfg in restaurants.items()}

@@ -1051,6 +1051,27 @@ def test_root_serves_the_spa_shell(client):
     assert b'rel="apple-touch-icon"' in resp.data
 
 
+def test_root_includes_open_graph_and_twitter_card_tags(client):
+    resp = client.get("/")
+    body = resp.data
+    assert b'property="og:title"' in body
+    assert b'property="og:description"' in body
+    assert b'property="og:image"' in body
+    assert b'property="og:url"' in body
+    assert b'name="twitter:card" content="summary_large_image"' in body
+    assert b"/static/og-image.png" in body
+
+
+def test_og_image_url_uses_https_behind_the_reverse_proxy(client):
+    # nginx forwards the real scheme via X-Forwarded-Proto (see the
+    # resto-unilu site config) -- ProxyFix must turn that into an
+    # https:// _external=True URL, not the plain-http one gunicorn
+    # itself sees on the wire.
+    resp = client.get("/", headers={"X-Forwarded-Proto": "https"})
+    assert b"https://" in resp.data
+    assert b'content="http://' not in resp.data
+
+
 def test_favicon_ico_redirects_to_the_real_png(client):
     resp = client.get("/favicon.ico")
     assert resp.status_code in (301, 302)
