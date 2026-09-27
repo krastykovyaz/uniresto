@@ -2069,6 +2069,10 @@ async function selectDate(dateInfo) {
   if (!menuCache.has(menuCacheKey(state.slug, state.targetDate))) goTo("menu-loading");
   try {
     state.menu = await getMenu(state.slug, state.targetDate);
+    // Part 74: one real "viewed a menu" per day someone actually opens --
+    // counted here, not at the API, because renderDates()'s background
+    // prefetch hits that same endpoint for every orderable day shown.
+    api("/api/track/menu", { method: "POST" }).catch(() => {});
   } catch (err) {
     state.menuError = { status: err.body && err.body.status, reason: err.message };
   }

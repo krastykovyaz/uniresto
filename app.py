@@ -327,12 +327,6 @@ def create_app(
 
         flat_items, _daily_menus = _load_flat_menu(restaurant, d)
         service_time = f"{result.service_start}-{result.service_end}" if result.service_start else None
-        # Part 74: a real menu view for the admin's evening report --
-        # only counted once the menu is actually returned, not on the
-        # 409 above (that's "tried an unorderable date", not "saw a
-        # menu"). Only ever reached by this app's own JS (see
-        # page_views.py's own docstring for why that matters).
-        page_views().record("menu")
         return jsonify(
             {
                 "restaurant": restaurant.name,
@@ -665,6 +659,12 @@ def create_app(
         order = store().get_order(order_id)
         if order is None:
             abort(404, description=f"No order #{order_id}")
+        # The UI never offers "Take this delivery" on these, but the route
+        # is ungated -- a stale tab or a direct call must not email a
+        # customer "on its way" about an order that was called off or is
+        # already in their hands.
+        if order["status"] == "cancelled" or order["delivered_at"]:
+            return jsonify({"error": "not_claimable", "status": order["status"], "delivered": bool(order["delivered_at"])}), 409
         newly_claimed = store().mark_claimed(order_id)
         if newly_claimed:
             admin_token = os.environ.get("ADMIN_TOKEN")
@@ -714,16 +714,22 @@ def create_app(
         coming_soon_clicks().record(location)
         return jsonify({"recorded": True})
 
-    @app.post("/api/track/home")
-    def api_track_home():
-        """A real "the app actually opened" signal for the admin's evening
-        report (Part 74) -- fired once from static/app.js's init(), so
-        this is only ever reached by a real browser that ran the JS, never
-        by a link-preview crawler fetching GET / itself (see
-        page_views.py's own docstring). Best-effort, matching every other
-        client-fired tracking call: never fails loudly, never blocks
-        anything else the app is doing."""
-        page_views().record("home")
+    # Page views only the CLIENT can tell apart from noise (Part 74):
+    # "home" -- GET / is also fetched by link-preview crawlers; "menu" --
+    # the date picker prefetches every orderable day's menu in the
+    # background, so counting at api_menu() inflated one real view into
+    # ~5. "delivery" stays server-side in api_delivery_orders(), which is
+    # only ever called when that screen actually renders.
+    CLIENT_TRACKED_EVENTS = ("home", "menu")
+
+    @app.post("/api/track/<event>")
+    def api_track(event):
+        """Fired by static/app.js -- "home" once from init(), "menu" from
+        selectDate() once a day's menu has actually loaded for someone
+        who picked it. Best-effort on the client: never blocks anything."""
+        if event not in CLIENT_TRACKED_EVENTS:
+            abort(404)
+        page_views().record(event)
         return jsonify({"recorded": True})
 
     @app.post("/api/feedback")

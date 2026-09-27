@@ -1,11 +1,14 @@
 import datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
+
+import pytest
 
 from orderability_engine.daily_report import (
     DailyReportStore,
     _next_send_time,
     compute_report_counts,
     local_day_bounds,
+    run_report_with_retries,
     send_report_for,
 )
 from orderability_engine.models import TZINFO
@@ -77,30 +80,110 @@ def test_compute_report_counts_excludes_other_days(tmp_path):
     assert counts == {"home": 0, "menu": 0, "orders": 0, "delivery": 0}
 
 
-def test_send_report_for_only_sends_once(tmp_path):
-    page_views = PageViewStore(tmp_path / "orders.db")
-    order_store = OrderStore(tmp_path / "orders.db")
-    report_store = DailyReportStore(tmp_path / "orders.db")
+def _stores(tmp_path):
+    return (
+        PageViewStore(tmp_path / "orders.db"),
+        OrderStore(tmp_path / "orders.db"),
+        DailyReportStore(tmp_path / "orders.db"),
+    )
+
+
+@pytest.fixture
+def telegram_configured():
+    with patch("orderability_engine.daily_report.is_configured", return_value=True):
+        yield
+
+
+def test_send_report_for_only_sends_once(tmp_path, telegram_configured):
+    page_views, order_store, report_store = _stores(tmp_path)
     today = datetime.datetime.now(TZINFO).date()
 
     with patch("orderability_engine.daily_report.send_daily_report", return_value=(True, None)) as mock_send:
         first = send_report_for(page_views, order_store, report_store, today)
         second = send_report_for(page_views, order_store, report_store, today)
 
-    assert first is True
-    assert second is False
+    assert first == "sent"
+    assert second == "already_claimed"
     mock_send.assert_called_once()
 
 
-def test_send_report_for_reports_unsent_when_telegram_fails(tmp_path):
-    page_views = PageViewStore(tmp_path / "orders.db")
-    order_store = OrderStore(tmp_path / "orders.db")
-    report_store = DailyReportStore(tmp_path / "orders.db")
+def test_send_report_for_releases_the_claim_when_the_send_fails(tmp_path, telegram_configured):
+    # The real bug: a failed send used to keep the claim, so no retry
+    # (by this worker or the other one) could ever send that day's report.
+    page_views, order_store, report_store = _stores(tmp_path)
     today = datetime.datetime.now(TZINFO).date()
 
-    with patch("orderability_engine.daily_report.send_daily_report", return_value=(False, "not configured")):
-        result = send_report_for(page_views, order_store, report_store, today)
-    assert result is False
+    with patch("orderability_engine.daily_report.send_daily_report", return_value=(False, "telegram down")):
+        assert send_report_for(page_views, order_store, report_store, today) == "failed"
+    with patch("orderability_engine.daily_report.send_daily_report", return_value=(True, None)) as mock_send:
+        assert send_report_for(page_views, order_store, report_store, today) == "sent"
+    mock_send.assert_called_once()
+
+
+def test_send_report_for_does_not_claim_when_telegram_is_unconfigured(tmp_path):
+    page_views, order_store, report_store = _stores(tmp_path)
+    today = datetime.datetime.now(TZINFO).date()
+    with patch("orderability_engine.daily_report.is_configured", return_value=False), patch(
+        "orderability_engine.daily_report.send_daily_report"
+    ) as mock_send:
+        assert send_report_for(page_views, order_store, report_store, today) == "not_configured"
+    mock_send.assert_not_called()
+    # Nothing was claimed, so a later (configured) attempt can still send.
+    assert report_store.claim(today.isoformat()) is True
+
+
+def test_run_report_with_retries_retries_until_it_sends(tmp_path, telegram_configured):
+    page_views, order_store, report_store = _stores(tmp_path)
+    day = datetime.date(2026, 9, 28)
+    clock = [datetime.datetime(2026, 9, 28, 20, 0, tzinfo=TZINFO)]
+    sleeps = []
+
+    def fake_sleep(seconds):
+        sleeps.append(seconds)
+        clock[0] += datetime.timedelta(seconds=seconds)
+
+    results = iter([(False, "down"), (False, "down"), (True, None)])
+    with patch("orderability_engine.daily_report.send_daily_report", side_effect=lambda *a: next(results)) as mock_send:
+        status = run_report_with_retries(
+            page_views, order_store, report_store, day, retry_seconds=600, sleep=fake_sleep, now=lambda: clock[0]
+        )
+
+    assert status == "sent"
+    assert mock_send.call_count == 3
+    assert sleeps == [600, 600]
+
+
+def test_run_report_with_retries_gives_up_when_the_day_ends(tmp_path, telegram_configured):
+    page_views, order_store, report_store = _stores(tmp_path)
+    day = datetime.date(2026, 9, 28)
+    clock = [datetime.datetime(2026, 9, 28, 23, 45, tzinfo=TZINFO)]
+
+    def fake_sleep(seconds):
+        clock[0] += datetime.timedelta(seconds=seconds)
+
+    with patch("orderability_engine.daily_report.send_daily_report", return_value=(False, "down")) as mock_send:
+        status = run_report_with_retries(
+            page_views, order_store, report_store, day, retry_seconds=600, sleep=fake_sleep, now=lambda: clock[0]
+        )
+
+    assert status == "failed"
+    # 23:45 attempt, 23:55 retry; a third at 00:05 would be past the day.
+    assert mock_send.call_count == 2
+
+
+def test_run_report_with_retries_does_not_retry_when_another_worker_owns_it(tmp_path, telegram_configured):
+    page_views, order_store, report_store = _stores(tmp_path)
+    day = datetime.date(2026, 9, 28)
+    report_store.claim(day.isoformat())  # the other worker already has it
+    sleeps = []
+    with patch("orderability_engine.daily_report.send_daily_report") as mock_send:
+        status = run_report_with_retries(
+            page_views, order_store, report_store, day, sleep=sleeps.append,
+            now=lambda: datetime.datetime(2026, 9, 28, 20, 0, tzinfo=TZINFO),
+        )
+    assert status == "already_claimed"
+    assert sleeps == []
+    mock_send.assert_not_called()
 
 
 def test_next_send_time_same_day_when_before_the_hour():

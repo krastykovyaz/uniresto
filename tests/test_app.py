@@ -811,6 +811,33 @@ def test_claim_order_second_tap_does_not_renotify(client):
     mock_notify.assert_called_once()
 
 
+def test_claim_order_refuses_a_cancelled_order_without_notifying(client):
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    store = client.application.config["ORDER_STORE"]
+    token = store.set_real_price(order_id, 6.70)
+    store.cancel_order(order_id, token)
+    with patch("app.send_order_claimed_notification") as mock_notify, patch(
+        "app.send_order_out_for_delivery"
+    ) as mock_email:
+        resp = client.post(f"/api/orders/{order_id}/claim")
+    assert resp.status_code == 409
+    mock_notify.assert_not_called()
+    mock_email.assert_not_called()
+    assert store.get_order(order_id)["claimed_at"] is None
+
+
+def test_claim_order_refuses_an_already_delivered_order_without_notifying(client):
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    client.post(f"/api/orders/{order_id}/mark-delivered")
+    with patch("app.send_order_claimed_notification") as mock_notify, patch(
+        "app.send_order_out_for_delivery"
+    ) as mock_email:
+        resp = client.post(f"/api/orders/{order_id}/claim")
+    assert resp.status_code == 409
+    mock_notify.assert_not_called()
+    mock_email.assert_not_called()
+
+
 def test_claim_order_unknown_order_404s(client):
     resp = client.post("/api/orders/999999/claim")
     assert resp.status_code == 404
@@ -849,13 +876,31 @@ def test_track_home_records_a_page_view(client):
     assert page_views.count_between("home", now - datetime.timedelta(minutes=1), now + datetime.timedelta(minutes=1)) == 1
 
 
-def test_menu_fetch_records_a_page_view(client):
+def _count_now(client, event):
     page_views = client.application.config["PAGE_VIEW_STORE"]
     now = datetime.datetime.now(TZINFO)
-    before = page_views.count_between("menu", now - datetime.timedelta(minutes=1), now + datetime.timedelta(minutes=1))
+    return page_views.count_between(event, now - datetime.timedelta(minutes=1), now + datetime.timedelta(minutes=1))
+
+
+def test_menu_fetch_itself_does_not_count_a_view(client):
+    # The date picker prefetches every orderable day's menu in the
+    # background -- counting here read one real view as ~5.
     client.get("/api/restaurants/altius/menu/2026-09-24")
-    after = page_views.count_between("menu", now - datetime.timedelta(minutes=1), now + datetime.timedelta(minutes=1))
-    assert after == before + 1
+    assert _count_now(client, "menu") == 0
+
+
+def test_track_menu_records_a_page_view(client):
+    resp = client.post("/api/track/menu")
+    assert resp.status_code == 200
+    assert _count_now(client, "menu") == 1
+
+
+def test_track_rejects_events_the_client_does_not_own(client):
+    # "delivery" is counted server-side; a client beacon for it would
+    # double-count. Unknown events are rejected outright.
+    assert client.post("/api/track/delivery").status_code == 404
+    assert client.post("/api/track/nonsense").status_code == 404
+    assert _count_now(client, "delivery") == 0
 
 
 def test_delivery_orders_fetch_records_a_page_view(client):

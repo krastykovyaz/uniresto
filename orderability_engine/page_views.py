@@ -6,10 +6,11 @@ OrderStore already has that real count (Part 74's daily_report.py reads
 it directly), so duplicating it into a second counter would just be
 another place for the two numbers to drift apart.
 
-Deliberately recorded from the client (a dedicated /api/track/home call
-for "home"; "menu"/"delivery" are recorded server-side on their own
-existing API routes, api_menu()/api_delivery_orders()) rather than at
-GET / itself -- that route is also what link-preview crawlers
+"home" and "menu" are recorded from the client (/api/track/<event>);
+"delivery" server-side in api_delivery_orders(). "menu" can't be counted
+at api_menu() because the date picker prefetches every orderable day's
+menu in the background -- one real view read as ~5 there. "home" isn't
+counted at GET / itself because that route is also what link-preview crawlers
 (Telegram/WhatsApp/Facebook, see mobile_app()'s own Open Graph comment)
 fetch to build a share preview, and a crawler never runs this app's JS
 or calls any /api/* route, so counting real "did the app actually open"

@@ -29,11 +29,12 @@ from pathlib import Path
 from orderability_engine.models import TZINFO
 from orderability_engine.orders import OrderStore
 from orderability_engine.page_views import PageViewStore
-from orderability_engine.telegram_notify import send_daily_report
+from orderability_engine.telegram_notify import is_configured, send_daily_report
 
 logger = logging.getLogger("uniresto.daily_report")
 
 DEFAULT_SEND_HOUR = 20  # 20:00 Europe/Luxembourg -- see this feature's own request for why
+RETRY_INTERVAL_SECONDS = 10 * 60
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS daily_reports_sent (
@@ -74,6 +75,14 @@ class DailyReportStore:
             self._conn.commit()
             return cur.rowcount > 0
 
+    def release(self, report_date: str) -> None:
+        """Gives a claim back after a failed send, so a later retry (by
+        this process or any other) can claim and send it -- otherwise one
+        Telegram hiccup at send time would lose that day's report."""
+        with self._lock:
+            self._conn.execute("DELETE FROM daily_reports_sent WHERE report_date = ?", (report_date,))
+            self._conn.commit()
+
 
 def local_day_bounds(day: date) -> tuple[datetime, datetime]:
     """[start, end) for `day` as Europe/Luxembourg local midnight to the
@@ -96,19 +105,50 @@ def compute_report_counts(page_views: PageViewStore, order_store: OrderStore, re
 
 def send_report_for(
     page_views: PageViewStore, order_store: OrderStore, report_store: DailyReportStore, report_date: date
-) -> bool:
+) -> str:
     """Computes and sends the report for `report_date`, but ONLY if
     report_store.claim() says this call is the one that gets to (see the
-    module docstring). Returns whether it actually sent -- False both
-    when another process already claimed it and when Telegram itself
-    isn't configured (send_daily_report()'s own best-effort contract)."""
-    if not report_store.claim(report_date.isoformat()):
-        return False
+    module docstring). Returns one of:
+      "sent"             -- this call sent it
+      "already_claimed"  -- another call/process owns (or sent) it
+      "not_configured"   -- no Telegram credentials; nothing claimed
+      "failed"           -- the send itself failed; the claim is released
+                            so a retry can take it (run_report_with_retries)"""
+    if not is_configured():
+        return "not_configured"
+    key = report_date.isoformat()
+    if not report_store.claim(key):
+        return "already_claimed"
     counts = compute_report_counts(page_views, order_store, report_date)
     sent, error = send_daily_report(counts, report_date)
-    if not sent:
-        logger.warning("[DAILY-REPORT] failed to send report for %s: %s", report_date, error)
-    return sent
+    if sent:
+        return "sent"
+    report_store.release(key)
+    logger.warning("[DAILY-REPORT] failed to send report for %s: %s", report_date, error)
+    return "failed"
+
+
+def run_report_with_retries(
+    page_views: PageViewStore,
+    order_store: OrderStore,
+    report_store: DailyReportStore,
+    report_date: date,
+    retry_seconds: int = RETRY_INTERVAL_SECONDS,
+    sleep=time.sleep,
+    now=lambda: datetime.now(TZINFO),
+) -> str:
+    """send_report_for(), retried every `retry_seconds` while it keeps
+    failing, until the report's own day is over -- a late report beats
+    none. Only a "failed" result retries: "already_claimed" means another
+    worker owns it, and "not_configured" won't change by waiting. The
+    retrying process always re-claims first, so this can't double-send
+    either. `sleep`/`now` are injectable for tests."""
+    _, day_end = local_day_bounds(report_date)
+    status = send_report_for(page_views, order_store, report_store, report_date)
+    while status == "failed" and now() + timedelta(seconds=retry_seconds) < day_end:
+        sleep(retry_seconds)
+        status = send_report_for(page_views, order_store, report_store, report_date)
+    return status
 
 
 def _next_send_time(now: datetime, send_hour: int) -> datetime:
@@ -136,7 +176,7 @@ def start_daily_report_scheduler(
             next_send = _next_send_time(now, send_hour)
             time.sleep((next_send - now).total_seconds())
             try:
-                send_report_for(page_views, order_store, report_store, next_send.date())
+                run_report_with_retries(page_views, order_store, report_store, next_send.date())
             except Exception:  # noqa: BLE001 -- one bad evening must never kill the thread for every evening after
                 logger.warning("[DAILY-REPORT] unexpected failure sending report", exc_info=True)
 
