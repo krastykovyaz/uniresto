@@ -696,9 +696,28 @@ function applyLanguage() {
   tickStatusClock();
 }
 
+// Keeps the address bar's own `?lang=` in sync with the active UI
+// language (Part 70), so that sharing the current URL -- a native share
+// sheet, or just copying it out of the address bar -- carries whatever
+// language the app was actually open in. app.py's mobile_app() reads that
+// same param server-side to build the Open Graph/Twitter Card preview a
+// recipient's chat app renders, since that request never runs this JS
+// and so can't see localStorage.
+function syncLangInUrl(code) {
+  try {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("lang") === code) return;
+    url.searchParams.set("lang", code);
+    window.history.replaceState(null, "", url);
+  } catch {
+    /* URL/history unavailable -- the share preview just won't localize */
+  }
+}
+
 function changeLanguage(code) {
   state.lang = code;
   setLanguage(code);
+  syncLangInUrl(code);
   applyLanguage();
   render();
 }
@@ -3917,6 +3936,21 @@ function playIntro() {
 }
 
 async function init() {
+  // A shared link's `?lang=` (see syncLangInUrl() above) is the SHARER's
+  // language, not necessarily this visitor's own -- but there's no
+  // signal that's more likely correct for someone who just followed a
+  // link someone else was actively using, so it wins over any language
+  // this browser had stored from a previous visit.
+  try {
+    const urlLang = new URLSearchParams(window.location.search).get("lang");
+    if (urlLang && urlLang !== state.lang && LANGUAGES.some((l) => l.code === urlLang)) {
+      state.lang = urlLang;
+      setLanguage(urlLang);
+    }
+  } catch {
+    /* malformed URL -- keep whatever getLanguage() already resolved */
+  }
+  syncLangInUrl(state.lang);
   applyLanguage();
   playIntro();
   setInterval(tickStatusClock, 30000);

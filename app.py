@@ -56,6 +56,62 @@ ADMIN_LOOKAHEAD_DAYS = 10
 # from any Restopolis data, this is OUR OWN validation rule.
 ALLOWED_EMAIL_DOMAINS = ("@uni.lu", "@student.uni.lu")
 
+# Open Graph / Twitter Card preview text (Part 70), one per language static/
+# i18n.js's LANGUAGES list offers. The title reuses that file's own
+# `tagline` string verbatim so the preview matches the in-app UI exactly;
+# the description is this table's own text, since i18n.js has no
+# equivalent key. This has to live here rather than in i18n.js because the
+# preview is built server-side (crawlers fetch the URL directly and never
+# run our JS) from static/app.js's `?lang=` URL param -- see
+# syncLangInUrl() there for how that param gets onto the shared URL in the
+# first place.
+OG_PREVIEW_TEXT = {
+    "en": {
+        "title": "UniResto · Campus Kirchberg",
+        "description": "Order lunch from University of Luxembourg Campus Kirchberg restaurants — real menus, real prices.",
+    },
+    "zh": {
+        "title": "UniResto · Kirchberg 校区",
+        "description": "从卢森堡大学基希贝格校区的餐厅订午餐——真实菜单，真实价格。",
+    },
+    "hi": {
+        "title": "UniResto · कैम्पस किरखबर्ग",
+        "description": "लक्ज़मबर्ग विश्वविद्यालय, कैंपस किरखबर्ग के रेस्तराँ से लंच ऑर्डर करें — असली मेनू, असली कीमतें।",
+    },
+    "es": {
+        "title": "UniResto · Campus Kirchberg",
+        "description": "Pide el almuerzo en los restaurantes de la Universidad de Luxemburgo, Campus Kirchberg — menús reales, precios reales.",
+    },
+    "fr": {
+        "title": "UniResto · Campus Kirchberg",
+        "description": "Commandez votre déjeuner dans les restaurants de l'Université du Luxembourg, Campus Kirchberg — vrais menus, vrais prix.",
+    },
+    "ar": {
+        "title": "UniResto · حرم كيرشبرغ",
+        "description": "اطلب غداءك من مطاعم جامعة لوكسمبورغ، حرم كيرشبرغ — قوائم حقيقية وأسعار حقيقية.",
+    },
+    "bn": {
+        "title": "UniResto · ক্যাম্পাস কির্শবের্গ",
+        "description": "লুক্সেমবার্গ বিশ্ববিদ্যালয়ের কির্শবের্গ ক্যাম্পাসের রেস্তোরাঁ থেকে লাঞ্চ অর্ডার করুন — সত্যিকারের মেনু, সত্যিকারের দাম।",
+    },
+    "pt": {
+        "title": "UniResto · Campus Kirchberg",
+        "description": "Peça o seu almoço nos restaurantes da Universidade do Luxemburgo, Campus Kirchberg — menus reais, preços reais.",
+    },
+    "ru": {
+        "title": "UniResto · Кампус Кирхберг",
+        "description": "Заказывайте обед в ресторанах Люксембургского университета, кампус Кирхберг — настоящие меню, настоящие цены.",
+    },
+    "ur": {
+        "title": "UniResto · کیمپس کِرشبرگ",
+        "description": "لکسمبرگ یونیورسٹی، کیمپس کِرشبرگ کے ریستورانوں سے لنچ آرڈر کریں — حقیقی مینو، حقیقی قیمتیں۔",
+    },
+    "lb": {
+        "title": "UniResto · Campus Kirchberg",
+        "description": "Bestell Mëttegiessen bei de Restauranten vun der Uni Lëtzebuerg, Campus Kirchberg — richtege Menüen, richtege Präisser.",
+    },
+}
+
 
 def _is_allowed_customer_email(email: str) -> bool:
     normalized = email.strip().lower()
@@ -756,7 +812,18 @@ def create_app(
 
     @app.get("/")
     def mobile_app():
-        return render_template("mobile.html")
+        # ?lang=<code> reflects whichever language the SHARER's app was in
+        # when they copied/shared this URL (see static/app.js's
+        # syncLangInUrl()) -- not this visitor's own language yet, since
+        # nothing server-side has run their client-side i18n. It only
+        # drives the Open Graph/Twitter Card preview text below; the app
+        # itself picks its language up from localStorage/this same param
+        # once static/app.js loads.
+        og_lang = request.args.get("lang", "en")
+        if og_lang not in OG_PREVIEW_TEXT:
+            og_lang = "en"
+        og = OG_PREVIEW_TEXT[og_lang]
+        return render_template("mobile.html", og_lang=og_lang, og_title=og["title"], og_description=og["description"])
 
     # Browsers/crawlers request this path directly regardless of the
     # <link rel="icon"> tags in <head> -- without this it 404s even
