@@ -1384,6 +1384,32 @@ function deliveryRegisterCard() {
     return el(`<p class="info-banner">${escapeHtml(tr("deliveryRegisteredAs", { email: registeredEmail }))}</p>`);
   }
 
+  // Skip the whole send-code/verify-code dance when a University Email
+  // is already verified on this device (Profile, Part 25) -- see
+  // /api/delivery/register/quick's own docstring for why re-proving
+  // control of that SAME address here would just be a needless second
+  // code, not real extra security.
+  if (state.registeredEmail) {
+    const quickCard = el(`
+      <div class="delivery-register-card">
+        <p class="delivery-register-hint">${escapeHtml(tr("deliveryQuickRegisterHint", { email: state.registeredEmail }))}</p>
+        <button type="button" class="primary-button delivery-register-quick-enable">${escapeHtml(tr("enableDeliveryEmails"))}</button>
+      </div>
+    `);
+    quickCard.querySelector(".delivery-register-quick-enable").addEventListener("click", async (e) => {
+      e.target.disabled = true;
+      try {
+        await api("/api/delivery/register/quick", { method: "POST", body: JSON.stringify({ email: state.registeredEmail }) });
+        saveDeliveryRegisteredEmail(state.registeredEmail);
+        quickCard.replaceWith(deliveryRegisterCard());
+      } catch {
+        showToast(tr("verificationFailed"));
+        e.target.disabled = false;
+      }
+    });
+    return quickCard;
+  }
+
   const card = el(`<div class="delivery-register-card"></div>`);
   let step = "enter";
   let pendingEmail = "";

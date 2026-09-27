@@ -610,6 +610,24 @@ def test_delivery_register_code_is_not_accepted_by_customer_email_verification(c
     assert resp.get_json()["reason"] == "no_code_requested"
 
 
+def test_delivery_register_quick_persists_the_subscriber_with_no_code(client):
+    resp = client.post("/api/delivery/register/quick", json={"email": "courier@uni.lu"})
+    assert resp.status_code == 200
+    assert resp.get_json()["registered"] is True
+    assert "courier@uni.lu" in client.application.config["DELIVERY_SUBSCRIBER_STORE"].list_emails()
+
+
+def test_delivery_register_quick_rejects_non_uni_lu_email(client):
+    resp = client.post("/api/delivery/register/quick", json={"email": "courier@gmail.com"})
+    assert resp.status_code == 400
+    assert "courier@gmail.com" not in client.application.config["DELIVERY_SUBSCRIBER_STORE"].list_emails()
+
+
+def test_delivery_register_quick_requires_email(client):
+    resp = client.post("/api/delivery/register/quick", json={})
+    assert resp.status_code == 400
+
+
 def test_delivery_orders_returns_real_orders_and_strips_customer_email(client):
     order_id = _create_basic_order(client, customer_email="student@uni.lu")
     resp = client.get("/api/delivery/orders")

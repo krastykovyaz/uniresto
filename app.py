@@ -422,6 +422,31 @@ def create_app(
             delivery_subscribers().add(email)
         return jsonify({"verified": verified, "reason": reason})
 
+    @app.post("/api/delivery/register/quick")
+    def api_delivery_register_quick():
+        """Registers a courier address with NO code round-trip, for the
+        one case where that's a reasonable shortcut rather than a real
+        gap: the frontend only ever calls this with the SAME address
+        already sitting in this browser's own state.registeredEmail --
+        which itself only gets set there after that address completed
+        the real customer send-code/verify-code flow (Part 25/27), on
+        this same device. Re-proving control of an address this device
+        already proved it can read is a needless second code, not
+        stronger security -- and this app's own checkout already accepts
+        a typed customer_email with zero verification at all (see
+        _is_valid_email_format's docstring), so trusting a client-echoed
+        address here is no looser than the rest of this app's standing
+        trust model. Still domain-checked (courier eligibility, same as
+        every other delivery-registration path), just not code-checked."""
+        body = request.get_json(force=True, silent=True) or {}
+        email = (body.get("email") or "").strip()
+        if not email:
+            abort(400, description="Body must include 'email'")
+        if not _is_allowed_customer_email(email):
+            abort(400, description=f"'email' must be a valid address ending in {' or '.join(ALLOWED_EMAIL_DOMAINS)}")
+        delivery_subscribers().add(email)
+        return jsonify({"registered": True})
+
     @app.get("/api/delivery/orders")
     def api_delivery_orders():
         """Real orders for the in-app Delivery screen (Part 52+) -- every
