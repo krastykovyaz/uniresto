@@ -2529,11 +2529,22 @@ async function reorderPastOrder(order) {
   state.searchQuery = "";
   state.selection = newSelection;
   state.serverQuote = null;
-  // Can't reliably reverse-parse a past order's single combined string
-  // back into (building, details) -- it goes into the free-text field
-  // as-is, and the building select starts blank for the user to re-pick.
-  state.deliveryBuilding = "";
-  state.deliveryLocationText = order.delivery_location || "";
+  // combinedDeliveryLocation() (below) always builds this string as
+  // exactly "<building label> — <free text>" (or just one half, if the
+  // other was empty) -- so unlike genuinely arbitrary text, THIS app's
+  // own past output can be split back apart reliably whenever it starts
+  // with one of DELIVERY_BUILDINGS' own labels. Re-combining the split
+  // result would otherwise double the building name the moment the
+  // customer re-picks the very building already sitting in the free-text
+  // field (the reorder screen's most likely building to pick, since it's
+  // probably the same room as before) -- e.g. "Building G — Building G
+  // — 2211 room". A location that DOESN'T match this shape (legacy order
+  // from before this convention, or building-less free text) falls back
+  // to the previous behavior: the whole thing in free text, building
+  // left blank to re-pick.
+  const split = splitDeliveryLocation(order.delivery_location || "");
+  state.deliveryBuilding = split.building;
+  state.deliveryLocationText = split.text;
   state.orderComment = order.customer_note || "";
 
   const notices = [];
@@ -3654,6 +3665,27 @@ function buildOrderCommentField() {
 // half alone is used as-is; neither present is "" (sent as null).
 function combinedDeliveryLocation() {
   return [state.deliveryBuilding, state.deliveryLocationText.trim()].filter(Boolean).join(" — ");
+}
+
+// The inverse of combinedDeliveryLocation() above -- only reliable
+// because that function's own output shape is closed and known (see its
+// comment): "<building label> — <text>", or one half alone. Anything
+// that doesn't start with one of DELIVERY_BUILDINGS' own labels followed
+// by " — " is returned whole as `text`, building blank -- exactly the
+// old always-blank-building fallback, for a location this app didn't
+// itself produce this way (a legacy order, or free text that happens to
+// contain an em dash).
+function splitDeliveryLocation(combined) {
+  for (const building of DELIVERY_BUILDINGS) {
+    const prefix = `${building.label} — `;
+    if (combined.startsWith(prefix)) {
+      return { building: building.label, text: combined.slice(prefix.length) };
+    }
+    if (combined === building.label) {
+      return { building: building.label, text: "" };
+    }
+  }
+  return { building: "", text: combined };
 }
 
 async function renderReview() {
