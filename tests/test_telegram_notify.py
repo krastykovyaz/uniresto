@@ -106,6 +106,20 @@ def test_message_never_invents_data_only_uses_the_orders_own_fields(monkeypatch)
     assert "https://uniresto.carcard.space/admin/orders?token=x" in text
 
 
+def test_message_includes_customer_note_when_present(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "999")
+    order = _order(customer_note="no onion, please")
+
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"ok": True}
+    with patch("orderability_engine.telegram_notify.requests.post", return_value=mock_resp) as mock_post:
+        send_admin_notification(order)
+
+    text = mock_post.call_args.kwargs["json"]["text"]
+    assert "no onion, please" in text
+
+
 def test_mark_reviewing_url_becomes_an_inline_url_button(monkeypatch):
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", "999")

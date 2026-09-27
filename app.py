@@ -241,11 +241,17 @@ def create_app(
         # persisted -- it's used once, right here, to send the
         # confirmation, then discarded (see mailer.py).
         customer_email = (body.get("customer_email") or "").strip() or None
+        # Optional (Part 55): relayed as-is to the admin (Telegram ping,
+        # /admin/orders) and echoed in the customer's own confirmation
+        # email -- never parsed/acted on here, e.g. "no onion".
+        customer_note = (body.get("customer_note") or "").strip() or None
 
         if not slug or not date_str or not selection:
             abort(400, description="Body must include 'restaurant', 'date', and a non-empty 'items' list of {id, quantity}")
         if customer_email is not None and not _is_valid_email_format(customer_email):
             abort(400, description="'customer_email' must be a valid email address")
+        if customer_note is not None and len(customer_note) > 500:
+            abort(400, description="'customer_note' must be at most 500 characters")
 
         restaurant = get_restaurant_or_404(slug)
         d = parse_date_arg(date_str)
@@ -270,7 +276,7 @@ def create_app(
             return jsonify({"error": "invalid_selection", "message": str(exc)}), 400
 
         order_id = store().create_order(
-            restaurant.code, restaurant.name, d, quote["items"], delivery_location, customer_email
+            restaurant.code, restaurant.name, d, quote["items"], delivery_location, customer_email, customer_note
         )
         order = store().get_order(order_id)
 

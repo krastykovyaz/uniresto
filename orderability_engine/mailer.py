@@ -35,6 +35,7 @@ spam, not a guarantee.
 
 from __future__ import annotations
 
+import html
 import logging
 import os
 import secrets
@@ -166,6 +167,10 @@ def _format_order_text(order: dict) -> str:
         lines.append("")
         lines.append(f"Delivery location: {order['delivery_location']}")
 
+    if order.get("customer_note"):
+        lines.append("")
+        lines.append(f"Your note: {order['customer_note']}")
+
     lines.append("")
     lines.append(f"Order #{order['id']} -- confirmed, no payment collected (see README.md Part 3 scope).")
     return "\n".join(lines)
@@ -188,9 +193,20 @@ def _format_order_html(order: dict) -> str:
             f'<td style="padding:10px 0 0;text-align:right;font-weight:700;border-top:1px solid #eef0f2;">€{formula["total"]:.2f}</td></tr>'
         )
 
+    # delivery_location/customer_note are free text the CUSTOMER typed in
+    # at checkout (see app.py's /api/orders) -- unlike item names/restaurant
+    # name (Restopolis's own data), these must be HTML-escaped before
+    # going into an email body, or a "delivery location" of e.g.
+    # "<img src=x onerror=...>" would render as live HTML in the
+    # recipient's mail client.
     delivery = (
-        f'<p style="margin:16px 0 0;color:#6b7280;">Delivery location: {order["delivery_location"]}</p>'
+        f'<p style="margin:16px 0 0;color:#6b7280;">Delivery location: {html.escape(order["delivery_location"])}</p>'
         if order.get("delivery_location")
+        else ""
+    )
+    note = (
+        f'<p style="margin:16px 0 0;color:#6b7280;">Your note: {html.escape(order["customer_note"])}</p>'
+        if order.get("customer_note")
         else ""
     )
 
@@ -202,6 +218,7 @@ def _format_order_html(order: dict) -> str:
           {total_row}
         </table>
         {delivery}
+        {note}
         <p style="margin:20px 0 0;color:#6b7280;font-size:13px;">Order #{order['id']}</p>"""
 
 
@@ -290,6 +307,10 @@ def _format_delivery_text(order: dict, restopolis_url: str | None) -> str:
         lines.append("")
         lines.append(f"Delivery location: {order['delivery_location']}")
 
+    if order.get("customer_note"):
+        lines.append("")
+        lines.append(f"Customer note: {order['customer_note']}")
+
     return "\n".join(lines)
 
 
@@ -326,9 +347,17 @@ def _format_delivery_html(order: dict, restopolis_url: str | None) -> str:
         if restopolis_url
         else ""
     )
+    # Free text the CUSTOMER typed in -- must be HTML-escaped before going
+    # into an email body (see _format_order_html's own comment on this
+    # same class of bug).
     delivery = (
-        f'<p style="margin:16px 0 0;color:#6b7280;">Delivery location: {order["delivery_location"]}</p>'
+        f'<p style="margin:16px 0 0;color:#6b7280;">Delivery location: {html.escape(order["delivery_location"])}</p>'
         if order.get("delivery_location")
+        else ""
+    )
+    note = (
+        f'<p style="margin:16px 0 0;color:#6b7280;">Customer note: {html.escape(order["customer_note"])}</p>'
+        if order.get("customer_note")
         else ""
     )
 
@@ -344,6 +373,7 @@ def _format_delivery_html(order: dict, restopolis_url: str | None) -> str:
         </table>
         {restopolis_link}
         {delivery}
+        {note}
         <p style="margin:20px 0 0;color:#6b7280;font-size:13px;">Order #{order['id']}</p>"""
 
 

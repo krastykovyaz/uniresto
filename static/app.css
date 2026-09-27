@@ -790,7 +790,8 @@ svg { display: block; }
 .field-block { padding: 0 var(--space-4) var(--space-4); }
 .field-block label { font-size: 0.85rem; color: var(--color-text-muted); display: block; margin-bottom: 4px; }
 .field-block input,
-.field-block select {
+.field-block select,
+.field-block textarea {
   width: 100%;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
@@ -801,6 +802,7 @@ svg { display: block; }
   color: var(--color-text);
   font-family: inherit;
 }
+.field-block textarea { resize: vertical; line-height: 1.4; }
 /* Native <select> chrome (grey fill, square corners, OS-drawn arrow)
    otherwise overrides the rules above in most browsers unless the
    default appearance is explicitly turned off first. */

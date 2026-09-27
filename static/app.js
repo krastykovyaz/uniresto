@@ -91,6 +91,11 @@ const state = {
   selection: [], // [{ menuItemId, quantity }]
   deliveryBuilding: "", // canonical English label from DELIVERY_BUILDINGS, or ""
   deliveryLocationText: "", // free-text detail (room/office, or a building not in the list)
+  // Optional free-text note about the order itself (e.g. "no onion") --
+  // sent as-is to whoever actually prepares/places the real order (the
+  // admin, Part 30), never parsed or acted on by this app. See
+  // buildOrderCommentField() below.
+  orderComment: "",
   // Optional -- only sent if filled in, so the confirmed order can be
   // emailed (Part 23). Starts pre-filled from whichever Profile email
   // applies (Communication email, if set, else the University email --
@@ -191,6 +196,7 @@ function saveCart() {
         date: state.targetDate,
         deliveryBuilding: state.deliveryBuilding,
         deliveryLocationText: state.deliveryLocationText,
+        comment: state.orderComment,
         items,
       })
     );
@@ -2187,6 +2193,7 @@ async function reorderPastOrder(order) {
   // as-is, and the building select starts blank for the user to re-pick.
   state.deliveryBuilding = "";
   state.deliveryLocationText = order.delivery_location || "";
+  state.orderComment = order.customer_note || "";
 
   const notices = [];
   if (dateInfo.date !== new Date().toISOString().slice(0, 10)) notices.push(tr("reorderMovedToDate", { date: fmtLong(dateInfo.date) }));
@@ -3255,6 +3262,25 @@ function buildDeliveryLocationTextField() {
   return block;
 }
 
+// Optional (Part 55) -- a free-text note about the order itself (e.g.
+// "no onion"), never parsed/acted on by this app, just relayed as-is to
+// the admin who actually places the real Restopolis order (see
+// telegram_notify.py's _format_order_message()) and echoed back in the
+// customer's own confirmation email.
+function buildOrderCommentField() {
+  const block = el(`
+    <div class="field-block">
+      <label for="order-comment">${escapeHtml(tr("orderComment"))}</label>
+      <textarea id="order-comment" rows="2" maxlength="500" placeholder="${escapeHtml(tr("orderCommentPlaceholder"))}">${escapeHtml(state.orderComment)}</textarea>
+    </div>
+  `);
+  block.querySelector("textarea").addEventListener("input", (e) => {
+    state.orderComment = e.target.value;
+    saveCart();
+  });
+  return block;
+}
+
 // The backend still only has a single delivery_location string -- joins
 // the building (if any) and the free-text detail (if any) with an
 // em-dash, e.g. "Building A (Central building) — Office 4.150". Either
@@ -3315,6 +3341,7 @@ async function renderReview() {
 
   app.append(buildDeliveryBuildingField());
   app.append(buildDeliveryLocationTextField());
+  app.append(buildOrderCommentField());
 
   // Optional -- only used to email the confirmation (Part 23). Pre-
   // filled from the Profile Communication email (if set) or else the
@@ -3369,6 +3396,7 @@ async function confirmOrder() {
         items: state.selection.map((s) => ({ id: s.menuItemId, quantity: s.quantity })),
         delivery_location: combinedDeliveryLocation() || null,
         customer_email: email || null,
+        customer_note: state.orderComment.trim() || null,
       }),
     });
     state.confirmedOrder = order;
@@ -3393,6 +3421,7 @@ function renderConfirmation() {
       <p class="eyebrow" style="padding:0 0 4px">${escapeHtml(tr("order"))} #${order.id}</p>
       <p style="margin:0 0 8px"><strong>${escapeHtml(order.restaurant_name)}</strong><br>${fmtLong(order.order_date)}</p>
       ${order.delivery_location ? `<p style="margin:0 0 8px">${escapeHtml(tr("deliveryTo"))} ${escapeHtml(order.delivery_location)}</p>` : ""}
+      ${order.customer_note ? `<p style="margin:0 0 8px">${escapeHtml(tr("yourComment"))} ${escapeHtml(order.customer_note)}</p>` : ""}
       ${
         order.email_sent === true
           ? `<p style="margin:0" class="email-status">${escapeHtml(tr("confirmationEmailSent"))}</p>`

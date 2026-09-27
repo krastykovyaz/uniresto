@@ -69,6 +69,10 @@ def _format_order_message(order: dict, admin_url: str | None, restopolis_url: st
     if restopolis_url:
         lines.append(f"  (place these on Restopolis: {restopolis_url})")
 
+    if order.get("customer_note"):
+        lines.append("")
+        lines.append(f"Note from customer: {order['customer_note']}")
+
     formula = order["totals"].get("formula") or {}
     if formula.get("total") is not None:
         lines.append("")

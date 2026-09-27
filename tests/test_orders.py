@@ -226,6 +226,18 @@ def test_create_order_without_customer_email_is_none(store):
     assert order["customer_email"] is None
 
 
+def test_create_order_persists_customer_note(store):
+    order_id = _basic_order_id(store, customer_note="no onion, please")
+    order = store.get_order(order_id)
+    assert order["customer_note"] == "no onion, please"
+
+
+def test_create_order_without_customer_note_is_none(store):
+    order_id = _basic_order_id(store)
+    order = store.get_order(order_id)
+    assert order["customer_note"] is None
+
+
 def test_new_order_starts_pending_with_no_real_price(store):
     order_id = _basic_order_id(store)
     order = store.get_order(order_id)

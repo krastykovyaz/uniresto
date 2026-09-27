@@ -61,6 +61,9 @@ CREATE TABLE IF NOT EXISTS orders (
                                         -- never overwrites totals.formula's own separate estimate
     confirmation_token TEXT,           -- required to confirm/cancel via the emailed links;
                                         -- prevents guessing an order id to act on someone else's order
+    customer_note TEXT,                -- optional free-text note (Part 55), e.g. "no onion" --
+                                        -- relayed as-is to the admin/mailer, never parsed or acted
+                                        -- on by this app itself
     created_at TEXT NOT NULL
 );
 
@@ -87,6 +90,7 @@ _MIGRATIONS = [
     ("customer_email", "ALTER TABLE orders ADD COLUMN customer_email TEXT"),
     ("real_price", "ALTER TABLE orders ADD COLUMN real_price REAL"),
     ("confirmation_token", "ALTER TABLE orders ADD COLUMN confirmation_token TEXT"),
+    ("customer_note", "ALTER TABLE orders ADD COLUMN customer_note TEXT"),
 ]
 
 
@@ -231,16 +235,17 @@ class OrderStore:
         items: list[dict],
         delivery_location: str | None = None,
         customer_email: str | None = None,
+        customer_note: str | None = None,
     ) -> int:
         """items: recalculate_order()'s "items" list (server-priced/weighed)."""
         now = datetime.now(timezone.utc).isoformat()
         with self._lock, self._transaction() as conn:
             cur = conn.execute(
                 """
-                INSERT INTO orders (restaurant_code, restaurant_name, order_date, delivery_location, customer_email, status, created_at)
-                VALUES (?, ?, ?, ?, ?, 'pending', ?)
+                INSERT INTO orders (restaurant_code, restaurant_name, order_date, delivery_location, customer_email, customer_note, status, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)
                 """,
-                (restaurant_code, restaurant_name, order_date.isoformat(), delivery_location, customer_email, now),
+                (restaurant_code, restaurant_name, order_date.isoformat(), delivery_location, customer_email, customer_note, now),
             )
             order_id = cur.lastrowid
             conn.executemany(
@@ -270,7 +275,7 @@ class OrderStore:
         with self._lock:
             row = self._conn.execute(
                 "SELECT id, restaurant_code, restaurant_name, order_date, delivery_location, customer_email, "
-                "status, real_price, created_at FROM orders WHERE id = ?",
+                "status, real_price, created_at, customer_note FROM orders WHERE id = ?",
                 (order_id,),
             ).fetchone()
             if row is None:
@@ -312,6 +317,7 @@ class OrderStore:
             # totals.formula's own estimate, never merged into one number.
             "real_price": row[7],
             "created_at": row[8],
+            "customer_note": row[9],
             "items": line_items,
             "totals": aggregate_totals(line_items),
         }

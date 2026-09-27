@@ -273,6 +273,35 @@ def test_create_order_with_malformed_email_is_400(client):
     assert resp.status_code == 400
 
 
+def test_create_order_persists_customer_note(client):
+    resp = client.post(
+        "/api/orders",
+        json={
+            "restaurant": "altius",
+            "date": "2026-09-24",
+            "items": [{"id": SALAD_BAR_ID, "quantity": 1}],
+            "customer_note": "no onion, please",
+        },
+    )
+    assert resp.status_code == 201
+    order_id = resp.get_json()["id"]
+    body = client.get(f"/api/orders/{order_id}").get_json()
+    assert body["customer_note"] == "no onion, please"
+
+
+def test_create_order_with_overly_long_note_is_400(client):
+    resp = client.post(
+        "/api/orders",
+        json={
+            "restaurant": "altius",
+            "date": "2026-09-24",
+            "items": [{"id": SALAD_BAR_ID, "quantity": 1}],
+            "customer_note": "x" * 501,
+        },
+    )
+    assert resp.status_code == 400
+
+
 def test_create_order_without_email_never_attempts_to_send_and_has_no_email_fields(client):
     with patch("app.send_order_confirmation") as mock_send:
         resp = client.post(
@@ -653,10 +682,12 @@ def test_create_order_still_succeeds_when_courier_notification_fails(client):
 # ---------------------------------------------------------------------------
 
 
-def _create_basic_order(client, customer_email=None):
+def _create_basic_order(client, customer_email=None, customer_note=None):
     payload = {"restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}]}
     if customer_email:
         payload["customer_email"] = customer_email
+    if customer_note:
+        payload["customer_note"] = customer_note
     with patch("app.send_admin_notification", return_value=(True, None)):
         resp = client.post("/api/orders", json=payload)
     return resp.get_json()["id"]
@@ -739,6 +770,15 @@ def test_admin_orders_with_correct_token_lists_pending_orders(client, monkeypatc
     order_id = _create_basic_order(client, customer_email="student@uni.lu")
     resp = client.get("/admin/orders?token=correct-token")
     assert resp.status_code == 200
+    assert f"Order #{order_id}".encode() in resp.data
+
+
+def test_admin_orders_shows_customer_note(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    order_id = _create_basic_order(client, customer_email="student@uni.lu", customer_note="no onion, please")
+    resp = client.get("/admin/orders?token=correct-token")
+    assert resp.status_code == 200
+    assert b"no onion, please" in resp.data
     assert f"Order #{order_id}".encode() in resp.data
 
 

@@ -19,6 +19,9 @@
     <div class="muted">
         {% for it in o['items'] %}{{ it.name }} &times;{{ it.quantity }}{% if not loop.last %}, {% endif %}{% endfor %}
     </div>
+    {% if o.customer_note %}
+    <div><strong>Note from customer:</strong> {{ o.customer_note }}</div>
+    {% endif %}
     <div class="muted">
         Approximate price (app estimate): {{ '€%.2f'|format(o.totals.formula.total) if o.totals.formula.total is not none else 'n/a' }}
         {% if o.delivery_location %} &middot; Delivery: {{ o.delivery_location }}{% endif %}
