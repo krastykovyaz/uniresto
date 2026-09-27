@@ -1650,7 +1650,6 @@ function deliveryOrderListContent(orders) {
                 <p class="kind">${escapeHtml(itemsSummary)}</p>
                 <p class="kind">${escapeHtml(fmtLong(order.order_date))} · ${escapeHtml(orderStatusLabel(order.status))}</p>
                 ${hasEarlyOrderItem ? `<p class="kind delivery-early-order-note">${escapeHtml(tr("deliveryEarlyOrderNote"))}</p>` : ""}
-                <p class="kind delivery-green-box-note">${escapeHtml(tr("greenBoxCourierNote"))}</p>
               </div>
             </div>
           </div>
