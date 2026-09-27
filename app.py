@@ -10,7 +10,7 @@ import logging
 import os
 import re
 import secrets
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from dotenv import load_dotenv
 from flask import Flask, abort, jsonify, redirect, render_template, request, url_for
@@ -32,12 +32,19 @@ from orderability_engine.mailer import (
     send_verification_code,
 )
 from orderability_engine.menu_service import flatten_menu_items, get_customer_menu
-from orderability_engine.models import STATUS_VALUES
+from orderability_engine.delivery_rules import is_delivery_expired
+from orderability_engine.models import STATUS_VALUES, TZINFO
 from orderability_engine.orders import MAX_QUANTITY, OrderStore, OrderValidationError, recalculate_order
 from orderability_engine.page_views import PageViewStore
+from orderability_engine.rate_limits import RateLimitStore
 from orderability_engine.service import OrderabilityService
 from orderability_engine.smart_lunch import TIER_ORDER, find_smart_lunch
-from orderability_engine.telegram_notify import send_admin_notification, send_feedback_notification, send_order_claimed_notification
+from orderability_engine.telegram_notify import (
+    send_admin_notification,
+    send_feedback_notification,
+    send_order_claimed_notification,
+    send_order_released_notification,
+)
 from restopolis.client import BASE_URL as RESTOPOLIS_BASE_URL
 from restopolis.config import load_restaurants
 from scraper import slug_for
@@ -166,6 +173,13 @@ def _is_admin_authorized() -> bool:
     return given is not None and secrets.compare_digest(given, expected)
 
 
+def _admin_orders_url() -> str | None:
+    """Link to /admin/orders for a Telegram ping, or None when ADMIN_TOKEN
+    isn't set (the page is unreachable without it anyway)."""
+    admin_token = os.environ.get("ADMIN_TOKEN")
+    return f"{request.host_url}admin/orders?token={admin_token}" if admin_token else None
+
+
 def create_app(
     service: OrderabilityService | None = None,
     order_store: OrderStore | None = None,
@@ -176,6 +190,7 @@ def create_app(
     feedback_store: FeedbackStore | None = None,
     page_view_store: PageViewStore | None = None,
     daily_report_store: DailyReportStore | None = None,
+    rate_limit_store: RateLimitStore | None = None,
     enable_cache_warmer: bool = True,
     enable_daily_report_scheduler: bool = True,
 ) -> Flask:
@@ -216,6 +231,7 @@ def create_app(
     app.config["FEEDBACK_STORE"] = feedback_store or FeedbackStore("orders.db")
     app.config["PAGE_VIEW_STORE"] = page_view_store or PageViewStore("orders.db")
     app.config["DAILY_REPORT_STORE"] = daily_report_store or DailyReportStore("orders.db")
+    app.config["RATE_LIMIT_STORE"] = rate_limit_store or RateLimitStore("orders.db")
     app.config["RESTAURANTS_BY_SLUG"] = by_slug
 
     def svc() -> OrderabilityService:
@@ -241,6 +257,30 @@ def create_app(
 
     def page_views() -> PageViewStore:
         return app.config["PAGE_VIEW_STORE"]
+
+    # Part 77: (max requests, window seconds) per client IP. Generous for
+    # a real person, tight enough that one client can't flood the admin's
+    # Telegram, email arbitrary addresses, or pad the evening report. See
+    # rate_limits.py for why this lives in SQLite, not in memory.
+    RATE_LIMITS = {
+        "order_create": (10, 3600),   # each order: Telegram + courier emails + customer email
+        "feedback": (5, 3600),        # each one: a Telegram ping
+        "courier_action": (30, 600),  # claim/release/(un)deliver: Telegram + customer email
+        "track": (60, 3600),          # per event -- the evening report's page views
+        "delivery_view": (60, 3600),  # counting only; the list itself is never blocked
+    }
+
+    def within_rate_limit(bucket: str, suffix: str = "") -> tuple[bool, int]:
+        limit, window = RATE_LIMITS[bucket]
+        key = f"{bucket}{':' + suffix if suffix else ''}:{request.remote_addr}"
+        return app.config["RATE_LIMIT_STORE"].hit(key, limit, window)
+
+    def rate_limited_response(bucket: str, suffix: str = ""):
+        """None if this request may proceed, else the 429 to return."""
+        allowed, retry_after = within_rate_limit(bucket, suffix)
+        if allowed:
+            return None
+        return jsonify({"error": "rate_limited", "retry_after_seconds": retry_after}), 429
 
     def get_restaurant_or_404(slug: str):
         restaurant = by_slug.get(slug)
@@ -384,6 +424,8 @@ def create_app(
 
     @app.post("/api/orders")
     def api_create_order():
+        if (limited := rate_limited_response("order_create")) is not None:
+            return limited
         body = request.get_json(force=True, silent=True) or {}
         slug = body.get("restaurant")
         date_str = body.get("date")
@@ -639,10 +681,18 @@ def create_app(
         registration/verification at all (see delivery_subscribers.py's
         own docstring) -- registering only controls whether an address
         gets emailed."""
-        page_views().record("delivery")  # Part 74: a real Delivery-screen visit for the evening report
+        # Part 74: a real Delivery-screen visit for the evening report --
+        # counted only within the rate limit (Part 77), so a refresh loop
+        # can't pad the report; the list itself is always served.
+        if within_rate_limit("delivery_view")[0]:
+            page_views().record("delivery")
         orders = store().list_recent_orders()
+        now = datetime.now(TZINFO)
         for order in orders:
             order.pop("customer_email", None)
+            # Part 76: the Delivery screen's "Expired" section reads this
+            # instead of comparing dates on the courier's own device.
+            order["expired"] = is_delivery_expired(date.fromisoformat(order["order_date"]), now)
         return jsonify(orders)
 
     @app.post("/api/orders/<int:order_id>/claim")
@@ -656,6 +706,8 @@ def create_app(
         customer left an email, the "on its way" email -- both
         best-effort, same reasoning as every other notification in this
         app: a flaky send must never fail the claim itself."""
+        if (limited := rate_limited_response("courier_action")) is not None:
+            return limited
         order = store().get_order(order_id)
         if order is None:
             abort(404, description=f"No order #{order_id}")
@@ -667,12 +719,29 @@ def create_app(
             return jsonify({"error": "not_claimable", "status": order["status"], "delivered": bool(order["delivered_at"])}), 409
         newly_claimed = store().mark_claimed(order_id)
         if newly_claimed:
-            admin_token = os.environ.get("ADMIN_TOKEN")
-            admin_url = f"{request.host_url}admin/orders?token={admin_token}" if admin_token else None
-            send_order_claimed_notification(order, admin_url=admin_url)
-            if order.get("customer_email"):
+            send_order_claimed_notification(order, admin_url=_admin_orders_url())
+            # At most once per order (Part 76): a release + re-claim, or a
+            # claim/release loop, must never email the customer again.
+            if order.get("customer_email") and store().mark_on_way_emailed(order_id):
                 send_order_out_for_delivery(order["customer_email"], order)
         return jsonify({"claimed": True, "already_claimed": not newly_claimed})
+
+    @app.post("/api/orders/<int:order_id>/unclaim")
+    def api_unclaim_order(order_id):
+        """Part 76: "I can't deliver this after all" -- the courier who
+        took it gives it back, so it shows "Take this delivery" again for
+        everyone else. Pings the admin (who was told it was claimed); the
+        customer is NOT emailed -- they were told it's on its way once,
+        and the next courier to take it is what actually matters to them."""
+        if (limited := rate_limited_response("courier_action")) is not None:
+            return limited
+        order = store().get_order(order_id)
+        if order is None:
+            abort(404, description=f"No order #{order_id}")
+        if not store().mark_unclaimed(order_id):
+            return jsonify({"error": "not_claimed"}), 409
+        send_order_released_notification(order, admin_url=_admin_orders_url())
+        return jsonify({"claimed": False})
 
     @app.post("/api/orders/<int:order_id>/mark-delivered")
     def api_mark_order_delivered(order_id):
@@ -680,6 +749,8 @@ def create_app(
         /api/delivery/orders above -- anyone looking at the Delivery
         screen can mark an order delivered, same trust level as everyone
         already seeing every order on it."""
+        if (limited := rate_limited_response("courier_action")) is not None:
+            return limited
         if not store().mark_delivered(order_id):
             abort(404, description=f"No order #{order_id}")
         return jsonify({"delivered": True})
@@ -688,6 +759,8 @@ def create_app(
     def api_mark_order_not_delivered(order_id):
         """Undoes the above -- a courier tapping the wrong order, or too
         early, must be able to reverse it."""
+        if (limited := rate_limited_response("courier_action")) is not None:
+            return limited
         if not store().mark_not_delivered(order_id):
             abort(404, description=f"No order #{order_id}")
         return jsonify({"delivered": False})
@@ -729,6 +802,8 @@ def create_app(
         who picked it. Best-effort on the client: never blocks anything."""
         if event not in CLIENT_TRACKED_EVENTS:
             abort(404)
+        if (limited := rate_limited_response("track", event)) is not None:
+            return limited
         page_views().record(event)
         return jsonify({"recorded": True})
 
@@ -739,6 +814,8 @@ def create_app(
         pinged to the admin over Telegram the same way a new order is
         (never fails the request if that ping fails, same reasoning as
         send_admin_notification's own call site above)."""
+        if (limited := rate_limited_response("feedback")) is not None:
+            return limited
         body = request.get_json(force=True, silent=True) or {}
         message = (body.get("message") or "").strip()
         contact_email = (body.get("email") or "").strip() or None

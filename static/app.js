@@ -461,7 +461,14 @@ async function api(path, options) {
     /* no body */
   }
   if (!resp.ok) {
-    const error = new Error((body && (body.message || body.reason || body.error)) || `Request failed (${resp.status})`);
+    // Part 77: the server's per-client rate limits answer 429 with a bare
+    // "rate_limited" code -- show a real, translated sentence instead
+    // (callers that read err.body.retry_after_seconds still can).
+    const message =
+      resp.status === 429 && body && body.error === "rate_limited"
+        ? tr("tooManyRequests")
+        : (body && (body.message || body.reason || body.error)) || `Request failed (${resp.status})`;
+    const error = new Error(message);
     error.status = resp.status;
     error.body = body;
     throw error;
@@ -1614,13 +1621,15 @@ function campusFilterRow(stateKey, onChange) {
 // was also cancelled or expired afterwards):
 //   delivered  -- delivered_at is set (mark_delivered(), a courier fact)
 //   closed     -- status === 'cancelled' (the admin/customer called it off)
-//   expired    -- order_date is before today -- the delivery day itself
-//                 has passed, nothing left to act on
+//   expired    -- past 15:00 Europe/Luxembourg on order_date, decided by
+//                 the SERVER (order.expired, see delivery_rules.py's
+//                 is_delivery_expired()) -- never this device's own clock,
+//                 whose UTC date runs up to 2h off Luxembourg's
 //   pending    -- everything else: still needs a courier's attention
-function classifyDeliveryOrder(order, todayIso) {
+function classifyDeliveryOrder(order) {
   if (order.delivered_at) return "delivered";
   if (order.status === "cancelled") return "closed";
-  if (order.order_date < todayIso) return "expired";
+  if (order.expired) return "expired";
   return "pending";
 }
 
@@ -1692,6 +1701,24 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
         }
       });
       actions.append(claimBtn);
+    } else {
+      // Part 76: whoever took it can give it back -- no accounts, so the
+      // app can't tell WHO claimed it; anyone on this screen could, same
+      // trust level as claiming itself. Pings the admin server-side.
+      const releaseBtn = el(`<button type="button" class="secondary-button delivery-release-btn">${escapeHtml(tr("deliveryReleaseClaim"))}</button>`);
+      releaseBtn.addEventListener("click", async () => {
+        releaseBtn.disabled = true;
+        try {
+          await api(`/api/orders/${order.id}/unclaim`, { method: "POST" });
+          order.claimed_at = null;
+          showToast(tr("deliveryReleasedToast"));
+          onChanged();
+        } catch {
+          showToast(tr("deliveryActionFailed"));
+          releaseBtn.disabled = false;
+        }
+      });
+      actions.append(releaseBtn);
     }
     const btn = el(`<button type="button" class="secondary-button delivery-mark-delivered">${escapeHtml(tr("deliveryMarkDelivered"))}</button>`);
     btn.addEventListener("click", async () => {
@@ -1780,9 +1807,8 @@ function deliveryOrderListContent(orders, onChanged) {
     wrap.append(emptyState("receipt", tr("deliveryOrdersEmptyTitle"), tr("deliveryOrdersEmptyBody")));
     return wrap;
   }
-  const todayIso = new Date().toISOString().slice(0, 10);
   const buckets = { pending: [], expired: [], closed: [], delivered: [] };
-  for (const order of orders) buckets[classifyDeliveryOrder(order, todayIso)].push(order);
+  for (const order of orders) buckets[classifyDeliveryOrder(order)].push(order);
 
   for (const section of DELIVERY_SECTIONS) {
     const sectionOrders = buckets[section.key];

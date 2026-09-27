@@ -23,7 +23,7 @@ import logging
 import sqlite3
 import threading
 import time
-from datetime import date, datetime, time as dt_time, timedelta
+from datetime import date, datetime, time as dt_time, timedelta, timezone
 from pathlib import Path
 
 from orderability_engine.models import TZINFO
@@ -145,10 +145,20 @@ def run_report_with_retries(
     either. `sleep`/`now` are injectable for tests."""
     _, day_end = local_day_bounds(report_date)
     status = send_report_for(page_views, order_store, report_store, report_date)
-    while status == "failed" and now() + timedelta(seconds=retry_seconds) < day_end:
+    while status == "failed" and _seconds_until(now(), day_end) > retry_seconds:
         sleep(retry_seconds)
         status = send_report_for(page_views, order_store, report_store, report_date)
     return status
+
+
+def _seconds_until(now: datetime, target: datetime) -> float:
+    """Real elapsed seconds from `now` to `target`. Plain `target - now`
+    is WRONG when both share the same tzinfo: Python then subtracts wall
+    clock times and ignores the UTC offset changing in between -- so a
+    sleep spanning a daylight-saving change came out an hour off (the
+    report went out at 19:00 on the October fall-back day, 21:00 in
+    March). Going through UTC measures what the clock actually does."""
+    return (target.astimezone(timezone.utc) - now.astimezone(timezone.utc)).total_seconds()
 
 
 def _next_send_time(now: datetime, send_hour: int) -> datetime:
@@ -171,10 +181,18 @@ def start_daily_report_scheduler(
     exiting, needs no coordination beyond the shared SQLite file."""
 
     def loop() -> None:
+        last_send: datetime | None = None
         while True:
             now = datetime.now(TZINFO)
+            # time.sleep() can wake a few ms EARLY (seen live: 19:59:59.995),
+            # and a fast run (e.g. "already_claimed") can finish before the
+            # send instant itself -- without this, the next target would be
+            # the very same 20:00 and that evening would run twice.
+            if last_send is not None and _seconds_until(now, last_send) >= 0:
+                now = last_send
             next_send = _next_send_time(now, send_hour)
-            time.sleep((next_send - now).total_seconds())
+            time.sleep(max(0.0, _seconds_until(datetime.now(TZINFO), next_send)))
+            last_send = next_send
             try:
                 run_report_with_retries(page_views, order_store, report_store, next_send.date())
             except Exception:  # noqa: BLE001 -- one bad evening must never kill the thread for every evening after

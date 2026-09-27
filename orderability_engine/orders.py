@@ -78,6 +78,9 @@ CREATE TABLE IF NOT EXISTS orders (
                                         -- -- pings the admin (Telegram) and the customer (email)
                                         -- the FIRST time this is set; no courier IDENTITY recorded,
                                         -- this app has no accounts to attribute it to
+    on_way_emailed_at TEXT,            -- when the customer got the "on its way" email (Part 76) --
+                                        -- set at most ONCE per order, so releasing and re-claiming
+                                        -- (or a claim/release loop) can't email them again
     created_at TEXT NOT NULL
 );
 
@@ -108,6 +111,7 @@ _MIGRATIONS = [
     ("customer_lang", "ALTER TABLE orders ADD COLUMN customer_lang TEXT"),
     ("delivered_at", "ALTER TABLE orders ADD COLUMN delivered_at TEXT"),
     ("claimed_at", "ALTER TABLE orders ADD COLUMN claimed_at TEXT"),
+    ("on_way_emailed_at", "ALTER TABLE orders ADD COLUMN on_way_emailed_at TEXT"),
 ]
 
 
@@ -400,6 +404,30 @@ class OrderStore:
         with self._lock, self._transaction() as conn:
             cur = conn.execute(
                 "UPDATE orders SET claimed_at = ? WHERE id = ? AND claimed_at IS NULL", (now, order_id)
+            )
+            return cur.rowcount > 0
+
+    def mark_unclaimed(self, order_id: int) -> bool:
+        """Part 76: a courier who took an order but can't do it after all
+        gives it back, so it reads as open again for everyone else. True
+        only if it was actually claimed (and not yet delivered) -- False
+        otherwise, so the caller only pings the admin about a real release."""
+        with self._lock, self._transaction() as conn:
+            cur = conn.execute(
+                "UPDATE orders SET claimed_at = NULL WHERE id = ? AND claimed_at IS NOT NULL AND delivered_at IS NULL",
+                (order_id,),
+            )
+            return cur.rowcount > 0
+
+    def mark_on_way_emailed(self, order_id: int) -> bool:
+        """True only the FIRST time for a given order (same WHERE-IS-NULL
+        pattern as mark_claimed()) -- the caller sends the customer's "on
+        its way" email only when this says so, so it goes out at most once
+        per order no matter how many times it's claimed."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock, self._transaction() as conn:
+            cur = conn.execute(
+                "UPDATE orders SET on_way_emailed_at = ? WHERE id = ? AND on_way_emailed_at IS NULL", (now, order_id)
             )
             return cur.rowcount > 0
 

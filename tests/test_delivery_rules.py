@@ -1,6 +1,12 @@
 import datetime
 
-from orderability_engine.delivery_rules import EARLY_CUTOFF_CONFIG, DeliveryRuleConfig, compute_our_deadline, evaluate_our_delivery
+from orderability_engine.delivery_rules import (
+    EARLY_CUTOFF_CONFIG,
+    DeliveryRuleConfig,
+    compute_our_deadline,
+    evaluate_our_delivery,
+    is_delivery_expired,
+)
 from orderability_engine.models import TZINFO
 
 
@@ -106,3 +112,33 @@ def test_early_cutoff_unavailable_after_0800_even_though_general_deadline_has_no
     )
     assert general.available is True
     assert early.available is False
+
+
+# --- Part 76: when an undelivered order moves to "Expired" -------------------
+
+D = datetime.date(2026, 9, 28)
+
+
+def test_not_expired_before_15_00_on_its_own_date():
+    assert is_delivery_expired(D, datetime.datetime(2026, 9, 28, 14, 59, tzinfo=TZINFO)) is False
+
+
+def test_expired_from_15_00_on_its_own_date():
+    # The old frontend rule only expired an order once its DATE had
+    # passed -- it stayed "Pending" all afternoon and evening.
+    assert is_delivery_expired(D, datetime.datetime(2026, 9, 28, 15, 0, tzinfo=TZINFO)) is True
+
+
+def test_expired_on_a_later_day():
+    assert is_delivery_expired(D, datetime.datetime(2026, 9, 29, 9, 0, tzinfo=TZINFO)) is True
+
+
+def test_future_order_not_expired():
+    assert is_delivery_expired(D, datetime.datetime(2026, 9, 27, 20, 0, tzinfo=TZINFO)) is False
+
+
+def test_uses_luxembourg_time_not_utc():
+    # 13:30 UTC is 15:30 in Luxembourg (CEST, +02:00) -- already expired.
+    # A UTC-based check would still call this 13:30, i.e. pending.
+    now_utc = datetime.datetime(2026, 9, 28, 13, 30, tzinfo=datetime.timezone.utc)
+    assert is_delivery_expired(D, now_utc) is True

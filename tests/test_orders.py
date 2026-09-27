@@ -316,6 +316,35 @@ def test_mark_claimed_is_independent_of_status_and_delivered(store):
     assert order["claimed_at"] is not None
 
 
+def test_mark_unclaimed_releases_a_claim(store):
+    order_id = _basic_order_id(store)
+    store.mark_claimed(order_id)
+    assert store.mark_unclaimed(order_id) is True
+    assert store.get_order(order_id)["claimed_at"] is None
+    # ...and it can be claimed again by someone else.
+    assert store.mark_claimed(order_id) is True
+
+
+def test_mark_unclaimed_false_when_not_claimed(store):
+    order_id = _basic_order_id(store)
+    assert store.mark_unclaimed(order_id) is False
+    assert store.mark_unclaimed(999999) is False
+
+
+def test_mark_unclaimed_refuses_a_delivered_order(store):
+    order_id = _basic_order_id(store)
+    store.mark_claimed(order_id)
+    store.mark_delivered(order_id)
+    assert store.mark_unclaimed(order_id) is False
+    assert store.get_order(order_id)["claimed_at"] is not None
+
+
+def test_mark_on_way_emailed_only_true_once(store):
+    order_id = _basic_order_id(store)
+    assert store.mark_on_way_emailed(order_id) is True
+    assert store.mark_on_way_emailed(order_id) is False
+
+
 def test_mark_delivered_sets_a_timestamp(store):
     order_id = _basic_order_id(store)
     assert store.get_order(order_id)["delivered_at"] is None

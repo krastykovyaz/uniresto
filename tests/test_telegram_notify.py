@@ -9,6 +9,7 @@ from orderability_engine.telegram_notify import (
     send_daily_report,
     send_feedback_notification,
     send_order_claimed_notification,
+    send_order_released_notification,
 )
 
 
@@ -298,3 +299,16 @@ def test_order_claimed_includes_the_order_and_location(monkeypatch):
     assert f"Order #{order['id']}" in text
     assert "Maison du Savoir 4.150" in text
     assert "https://x/admin/orders?token=y" in text
+
+
+def test_order_released_says_nobody_is_on_it(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "999")
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"ok": True}
+    with patch("orderability_engine.telegram_notify.requests.post", return_value=mock_resp) as mock_post:
+        sent, _ = send_order_released_notification(_order())
+    assert sent is True
+    text = mock_post.call_args.kwargs["json"]["text"]
+    assert "released" in text
+    assert f"#{_order()['id']}" in text

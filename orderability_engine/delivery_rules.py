@@ -62,3 +62,23 @@ def evaluate_our_delivery(
     within_deadline = now <= deadline
 
     return OurDeliveryRule(deadline=deadline, available=bool(restopolis_ok and within_deadline))
+
+
+# Part 76: when an undelivered order stops being a courier's live job and
+# moves to the Delivery screen's "Expired" section -- 15:00 on its own
+# date, Europe/Luxembourg. OUR rule, same as the 13:00/08:00 cutoffs
+# above: Restopolis reports no service hours at all (service_start/
+# service_end are always None on the live site), so there's no real
+# per-restaurant closing time to anchor this to. Lunch-only canteens,
+# ordering closes at 13:00, so 15:00 leaves a full delivery window after
+# the last possible order before calling it missed.
+DELIVERY_EXPIRY_TIME = time(15, 0)
+
+
+def is_delivery_expired(order_date: date, now: datetime | None = None) -> bool:
+    """True once it's past DELIVERY_EXPIRY_TIME on `order_date` in
+    Europe/Luxembourg -- decided server-side from the real local clock,
+    never from a courier's phone (whose clock/timezone could be anything,
+    and whose UTC date runs up to 2 hours off Luxembourg's)."""
+    now = now or datetime.now(TZINFO)
+    return now >= datetime.combine(order_date, DELIVERY_EXPIRY_TIME, tzinfo=TZINFO)

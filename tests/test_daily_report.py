@@ -6,6 +6,7 @@ import pytest
 from orderability_engine.daily_report import (
     DailyReportStore,
     _next_send_time,
+    _seconds_until,
     compute_report_counts,
     local_day_bounds,
     run_report_with_retries,
@@ -204,3 +205,21 @@ def test_next_send_time_rolls_to_tomorrow_exactly_at_the_hour():
     now = datetime.datetime(2026, 9, 28, 20, 0, tzinfo=TZINFO)
     next_send = _next_send_time(now, send_hour=20)
     assert next_send == datetime.datetime(2026, 9, 29, 20, 0, tzinfo=TZINFO)
+
+
+def test_seconds_until_spans_the_october_fall_back_correctly():
+    # 2026-10-25 clocks go back (CEST -> CET): from 20:30 on the 24th to
+    # 20:00 on the 25th is 24.5 REAL hours. Plain same-tz subtraction said
+    # 23.5 -- so the report used to go out at 19:00 that evening.
+    now = datetime.datetime(2026, 10, 24, 20, 30, tzinfo=TZINFO)
+    target = _next_send_time(now, 20)
+    assert target == datetime.datetime(2026, 10, 25, 20, 0, tzinfo=TZINFO)
+    assert _seconds_until(now, target) == 24.5 * 3600
+
+
+def test_seconds_until_spans_the_march_spring_forward_correctly():
+    # 2027-03-28 clocks go forward (CET -> CEST): 20:30 -> next 20:00 is
+    # 22.5 real hours, not 23.5 (the report used to go out at 21:00).
+    now = datetime.datetime(2027, 3, 27, 20, 30, tzinfo=TZINFO)
+    target = _next_send_time(now, 20)
+    assert _seconds_until(now, target) == 22.5 * 3600

@@ -13,6 +13,7 @@ from orderability_engine.feedback import FeedbackStore
 from orderability_engine.models import TZINFO
 from orderability_engine.orders import OrderStore
 from orderability_engine.page_views import PageViewStore
+from orderability_engine.rate_limits import RateLimitStore
 from orderability_engine.service import OrderabilityService
 from restopolis.config import load_restaurants
 from tests.orderability_helpers import FakeRestopolisClient
@@ -47,6 +48,7 @@ def _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, 
     feedback_store = FeedbackStore(tmp_path / "orders.db")
     page_view_store = PageViewStore(tmp_path / "orders.db")
     daily_report_store = DailyReportStore(tmp_path / "orders.db")
+    rate_limit_store = RateLimitStore(tmp_path / "orders.db")
     app = create_app(
         service=service,
         order_store=order_store,
@@ -55,6 +57,7 @@ def _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, 
         feedback_store=feedback_store,
         page_view_store=page_view_store,
         daily_report_store=daily_report_store,
+        rate_limit_store=rate_limit_store,
         # Explicit ":memory:" instances -- isolated per test, never the
         # real email_verification.db/delivery_email_verification.db
         # files create_app() defaults to for the real app.
@@ -836,6 +839,100 @@ def test_claim_order_refuses_an_already_delivered_order_without_notifying(client
     assert resp.status_code == 409
     mock_notify.assert_not_called()
     mock_email.assert_not_called()
+
+
+def test_unclaim_releases_the_order_and_pings_the_admin(client):
+    order_id = _create_basic_order(client)
+    with patch("app.send_order_claimed_notification", return_value=(True, None)):
+        client.post(f"/api/orders/{order_id}/claim")
+    with patch("app.send_order_released_notification", return_value=(True, None)) as mock_released:
+        resp = client.post(f"/api/orders/{order_id}/unclaim")
+    assert resp.status_code == 200
+    mock_released.assert_called_once()
+    listed = next(o for o in client.get("/api/delivery/orders").get_json() if o["id"] == order_id)
+    assert listed["claimed_at"] is None
+
+
+def test_unclaim_an_unclaimed_order_is_a_409_without_pinging(client):
+    order_id = _create_basic_order(client)
+    with patch("app.send_order_released_notification") as mock_released:
+        resp = client.post(f"/api/orders/{order_id}/unclaim")
+    assert resp.status_code == 409
+    mock_released.assert_not_called()
+
+
+def test_reclaiming_after_a_release_never_emails_the_customer_twice(client):
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    with patch("app.send_order_claimed_notification", return_value=(True, None)) as mock_claimed, patch(
+        "app.send_order_released_notification", return_value=(True, None)
+    ), patch("app.send_order_out_for_delivery", return_value=(True, None)) as mock_email:
+        client.post(f"/api/orders/{order_id}/claim")
+        client.post(f"/api/orders/{order_id}/unclaim")
+        client.post(f"/api/orders/{order_id}/claim")
+    # The admin hears about both claims (it was dropped in between)...
+    assert mock_claimed.call_count == 2
+    # ...but the customer only ever gets "on its way" once.
+    mock_email.assert_called_once()
+
+
+def test_delivery_orders_carry_a_server_side_expired_flag(client):
+    # The fixture order is for 2026-09-24; the real clock is later, so it's
+    # past 15:00 Luxembourg on its date -- decided here, not on the device.
+    order_id = _create_basic_order(client)
+    listed = next(o for o in client.get("/api/delivery/orders").get_json() if o["id"] == order_id)
+    assert listed["expired"] is True
+
+
+def _post_n(client, url, n, **kw):
+    return [client.post(url, **kw).status_code for _ in range(n)]
+
+
+def test_feedback_is_rate_limited_per_client(client):
+    with patch("app.send_feedback_notification", return_value=(True, None)) as mock_notify:
+        codes = _post_n(client, "/api/feedback", 6, json={"message": "hi"})
+    assert codes == [200] * 5 + [429]
+    assert mock_notify.call_count == 5  # the blocked one never reached Telegram
+
+
+def test_429_says_when_to_retry(client):
+    for _ in range(5):
+        client.post("/api/feedback", json={"message": "hi"})
+    resp = client.post("/api/feedback", json={"message": "hi"})
+    body = resp.get_json()
+    assert body["error"] == "rate_limited"
+    assert 0 < body["retry_after_seconds"] <= 3600
+
+
+def test_order_creation_is_rate_limited_before_validation(client):
+    codes = _post_n(client, "/api/orders", 11, json={})
+    assert codes == [400] * 10 + [429]
+
+
+def test_courier_actions_are_rate_limited(client):
+    codes = _post_n(client, "/api/orders/999999/claim", 31)
+    assert codes == [404] * 30 + [429]
+
+
+def test_page_view_beacons_are_rate_limited_per_event(client):
+    assert _post_n(client, "/api/track/home", 61)[-2:] == [200, 429]
+    # A separate event has its own budget.
+    assert client.post("/api/track/menu").status_code == 200
+    assert _count_now(client, "home") == 60
+
+
+def test_delivery_list_is_never_blocked_but_view_counting_is_capped(client):
+    codes = [client.get("/api/delivery/orders").status_code for _ in range(61)]
+    assert codes == [200] * 61
+    assert _count_now(client, "delivery") == 60
+
+
+def test_rate_limits_are_per_client_ip(client):
+    # nginx appends the real client IP to X-Forwarded-For and ProxyFix
+    # trusts that last hop -- so two different clients get their own budget.
+    for _ in range(5):
+        client.post("/api/feedback", json={"message": "hi"}, headers={"X-Forwarded-For": "10.0.0.1"})
+    assert client.post("/api/feedback", json={"message": "hi"}, headers={"X-Forwarded-For": "10.0.0.1"}).status_code == 429
+    assert client.post("/api/feedback", json={"message": "hi"}, headers={"X-Forwarded-For": "10.0.0.2"}).status_code == 200
 
 
 def test_claim_order_unknown_order_404s(client):

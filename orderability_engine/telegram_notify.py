@@ -194,6 +194,19 @@ def send_order_claimed_notification(order: dict, admin_url: str | None = None) -
     return _send_message("\n".join(lines), buttons=None, log_context=f"order #{order.get('id')} claimed")
 
 
+def send_order_released_notification(order: dict, admin_url: str | None = None) -> tuple[bool, str | None]:
+    """Best-effort send -- the counterpart to send_order_claimed_notification
+    above (Part 76): the courier who took order #X gave it back, so the
+    admin knows nobody is on it anymore instead of assuming it's handled."""
+    lines = [
+        f"Order #{order['id']} released -- nobody is delivering it now ({order['restaurant_name']})",
+        f"Delivery location: {order.get('delivery_location') or 'Not given'}",
+    ]
+    if admin_url:
+        lines += ["", f"See it: {admin_url}"]
+    return _send_message("\n".join(lines), buttons=None, log_context=f"order #{order.get('id')} released")
+
+
 def send_daily_report(counts: dict, report_date) -> tuple[bool, str | None]:
     """Best-effort send, same contract as every other function here --
     the evening admin report (Part 74; see daily_report.py). `counts` is

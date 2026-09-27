@@ -431,7 +431,8 @@ svg { display: block; }
 .delivery-order-card { flex-wrap: wrap; }
 .delivery-order-actions { display: flex; flex-direction: column; gap: var(--space-2); flex: 0 0 auto; }
 .delivery-order-actions .delivery-mark-delivered,
-.delivery-order-actions .delivery-claim-btn {
+.delivery-order-actions .delivery-claim-btn,
+.delivery-order-actions .delivery-release-btn {
   display: block;
   width: auto;
   margin: 0;
@@ -442,6 +443,7 @@ svg { display: block; }
 }
 .delivery-order-actions .delivery-claim-btn { background: var(--color-primary); color: var(--color-primary-contrast); border-color: var(--color-primary); }
 .delivery-claimed-note { color: var(--color-primary-dark); font-weight: 600; }
+.delivery-order-actions .delivery-release-btn { color: var(--color-text-muted); }
 .delivery-delivered-note { color: var(--color-primary-dark); font-weight: 600; }
 
 /* Basket screen: a "Current orders" heading + list (always expanded --
