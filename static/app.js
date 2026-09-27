@@ -1475,7 +1475,7 @@ function deliveryRegisterCard() {
     const btn = card.querySelector(".delivery-register-use-uni");
     if (btn) btn.disabled = true;
     try {
-      await api("/api/delivery/register/quick", { method: "POST", body: JSON.stringify({ email: state.registeredEmail }) });
+      await api("/api/delivery/register/quick", { method: "POST", body: JSON.stringify({ email: state.registeredEmail, lang: state.lang }) });
       finishRegistering(state.registeredEmail);
     } catch {
       showToast(tr("verificationFailed"));
@@ -1559,7 +1559,7 @@ function deliveryRegisterCard() {
     try {
       const result = await api("/api/delivery/register/verify-code", {
         method: "POST",
-        body: JSON.stringify({ email: pendingEmail, code }),
+        body: JSON.stringify({ email: pendingEmail, code, lang: state.lang }),
       });
       if (!result.verified) {
         const reasonKey =
@@ -3777,6 +3777,12 @@ async function confirmOrder() {
         delivery_location: combinedDeliveryLocation() || null,
         customer_email: email || null,
         customer_note: state.orderComment.trim() || null,
+        // Part 72: shown alongside the courier's own language on each
+        // item in the delivery-notification email (see mailer.py's
+        // _triple_dish_names()) -- this order's own snapshot of
+        // state.lang, not a live lookup, so it can't change retroactively
+        // if the customer switches languages after ordering.
+        lang: state.lang,
       }),
     });
     state.confirmedOrder = order;

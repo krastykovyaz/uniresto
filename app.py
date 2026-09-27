@@ -124,6 +124,19 @@ def _is_allowed_customer_email(email: str) -> bool:
 _EMAIL_FORMAT_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
+def _normalize_lang_arg(value) -> str | None:
+    """A request body's own claimed `lang` (Part 72) -- e.g. the
+    customer's/courier's app language at the moment they ordered or
+    registered. Reuses OG_PREVIEW_TEXT's key set as the canonical list of
+    languages this app actually supports (the same set static/i18n.js's
+    own LANGUAGES exports) rather than a second hardcoded copy. Anything
+    else (missing, empty, a code this app doesn't have) is simply
+    unknown, not a validation error -- both callers treat it the same as
+    not having been given at all."""
+    value = (value or "").strip().lower()
+    return value if value in OG_PREVIEW_TEXT else None
+
+
 def _is_valid_email_format(email: str) -> bool:
     """Looser than _is_allowed_customer_email above: no domain
     restriction. Used for the order's own customer_email, which is
@@ -367,6 +380,13 @@ def create_app(
         # /admin/orders) and echoed in the customer's own confirmation
         # email -- never parsed/acted on here, e.g. "no onion".
         customer_note = (body.get("customer_note") or "").strip() or None
+        # Optional (Part 72): the customer's own app language at the
+        # moment they ordered -- shown alongside the courier's own
+        # language on each item in the delivery-notification email (see
+        # mailer.py's _triple_dish_names()). None (not "en") when
+        # missing/unrecognized, so mailer.py can tell "genuinely unknown"
+        # apart from "really is English".
+        customer_lang = _normalize_lang_arg(body.get("lang"))
 
         if not slug or not date_str or not selection:
             abort(400, description="Body must include 'restaurant', 'date', and a non-empty 'items' list of {id, quantity}")
@@ -405,7 +425,14 @@ def create_app(
             return jsonify({"error": "invalid_selection", "message": str(exc)}), 400
 
         order_id = store().create_order(
-            restaurant.code, restaurant.name, d, quote["items"], delivery_location, customer_email, customer_note
+            restaurant.code,
+            restaurant.name,
+            d,
+            quote["items"],
+            delivery_location,
+            customer_email,
+            customer_note,
+            customer_lang,
         )
         order = store().get_order(order_id)
 
@@ -448,9 +475,9 @@ def create_app(
         # unbounded, admin-uncontrolled list of addresses, so a single
         # unexpected exception must not take down order creation OR skip
         # notifying the remaining couriers.
-        for courier_email in delivery_subscribers().list_emails():
+        for courier_email, courier_lang in delivery_subscribers().list_subscribers():
             try:
-                send_delivery_notification(courier_email, order, restopolis_url=restopolis_url)
+                send_delivery_notification(courier_email, order, restopolis_url=restopolis_url, courier_lang=courier_lang)
             except Exception:  # noqa: BLE001 -- see comment above: must never fail the order or the remaining sends
                 logging.getLogger("uniresto.mailer").warning(
                     "[MAIL] failed to notify courier %s about order #%s", courier_email, order["id"], exc_info=True
@@ -554,7 +581,7 @@ def create_app(
             abort(400, description="Body must include 'email' and 'code'")
         verified, reason = delivery_verification().verify(email, code)
         if verified:
-            delivery_subscribers().add(email)
+            delivery_subscribers().add(email, _normalize_lang_arg(body.get("lang")) or "en")
         return jsonify({"verified": verified, "reason": reason})
 
     @app.post("/api/delivery/register/quick")
@@ -579,7 +606,7 @@ def create_app(
             abort(400, description="Body must include 'email'")
         if not _is_allowed_customer_email(email):
             abort(400, description=f"'email' must be a valid address ending in {' or '.join(ALLOWED_EMAIL_DOMAINS)}")
-        delivery_subscribers().add(email)
+        delivery_subscribers().add(email, _normalize_lang_arg(body.get("lang")) or "en")
         return jsonify({"registered": True})
 
     @app.get("/api/delivery/orders")

@@ -42,6 +42,8 @@ import secrets
 
 import requests
 
+from orderability_engine.dish_name_labels import dish_name_label
+
 logger = logging.getLogger("uniresto.mailer")
 
 RESEND_API_URL = "https://api.resend.com/emails"
@@ -289,7 +291,58 @@ def send_verification_code(to_email: str, code: str) -> tuple[bool, str | None]:
     return _send(to_email, subject, text_body, html_body)
 
 
-def _format_delivery_text(order: dict, restopolis_url: str | None) -> str:
+def _triple_dish_names(raw_name: str, courier_lang: str, customer_lang: str | None) -> list[tuple[str, str]]:
+    """[(label, name), ...] for one item's line in the delivery email
+    (Part 72) -- the one place this otherwise English-only mailer (see
+    GREEN_BOX_CONSUMER_NOTE's own comment above) shows a dish name in
+    someone's actual language, since the courier needs to both recognize
+    the real dish (Restopolis's own original name -- what's physically at
+    the counter) AND understand it themselves, and may need to describe
+    it back to the customer in whatever language THEY use. `courier_lang`/
+    `customer_lang` are each whatever that person's own app happened to
+    be in at the moment they registered/ordered (see
+    delivery_subscribers.py's `lang` column and orders.py's
+    `customer_lang` column) -- never guessed. The first entry is always
+    the courier's own language (what they read first); any entry whose
+    name is identical to one already listed is dropped, so a dish with no
+    real translation on file (dish_name_label() falls back to the raw
+    name) or a courier/customer sharing a language never shows the same
+    text twice."""
+    entries: list[tuple[str, str]] = [("courier", dish_name_label(raw_name, courier_lang))]
+    seen = {entries[0][1]}
+    if raw_name not in seen:
+        entries.append(("original", raw_name))
+        seen.add(raw_name)
+    if customer_lang:
+        customer_name = dish_name_label(raw_name, customer_lang)
+        if customer_name not in seen:
+            entries.append(("customer", customer_name))
+            seen.add(customer_name)
+    return entries
+
+
+_TRIPLE_NAME_LABEL = {"original": "Restopolis", "customer": "customer"}
+
+
+def _format_dish_name_line(raw_name: str, courier_lang: str, customer_lang: str | None) -> str:
+    """Plain-text rendering of _triple_dish_names() above: the courier's
+    own language plain, any other real name in parentheses labeled by
+    what it is."""
+    entries = _triple_dish_names(raw_name, courier_lang, customer_lang)
+    primary = entries[0][1]
+    extras = [f"{_TRIPLE_NAME_LABEL[label]}: {name}" for label, name in entries[1:]]
+    return f"{primary} ({'; '.join(extras)})" if extras else primary
+
+
+def _format_dish_name_html(raw_name: str, courier_lang: str, customer_lang: str | None) -> str:
+    entries = _triple_dish_names(raw_name, courier_lang, customer_lang)
+    primary = html.escape(entries[0][1])
+    extras = [f"{_TRIPLE_NAME_LABEL[label]}: {html.escape(name)}" for label, name in entries[1:]]
+    suffix = f' <span style="color:#6b7280;font-size:12px;">({"; ".join(extras)})</span>' if extras else ""
+    return primary + suffix
+
+
+def _format_delivery_text(order: dict, restopolis_url: str | None, courier_lang: str = "en") -> str:
     """Plain-text body for send_delivery_notification() below -- grouped
     by category (see orderability_engine/pricing.py's category_breakdown(),
     same idea as telegram_notify.py's admin ping), each with BOTH the
@@ -303,10 +356,12 @@ def _format_delivery_text(order: dict, restopolis_url: str | None) -> str:
     by_category: dict[str, list[dict]] = {}
     for item in order["items"]:
         by_category.setdefault(item.get("category") or "Other", []).append(item)
+    customer_lang = order.get("customer_lang")
     for category, items in by_category.items():
         lines.append(f"{category}:")
         for item in items:
-            lines.append(f"  - {item['name']} x{item['quantity']}")
+            name_line = _format_dish_name_line(item["name"], courier_lang, customer_lang)
+            lines.append(f"  - {name_line} x{item['quantity']}")
     if restopolis_url:
         lines.append("")
         lines.append(f"Restaurant on Restopolis: {restopolis_url}")
@@ -337,14 +392,16 @@ def _format_delivery_text(order: dict, restopolis_url: str | None) -> str:
     return "\n".join(lines)
 
 
-def _format_delivery_html(order: dict, restopolis_url: str | None) -> str:
+def _format_delivery_html(order: dict, restopolis_url: str | None, courier_lang: str = "en") -> str:
     from orderability_engine.pricing import category_breakdown
 
+    customer_lang = order.get("customer_lang")
     rows = []
     for item in order["items"]:
+        name_html = _format_dish_name_html(item["name"], courier_lang, customer_lang)
         rows.append(
             f'<tr><td style="padding:4px 0;color:#6b7280;font-size:13px;">{item["category"]}</td></tr>'
-            f'<tr><td style="padding:0 0 6px;">{item["name"]} × {item["quantity"]}</td></tr>'
+            f'<tr><td style="padding:0 0 6px;">{name_html} × {item["quantity"]}</td></tr>'
         )
 
     breakdown = category_breakdown(order["items"])
@@ -401,7 +458,9 @@ def _format_delivery_html(order: dict, restopolis_url: str | None) -> str:
         <p style="margin:20px 0 0;color:#6b7280;font-size:13px;">Order #{order['id']}</p>"""
 
 
-def send_delivery_notification(to_email: str, order: dict, restopolis_url: str | None = None) -> tuple[bool, str | None]:
+def send_delivery_notification(
+    to_email: str, order: dict, restopolis_url: str | None = None, courier_lang: str = "en"
+) -> tuple[bool, str | None]:
     """Best-effort send to ONE registered courier address (Part 52+) --
     same (sent, error) contract as every other function here. Called once
     per registered address (see orderability_engine/delivery_subscribers.py)
@@ -411,13 +470,23 @@ def send_delivery_notification(to_email: str, order: dict, restopolis_url: str |
     real Restopolis restaurant link (BtnChangeRestaurant deep link, same
     one telegram_notify.py's admin ping uses; see its docstring for why
     it can only go that far, not to the exact date/items). Deliberately
-    never includes the customer's own email."""
+    never includes the customer's own email.
+
+    `courier_lang` is THIS recipient's own registered language (Part 72
+    -- see delivery_subscribers.py's `lang` column); each item's name is
+    shown in up to three forms (_triple_dish_names()): this courier's
+    language, the order's own customer_lang, and Restopolis's original
+    text -- whichever of those turn out identical are never repeated."""
     config = _mail_config()
     if config is None:
         return False, "Email not configured (RESEND_API_KEY unset)"
     subject = f"New order to deliver -- {order['restaurant_name']}"
-    text_body = _format_delivery_text(order, restopolis_url)
-    html_body = _html_shell(f"New order #{order['id']} to deliver at {order['restaurant_name']}.", _format_delivery_html(order, restopolis_url), config)
+    text_body = _format_delivery_text(order, restopolis_url, courier_lang)
+    html_body = _html_shell(
+        f"New order #{order['id']} to deliver at {order['restaurant_name']}.",
+        _format_delivery_html(order, restopolis_url, courier_lang),
+        config,
+    )
     return _send(to_email, subject, text_body, html_body)
 
 

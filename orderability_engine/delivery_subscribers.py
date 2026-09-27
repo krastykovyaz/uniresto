@@ -26,6 +26,17 @@ CREATE TABLE IF NOT EXISTS delivery_subscribers (
 );
 """
 
+# lang added after the original schema shipped -- see orders.py's own
+# _MIGRATIONS for why this needs an explicit ALTER TABLE rather than just
+# editing SCHEMA above. Whatever language the courier's OWN app happened
+# to be in at the moment they registered (Part 72) -- not a profile
+# setting kept in sync afterwards, so re-registering (e.g. after
+# switching languages) is exactly how it gets updated; see add()'s
+# ON CONFLICT clause below.
+_MIGRATIONS = [
+    ("lang", "ALTER TABLE delivery_subscribers ADD COLUMN lang TEXT NOT NULL DEFAULT 'en'"),
+]
+
 
 class DeliverySubscriberStore:
     def __init__(self, db_path: str | Path = "orders.db"):
@@ -34,7 +45,14 @@ class DeliverySubscriberStore:
         self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
         self._lock = threading.RLock()
         self._conn.executescript(SCHEMA)
+        self._migrate()
         self._conn.commit()
+
+    def _migrate(self) -> None:
+        existing = {row[1] for row in self._conn.execute("PRAGMA table_info(delivery_subscribers)").fetchall()}
+        for column_name, statement in _MIGRATIONS:
+            if column_name not in existing:
+                self._conn.execute(statement)
 
     def close(self) -> None:
         self._conn.close()
@@ -45,15 +63,21 @@ class DeliverySubscriberStore:
     def __exit__(self, *exc_info) -> None:
         self.close()
 
-    def add(self, email: str) -> None:
-        """Idempotent: registering the same address twice is a no-op, not
-        an error -- a courier re-registering (new device, cleared
-        localStorage) must never fail."""
+    def add(self, email: str, lang: str = "en") -> None:
+        """Idempotent: registering the same address twice is a no-op (not
+        an error -- a courier re-registering, e.g. new device or cleared
+        localStorage, must never fail), EXCEPT for `lang`, which always
+        gets updated to whatever was just given -- the whole point is
+        this tracks the courier's current app language, not their
+        language at first-ever registration."""
         now = datetime.now(timezone.utc).isoformat()
         with self._lock:
             self._conn.execute(
-                "INSERT INTO delivery_subscribers (email, created_at) VALUES (?, ?) ON CONFLICT(email) DO NOTHING",
-                (email, now),
+                """
+                INSERT INTO delivery_subscribers (email, lang, created_at) VALUES (?, ?, ?)
+                ON CONFLICT(email) DO UPDATE SET lang = excluded.lang
+                """,
+                (email, lang, now),
             )
             self._conn.commit()
 
@@ -66,6 +90,14 @@ class DeliverySubscriberStore:
         with self._lock:
             rows = self._conn.execute("SELECT email FROM delivery_subscribers ORDER BY id").fetchall()
         return [r[0] for r in rows]
+
+    def list_subscribers(self) -> list[tuple[str, str]]:
+        """[(email, lang), ...] -- used to personalize the per-order
+        delivery notification (Part 72) to each courier's own language,
+        unlike list_emails() above which is just the plain address list."""
+        with self._lock:
+            rows = self._conn.execute("SELECT email, lang FROM delivery_subscribers ORDER BY id").fetchall()
+        return [(r[0], r[1]) for r in rows]
 
     def is_registered(self, email: str) -> bool:
         with self._lock:

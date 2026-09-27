@@ -204,6 +204,71 @@ def test_delivery_notification_includes_green_box_note(monkeypatch):
     assert GREEN_BOX_COURIER_NOTE in payload["html"]
 
 
+def test_delivery_notification_shows_the_dish_name_in_the_couriers_own_language(monkeypatch):
+    monkeypatch.setenv("RESEND_API_KEY", "re_placeholder")
+    order = _order(items=[{"category": "Non-végétarien", "name": "Salade campagnarde", "quantity": 1, "price": None}])
+    with patch("orderability_engine.mailer.requests.post", return_value=_mock_response()) as mock_post:
+        send_delivery_notification("courier@uni.lu", order, courier_lang="ru")
+    payload = mock_post.call_args.kwargs["json"]
+    assert "Деревенский салат" in payload["text"]
+    assert "Деревенский салат" in payload["html"]
+
+
+def test_delivery_notification_also_shows_the_original_and_customer_language(monkeypatch):
+    monkeypatch.setenv("RESEND_API_KEY", "re_placeholder")
+    order = _order(
+        customer_lang="es",
+        items=[{"category": "Non-végétarien", "name": "Salade campagnarde", "quantity": 1, "price": None}],
+    )
+    with patch("orderability_engine.mailer.requests.post", return_value=_mock_response()) as mock_post:
+        send_delivery_notification("courier@uni.lu", order, courier_lang="ru")
+    text = mock_post.call_args.kwargs["json"]["text"]
+    assert "Деревенский салат" in text
+    assert "Restopolis: Salade campagnarde" in text
+    assert "customer: Ensalada campestre" in text
+
+
+def test_delivery_notification_never_repeats_an_identical_name(monkeypatch):
+    # courier_lang == customer_lang == "fr" (Restopolis's own language) --
+    # dish_name_label() returns the raw name for all three, so this must
+    # collapse to a single, unadorned name rather than "X (Restopolis: X;
+    # customer: X)".
+    monkeypatch.setenv("RESEND_API_KEY", "re_placeholder")
+    order = _order(
+        customer_lang="fr",
+        items=[{"category": "Non-végétarien", "name": "Salade campagnarde", "quantity": 1, "price": None}],
+    )
+    with patch("orderability_engine.mailer.requests.post", return_value=_mock_response()) as mock_post:
+        send_delivery_notification("courier@uni.lu", order, courier_lang="fr")
+    text = mock_post.call_args.kwargs["json"]["text"]
+    assert "  - Salade campagnarde x1" in text
+    assert "Restopolis:" not in text
+    assert "customer:" not in text
+
+
+def test_delivery_notification_falls_back_to_english_courier_lang(monkeypatch):
+    monkeypatch.setenv("RESEND_API_KEY", "re_placeholder")
+    order = _order(items=[{"category": "Non-végétarien", "name": "Salade campagnarde", "quantity": 1, "price": None}])
+    with patch("orderability_engine.mailer.requests.post", return_value=_mock_response()) as mock_post:
+        send_delivery_notification("courier@uni.lu", order)
+    text = mock_post.call_args.kwargs["json"]["text"]
+    assert "Country salad" in text
+
+
+def test_delivery_notification_dish_name_html_is_escaped(monkeypatch):
+    # dish_name_label() only ever returns a real, human-checked translation
+    # or the raw Restopolis name -- but the raw name is still Restopolis-
+    # scraped text, not something this app wrote, so it goes through the
+    # same escaping discipline as every other field in this email.
+    monkeypatch.setenv("RESEND_API_KEY", "re_placeholder")
+    order = _order(items=[{"category": "Non-végétarien", "name": "<script>evil()</script>", "quantity": 1, "price": None}])
+    with patch("orderability_engine.mailer.requests.post", return_value=_mock_response()) as mock_post:
+        send_delivery_notification("courier@uni.lu", order)
+    html = mock_post.call_args.kwargs["json"]["html"]
+    assert "<script>evil()</script>" not in html
+    assert "&lt;script&gt;evil()&lt;/script&gt;" in html
+
+
 def test_email_omits_total_line_when_formula_has_no_price(monkeypatch):
     monkeypatch.setenv("RESEND_API_KEY", "re_placeholder")
 
