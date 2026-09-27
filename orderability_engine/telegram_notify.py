@@ -177,3 +177,19 @@ def send_feedback_notification(message: str, contact_email: str | None, admin_ur
     if admin_url:
         lines += ["", f"See all feedback: {admin_url}"]
     return _send_message("\n".join(lines), buttons=None, log_context="new feedback")
+
+
+def send_daily_report(counts: dict, report_date) -> tuple[bool, str | None]:
+    """Best-effort send, same contract as every other function here --
+    the evening admin report (Part 74; see daily_report.py). `counts` is
+    exactly daily_report.compute_report_counts()'s own dict, real numbers
+    off page_views.py/OrderStore, never estimated."""
+    lines = [
+        f"Daily report -- {report_date.isoformat()}",
+        "",
+        f"Opened the app: {counts['home']}",
+        f"Viewed a menu: {counts['menu']}",
+        f"Orders placed: {counts['orders']}",
+        f"Opened deliveries: {counts['delivery']}",
+    ]
+    return _send_message("\n".join(lines), buttons=None, log_context=f"daily report {report_date}")

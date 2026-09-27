@@ -6,11 +6,13 @@ import pytest
 from app import create_app
 from orderability_engine.cache import OrderabilityCache
 from orderability_engine.coming_soon_clicks import ComingSoonClickStore
+from orderability_engine.daily_report import DailyReportStore
 from orderability_engine.delivery_subscribers import DeliverySubscriberStore
 from orderability_engine.email_verification import EmailVerificationStore
 from orderability_engine.feedback import FeedbackStore
 from orderability_engine.models import TZINFO
 from orderability_engine.orders import OrderStore
+from orderability_engine.page_views import PageViewStore
 from orderability_engine.service import OrderabilityService
 from restopolis.config import load_restaurants
 from tests.orderability_helpers import FakeRestopolisClient
@@ -43,21 +45,27 @@ def _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, 
     delivery_subscriber_store = DeliverySubscriberStore(tmp_path / "orders.db")
     coming_soon_click_store = ComingSoonClickStore(tmp_path / "orders.db")
     feedback_store = FeedbackStore(tmp_path / "orders.db")
+    page_view_store = PageViewStore(tmp_path / "orders.db")
+    daily_report_store = DailyReportStore(tmp_path / "orders.db")
     app = create_app(
         service=service,
         order_store=order_store,
         delivery_subscriber_store=delivery_subscriber_store,
         coming_soon_click_store=coming_soon_click_store,
         feedback_store=feedback_store,
+        page_view_store=page_view_store,
+        daily_report_store=daily_report_store,
         # Explicit ":memory:" instances -- isolated per test, never the
         # real email_verification.db/delivery_email_verification.db
         # files create_app() defaults to for the real app.
         email_verification_store=EmailVerificationStore(),
         delivery_verification_store=EmailVerificationStore(),
-        # No background cache-warmer thread here -- this app/FakeRestopolisClient
-        # only lives for one test, and the warmer's own behavior is covered
-        # directly in tests/test_cache_warmer.py instead.
+        # No background cache-warmer/daily-report threads here -- this
+        # app/FakeRestopolisClient only lives for one test, and each
+        # warmer's own behavior is covered directly in its own test file
+        # instead (test_cache_warmer.py, test_daily_report.py).
         enable_cache_warmer=False,
+        enable_daily_report_scheduler=False,
     )
     app.testing = True
     return app.test_client()
@@ -781,6 +789,31 @@ def test_mark_order_not_delivered_undoes_it(client):
     assert resp.get_json()["delivered"] is False
     listed = next(o for o in client.get("/api/delivery/orders").get_json() if o["id"] == order_id)
     assert listed["delivered_at"] is None
+
+
+def test_track_home_records_a_page_view(client):
+    resp = client.post("/api/track/home")
+    assert resp.status_code == 200
+    assert resp.get_json()["recorded"] is True
+    page_views = client.application.config["PAGE_VIEW_STORE"]
+    now = datetime.datetime.now(TZINFO)
+    assert page_views.count_between("home", now - datetime.timedelta(minutes=1), now + datetime.timedelta(minutes=1)) == 1
+
+
+def test_menu_fetch_records_a_page_view(client):
+    page_views = client.application.config["PAGE_VIEW_STORE"]
+    now = datetime.datetime.now(TZINFO)
+    before = page_views.count_between("menu", now - datetime.timedelta(minutes=1), now + datetime.timedelta(minutes=1))
+    client.get("/api/restaurants/altius/menu/2026-09-24")
+    after = page_views.count_between("menu", now - datetime.timedelta(minutes=1), now + datetime.timedelta(minutes=1))
+    assert after == before + 1
+
+
+def test_delivery_orders_fetch_records_a_page_view(client):
+    page_views = client.application.config["PAGE_VIEW_STORE"]
+    now = datetime.datetime.now(TZINFO)
+    client.get("/api/delivery/orders")
+    assert page_views.count_between("delivery", now - datetime.timedelta(minutes=1), now + datetime.timedelta(minutes=1)) == 1
 
 
 def test_create_order_notifies_every_registered_courier(client):

@@ -19,6 +19,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from orderability_engine.cache import OrderabilityCache
 from orderability_engine.cache_warmer import start_cache_warmer
 from orderability_engine.coming_soon_clicks import ComingSoonClickStore
+from orderability_engine.daily_report import DailyReportStore, start_daily_report_scheduler
 from orderability_engine.delivery_subscribers import DeliverySubscriberStore
 from orderability_engine.email_verification import EmailVerificationStore
 from orderability_engine.feedback import FeedbackStore
@@ -32,6 +33,7 @@ from orderability_engine.mailer import (
 from orderability_engine.menu_service import flatten_menu_items, get_customer_menu
 from orderability_engine.models import STATUS_VALUES
 from orderability_engine.orders import MAX_QUANTITY, OrderStore, OrderValidationError, recalculate_order
+from orderability_engine.page_views import PageViewStore
 from orderability_engine.service import OrderabilityService
 from orderability_engine.smart_lunch import TIER_ORDER, find_smart_lunch
 from orderability_engine.telegram_notify import send_admin_notification, send_feedback_notification
@@ -171,7 +173,10 @@ def create_app(
     delivery_subscriber_store: DeliverySubscriberStore | None = None,
     coming_soon_click_store: ComingSoonClickStore | None = None,
     feedback_store: FeedbackStore | None = None,
+    page_view_store: PageViewStore | None = None,
+    daily_report_store: DailyReportStore | None = None,
     enable_cache_warmer: bool = True,
+    enable_daily_report_scheduler: bool = True,
 ) -> Flask:
     app = Flask(__name__)
     # nginx (see the resto-unilu site config) terminates TLS and proxies
@@ -208,6 +213,8 @@ def create_app(
     app.config["DELIVERY_SUBSCRIBER_STORE"] = delivery_subscriber_store or DeliverySubscriberStore("orders.db")
     app.config["COMING_SOON_CLICK_STORE"] = coming_soon_click_store or ComingSoonClickStore("orders.db")
     app.config["FEEDBACK_STORE"] = feedback_store or FeedbackStore("orders.db")
+    app.config["PAGE_VIEW_STORE"] = page_view_store or PageViewStore("orders.db")
+    app.config["DAILY_REPORT_STORE"] = daily_report_store or DailyReportStore("orders.db")
     app.config["RESTAURANTS_BY_SLUG"] = by_slug
 
     def svc() -> OrderabilityService:
@@ -231,6 +238,9 @@ def create_app(
     def feedback() -> FeedbackStore:
         return app.config["FEEDBACK_STORE"]
 
+    def page_views() -> PageViewStore:
+        return app.config["PAGE_VIEW_STORE"]
+
     def get_restaurant_or_404(slug: str):
         restaurant = by_slug.get(slug)
         if restaurant is None:
@@ -246,6 +256,13 @@ def create_app(
     # a background thread outliving the test itself.
     if enable_cache_warmer:
         start_cache_warmer(svc(), list(restaurants.values()))
+
+    # Off in tests (see tests/test_app.py's _make_client()), same
+    # reasoning as enable_cache_warmer above -- a short-lived per-test app
+    # has no use for a background thread that only ever wakes up once a
+    # day, and it would otherwise outlive the test itself.
+    if enable_daily_report_scheduler:
+        start_daily_report_scheduler(page_views(), store(), app.config["DAILY_REPORT_STORE"])
 
     def parse_date_arg(value: str | None):
         if not value:
@@ -309,6 +326,12 @@ def create_app(
 
         flat_items, _daily_menus = _load_flat_menu(restaurant, d)
         service_time = f"{result.service_start}-{result.service_end}" if result.service_start else None
+        # Part 74: a real menu view for the admin's evening report --
+        # only counted once the menu is actually returned, not on the
+        # 409 above (that's "tried an unorderable date", not "saw a
+        # menu"). Only ever reached by this app's own JS (see
+        # page_views.py's own docstring for why that matters).
+        page_views().record("menu")
         return jsonify(
             {
                 "restaurant": restaurant.name,
@@ -621,6 +644,7 @@ def create_app(
         registration/verification at all (see delivery_subscribers.py's
         own docstring) -- registering only controls whether an address
         gets emailed."""
+        page_views().record("delivery")  # Part 74: a real Delivery-screen visit for the evening report
         orders = store().list_recent_orders()
         for order in orders:
             order.pop("customer_email", None)
@@ -664,6 +688,18 @@ def create_app(
         if location not in COMING_SOON_LOCATIONS:
             abort(400, description=f"'location' must be one of {', '.join(COMING_SOON_LOCATIONS)}")
         coming_soon_clicks().record(location)
+        return jsonify({"recorded": True})
+
+    @app.post("/api/track/home")
+    def api_track_home():
+        """A real "the app actually opened" signal for the admin's evening
+        report (Part 74) -- fired once from static/app.js's init(), so
+        this is only ever reached by a real browser that ran the JS, never
+        by a link-preview crawler fetching GET / itself (see
+        page_views.py's own docstring). Best-effort, matching every other
+        client-fired tracking call: never fails loudly, never blocks
+        anything else the app is doing."""
+        page_views().record("home")
         return jsonify({"recorded": True})
 
     @app.post("/api/feedback")

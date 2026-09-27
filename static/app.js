@@ -4183,6 +4183,12 @@ async function init() {
   syncLangInUrl(state.lang);
   applyLanguage();
   playIntro();
+  // Part 74: a real "the app actually opened" signal for the admin's
+  // evening report -- fired exactly once per load, only from here (never
+  // at GET / itself, which a link-preview crawler also fetches without
+  // ever running this code). Best-effort, same as the coming-soon click
+  // tracker: never blocks or affects anything else this app is doing.
+  api("/api/track/home", { method: "POST" }).catch(() => {});
   setInterval(tickStatusClock, 30000);
   app.append(loadingState(tr("loadingRestaurants")));
   try {

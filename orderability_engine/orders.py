@@ -366,6 +366,21 @@ class OrderStore:
             ids = [r[0] for r in self._conn.execute("SELECT id FROM orders ORDER BY id DESC LIMIT ?", (limit,)).fetchall()]
         return [self.get_order(i) for i in ids]
 
+    def count_created_between(self, start: datetime, end: datetime) -> int:
+        """How many orders were actually placed in [start, end) -- both
+        real, timezone-aware datetimes. Used by daily_report.py's evening
+        admin report (Part 74) for a real "orders today" count -- reads
+        directly off `orders` rather than a separate tracked counter, so
+        there's exactly one place this number can come from. Converted
+        to UTC before comparing -- see page_views.py's count_between()
+        for why a non-UTC offset would otherwise compare wrong."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT COUNT(*) FROM orders WHERE created_at >= ? AND created_at < ?",
+                (start.astimezone(timezone.utc).isoformat(), end.astimezone(timezone.utc).isoformat()),
+            ).fetchone()
+        return row[0]
+
     def mark_delivered(self, order_id: int) -> bool:
         """Part 73: a courier-reported fact ("I physically handed this
         over"), independent of `status`'s own admin-workflow state

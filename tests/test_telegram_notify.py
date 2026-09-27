@@ -1,8 +1,9 @@
+import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from orderability_engine.telegram_notify import is_configured, send_admin_notification, send_feedback_notification
+from orderability_engine.telegram_notify import is_configured, send_admin_notification, send_daily_report, send_feedback_notification
 
 
 def _order(**overrides):
@@ -243,3 +244,28 @@ def test_feedback_message_omits_contact_line_when_no_email_given(monkeypatch):
         send_feedback_notification("Love the app", None)
 
     assert "Contact:" not in mock_post.call_args.kwargs["json"]["text"]
+
+
+def test_daily_report_includes_every_real_count(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "999")
+
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"ok": True}
+    counts = {"home": 42, "menu": 27, "orders": 8, "delivery": 5}
+    with patch("orderability_engine.telegram_notify.requests.post", return_value=mock_resp) as mock_post:
+        sent, error = send_daily_report(counts, datetime.date(2026, 9, 28))
+
+    assert sent is True
+    text = mock_post.call_args.kwargs["json"]["text"]
+    assert "2026-09-28" in text
+    assert "42" in text
+    assert "27" in text
+    assert "8" in text
+    assert "5" in text
+
+
+def test_daily_report_returns_not_sent_when_unconfigured():
+    sent, error = send_daily_report({"home": 0, "menu": 0, "orders": 0, "delivery": 0}, datetime.date(2026, 9, 28))
+    assert sent is False
+    assert "not configured" in error
