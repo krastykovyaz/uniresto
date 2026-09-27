@@ -147,6 +147,10 @@ const state = {
   // every time, the same way a filter selection anywhere else in this
   // app survives leaving and returning to that screen.
   deliveryCampusFilter: "kirchberg",
+  // Same idea, independent selection, for the restaurant list (Part
+  // 68) -- "belval" shows the Food House/Café/Lab/Zone coming-soon
+  // cards instead of the real Kirchberg restaurants.
+  restaurantsCampusFilter: "kirchberg",
 };
 
 // Shorthand bound to the current language, used throughout the render
@@ -1557,25 +1561,25 @@ function deliveryRegisterCard() {
   return card;
 }
 
-// state.deliveryCampusFilter: the only campus this app actually has
-// real restaurants/orders for is Kirchberg (see README.md/
-// load_restaurants()) -- "belval" exists purely as a filter option
-// matching the Food House/Café/Lab/Zone "coming soon" cards on the
-// restaurant list (Part 66), never a real dataset, so selecting it
-// always shows the same coming-soon message rather than an empty "no
-// orders" one (that's reserved for a genuine zero-orders Kirchberg
-// state).
-function deliveryCampusFilterRow(onChange) {
+// Shared one-row campus filter (Part 67/68) -- used on both the
+// restaurant list and the Delivery screen, each with its OWN state key
+// (they filter different things and don't need to stay in sync with
+// each other). The only campus this app actually has real
+// restaurants/orders for is Kirchberg (see README.md/load_restaurants())
+// -- "belval" exists purely as a filter option matching the Food
+// House/Café/Lab/Zone "coming soon" cards (Part 66), never a real
+// dataset.
+function campusFilterRow(stateKey, onChange) {
   const row = el(`
     <div class="campus-filter">
-      <button type="button" class="campus-filter-btn ${state.deliveryCampusFilter === "kirchberg" ? "is-active" : ""}" data-campus="kirchberg">${escapeHtml(tr("campusKirchbergFilter"))}</button>
-      <button type="button" class="campus-filter-btn ${state.deliveryCampusFilter === "belval" ? "is-active" : ""}" data-campus="belval">${escapeHtml(tr("campusBelvalFilter"))}</button>
+      <button type="button" class="campus-filter-btn ${state[stateKey] === "kirchberg" ? "is-active" : ""}" data-campus="kirchberg">${escapeHtml(tr("campusKirchbergFilter"))}</button>
+      <button type="button" class="campus-filter-btn ${state[stateKey] === "belval" ? "is-active" : ""}" data-campus="belval">${escapeHtml(tr("campusBelvalFilter"))}</button>
     </div>
   `);
   for (const btn of row.querySelectorAll(".campus-filter-btn")) {
     btn.addEventListener("click", () => {
-      if (state.deliveryCampusFilter === btn.dataset.campus) return;
-      state.deliveryCampusFilter = btn.dataset.campus;
+      if (state[stateKey] === btn.dataset.campus) return;
+      state[stateKey] = btn.dataset.campus;
       for (const b of row.querySelectorAll(".campus-filter-btn")) b.classList.toggle("is-active", b === btn);
       onChange();
     });
@@ -1658,7 +1662,7 @@ async function renderDelivery() {
   app.querySelector(".loading-state")?.remove();
 
   const body = el(`<div class="delivery-campus-body"></div>`);
-  app.append(deliveryCampusFilterRow(() => {
+  app.append(campusFilterRow("deliveryCampusFilter", () => {
     body.innerHTML = "";
     body.append(deliveryOrderListContent(orders));
   }));
@@ -1666,19 +1670,31 @@ async function renderDelivery() {
   app.append(body);
 }
 
-function renderRestaurants() {
-  app.innerHTML = "";
-  const backRow = el(`
-    <div style="padding: var(--space-4) var(--space-4) 0;">
-      <button class="back-button" aria-label="${escapeHtml(tr("back"))}">${icon("back", 20)}</button>
-    </div>
-  `);
-  backRow.querySelector(".back-button").addEventListener("click", () => goTo("role"));
-  app.append(backRow);
-  app.append(el(`<h1 class="large-title" style="padding-top:var(--space-3)">${escapeHtml(tr("whereToEat"))}</h1>`));
-  app.append(el(`<p class="eyebrow">${escapeHtml(tr("tagline"))}</p>`));
-
+// The restaurant-grid content for whichever campus state.restaurantsCampusFilter
+// currently selects (Part 68) -- Kirchberg shows the real, orderable
+// restaurants exactly as before; Belval shows the same de-emphasized
+// "coming soon" cards that used to sit mixed in below them.
+function restaurantGridContent() {
   const grid = el(`<div class="restaurant-grid"></div>`);
+  if (state.restaurantsCampusFilter === "belval") {
+    for (const location of COMING_SOON_LOCATIONS) {
+      const card = el(`
+        <button class="restaurant-card is-coming-soon" aria-label="${escapeHtml(location.name)}: ${escapeHtml(tr("comingSoonBadge"))}">
+          <div class="restaurant-card-main">
+            <div class="icon-avatar is-other">${icon("fork", 20)}</div>
+            <div>
+              <h2>${escapeHtml(location.name)}</h2>
+              <p class="kind">${escapeHtml(tr(location.kindKey))} · ${escapeHtml(location.building)}</p>
+              <p class="coming-soon-badge">${escapeHtml(tr("comingSoonBadge"))}</p>
+            </div>
+          </div>
+        </button>
+      `);
+      card.addEventListener("click", () => showToast(tr("comingSoonToast")));
+      grid.append(card);
+    }
+    return grid;
+  }
   for (const r of state.restaurants) {
     const card = el(`
       <button class="restaurant-card" aria-label="${tr("select")}: ${escapeHtml(r.name)}">
@@ -1694,23 +1710,27 @@ function renderRestaurants() {
     card.addEventListener("click", () => selectRestaurant(r));
     grid.append(card);
   }
-  for (const location of COMING_SOON_LOCATIONS) {
-    const card = el(`
-      <button class="restaurant-card is-coming-soon" aria-label="${escapeHtml(location.name)}: ${escapeHtml(tr("comingSoonBadge"))}">
-        <div class="restaurant-card-main">
-          <div class="icon-avatar is-other">${icon("fork", 20)}</div>
-          <div>
-            <h2>${escapeHtml(location.name)}</h2>
-            <p class="kind">${escapeHtml(tr(location.kindKey))} · ${escapeHtml(location.building)}</p>
-            <p class="coming-soon-badge">${escapeHtml(tr("comingSoonBadge"))}</p>
-          </div>
-        </div>
-      </button>
-    `);
-    card.addEventListener("click", () => showToast(tr("comingSoonToast")));
-    grid.append(card);
-  }
-  app.append(grid);
+  return grid;
+}
+
+function renderRestaurants() {
+  app.innerHTML = "";
+  const backRow = el(`
+    <div style="padding: var(--space-4) var(--space-4) 0;">
+      <button class="back-button" aria-label="${escapeHtml(tr("back"))}">${icon("back", 20)}</button>
+    </div>
+  `);
+  backRow.querySelector(".back-button").addEventListener("click", () => goTo("role"));
+  app.append(backRow);
+  app.append(el(`<h1 class="large-title" style="padding-top:var(--space-3)">${escapeHtml(tr("whereToEat"))}</h1>`));
+
+  const body = el(`<div class="restaurants-campus-body"></div>`);
+  app.append(campusFilterRow("restaurantsCampusFilter", () => {
+    body.innerHTML = "";
+    body.append(restaurantGridContent());
+  }));
+  body.append(restaurantGridContent());
+  app.append(body);
 }
 
 // Not real Restopolis restaurants -- no menu, no orderability, never
