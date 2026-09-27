@@ -1800,6 +1800,29 @@ async function openOrderHistory() {
   render();
 }
 
+// "confirmed"/"cancelled" are the only two terminal states in the Part
+// 30 status machine (see orderStatusLabel()'s own comment) -- everything
+// else (pending/reviewing/awaiting_confirmation) is still actively
+// moving, so it belongs in "Current orders", not history.
+const TERMINAL_ORDER_STATUSES = new Set(["confirmed", "cancelled"]);
+
+function historyRow(order) {
+  const itemsSummary = order.items.map((it) => `${dishNameLabel(it.name, state.lang)}${it.quantity > 1 ? ` ×${it.quantity}` : ""}`).join(", ");
+  const row = el(`
+    <article class="history-row">
+      <p class="restaurant">${escapeHtml(shortName(order.restaurant_name))} · ${escapeHtml(fmtLong(order.order_date))}</p>
+      <p class="items-summary">${escapeHtml(itemsSummary)}</p>
+      <p class="meta">${escapeHtml(tr("placedOn"))} ${escapeHtml(fmtDeadline(order.created_at))} · ${escapeHtml(orderStatusLabel(order.status))}</p>
+      <p class="meta">${escapeHtml(historyWeightSummary(order))} · ${escapeHtml(formatServerPriceTotal(order))}</p>
+      ${order.real_price != null ? `<p class="meta">${escapeHtml(tr("realPrice"))}: €${order.real_price.toFixed(2)}</p>` : ""}
+      ${order.status === "reviewing" ? `<p class="meta reviewing-note">${escapeHtml(tr("reviewingNote"))}</p>` : ""}
+      <button type="button" class="history-reorder-btn">${escapeHtml(tr("reorder"))}</button>
+    </article>
+  `);
+  row.querySelector(".history-reorder-btn").addEventListener("click", () => reorderPastOrder(order));
+  return row;
+}
+
 function renderOrderHistory() {
   app.innerHTML = "";
   app.append(header({ title: tr("orderHistory"), back: () => goTo("restaurants") }));
@@ -1814,21 +1837,31 @@ function renderOrderHistory() {
     return;
   }
 
-  for (const order of state.orderHistoryOrders) {
-    const itemsSummary = order.items.map((it) => `${dishNameLabel(it.name, state.lang)}${it.quantity > 1 ? ` ×${it.quantity}` : ""}`).join(", ");
-    const row = el(`
-      <article class="history-row">
-        <p class="restaurant">${escapeHtml(shortName(order.restaurant_name))} · ${escapeHtml(fmtLong(order.order_date))}</p>
-        <p class="items-summary">${escapeHtml(itemsSummary)}</p>
-        <p class="meta">${escapeHtml(tr("placedOn"))} ${escapeHtml(fmtDeadline(order.created_at))} · ${escapeHtml(orderStatusLabel(order.status))}</p>
-        <p class="meta">${escapeHtml(historyWeightSummary(order))} · ${escapeHtml(formatServerPriceTotal(order))}</p>
-        ${order.real_price != null ? `<p class="meta">${escapeHtml(tr("realPrice"))}: €${order.real_price.toFixed(2)}</p>` : ""}
-        ${order.status === "reviewing" ? `<p class="meta reviewing-note">${escapeHtml(tr("reviewingNote"))}</p>` : ""}
-        <button type="button" class="history-reorder-btn">${escapeHtml(tr("reorder"))}</button>
-      </article>
+  const current = state.orderHistoryOrders.filter((o) => !TERMINAL_ORDER_STATUSES.has(o.status));
+  const past = state.orderHistoryOrders.filter((o) => TERMINAL_ORDER_STATUSES.has(o.status));
+
+  if (current.length > 0) {
+    app.append(el(`<h3 class="section-heading">${escapeHtml(tr("currentOrdersHeading"))}</h3>`));
+    const list = el(`<div class="history-list"></div>`);
+    for (const order of current) list.append(historyRow(order));
+    app.append(list);
+  }
+
+  if (past.length > 0) {
+    const group = el(`
+      <div class="history-group is-collapsed">
+        <button type="button" class="history-group-header">
+          <span class="history-group-name">${escapeHtml(tr("orderHistorySectionLabel"))}</span>
+          <span class="history-group-count">${escapeHtml(tr("orderCount", { n: past.length }))}</span>
+          <span class="history-group-chevron">${icon("chevron", 16)}</span>
+        </button>
+        <div class="history-group-body"></div>
+      </div>
     `);
-    row.querySelector(".history-reorder-btn").addEventListener("click", () => reorderPastOrder(order));
-    app.append(row);
+    const body = group.querySelector(".history-group-body");
+    for (const order of past) body.append(historyRow(order));
+    group.querySelector(".history-group-header").addEventListener("click", () => group.classList.toggle("is-collapsed"));
+    app.append(group);
   }
 }
 

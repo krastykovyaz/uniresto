@@ -349,6 +349,42 @@ svg { display: block; }
 }
 .canteen-group.is-collapsed .canteen-group-body { display: none; }
 
+/* Basket screen: a "Current orders" heading + list (always expanded --
+   these are the orders someone actually still needs to track) followed
+   by a separate "Order history" group that starts COLLAPSED, since past
+   orders are the ones least likely to need a second look. Its own class
+   names (rather than reusing .canteen-group*) keep this screen free to
+   change independently of the Delivery screen's canteen grouping. */
+.section-heading { font-size: 1rem; font-weight: 700; margin: var(--space-3) 0 var(--space-2); }
+.history-list { display: grid; grid-template-columns: 1fr; gap: var(--space-3); }
+.history-group { margin-top: var(--space-3); }
+.history-group-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) 0;
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--color-border);
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+.history-group-name { font-size: 1rem; font-weight: 700; }
+.history-group-count { color: var(--color-text-muted); font-size: 0.85rem; margin-right: auto; }
+.history-group-chevron { display: flex; color: #c4c7cc; transform: rotate(90deg); transition: transform 0.15s ease; }
+.history-group.is-collapsed .history-group-chevron { transform: rotate(0deg); }
+[dir="rtl"] .history-group-chevron { transform: rotate(-90deg); }
+[dir="rtl"] .history-group.is-collapsed .history-group-chevron { transform: rotate(0deg); }
+.history-group-body {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+}
+.history-group.is-collapsed .history-group-body { display: none; }
+
 /* ----------------------------------------------------------------- Chips */
 
 .status-chip {
