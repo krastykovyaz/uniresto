@@ -669,6 +669,7 @@ const ICON_PATHS = {
   mail: '<rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M3.5 6.5L12 13l8.5-6.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
   phone: '<path d="M6.6 10.8c1.4 2.8 3.8 5.2 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.3 21 3 13.7 3 4.9c0-.6.4-1 1-1h3.4c.6 0 1 .4 1 1 0 1.2.2 2.4.6 3.6.1.4 0 .8-.2 1L6.6 10.8z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" fill="none"/>',
   delivery: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" fill="none"/><path d="M4.5 7.5L12 12l7.5-4.5M12 12v9" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none"/>',
+  message: '<path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9l-4 4v-4H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" fill="none"/>',
 };
 
 function icon(name, size = 24) {
@@ -2337,9 +2338,17 @@ function renderProfile() {
   phoneRow.addEventListener("click", () => openPhoneSheet(phoneRow));
   rows.append(phoneRow);
 
-  app.append(rows);
+  const feedbackRow = el(`
+    <button type="button" class="profile-row profile-row-feedback" aria-haspopup="dialog">
+      <span class="profile-row-icon">${icon("message", 20)}</span>
+      <span class="profile-row-label">${escapeHtml(tr("feedbackTitle"))}</span>
+      <span class="profile-row-chevron">${icon("chevron", 16)}</span>
+    </button>
+  `);
+  feedbackRow.addEventListener("click", () => openFeedbackSheet(feedbackRow));
+  rows.append(feedbackRow);
 
-  app.append(buildFeedbackField());
+  app.append(rows);
 
   app.append(el(`
     <div class="profile-about">
@@ -2357,18 +2366,38 @@ function renderProfile() {
 // admin over Telegram (see app.py's /api/feedback and
 // telegram_notify.send_feedback_notification) -- never parsed or acted
 // on automatically here, just relayed as-is, same as the order comment.
-function buildFeedbackField() {
-  const block = el(`
-    <div class="profile-feedback">
-      <h4>${escapeHtml(tr("feedbackTitle"))}</h4>
-      <div class="field-block">
-        <textarea rows="3" maxlength="2000" placeholder="${escapeHtml(tr("feedbackPlaceholder"))}"></textarea>
+// Same single-step bottom-sheet shell/behavior as openPhoneSheet() --
+// collapsed to a plain profile row until tapped, rather than a textarea
+// permanently taking up space on the Profile screen.
+function openFeedbackSheet(trigger) {
+  const overlay = el(`<div class="sheet-overlay"></div>`);
+  const sheet = el(`
+    <div class="lang-sheet" role="dialog" aria-modal="true" aria-label="${escapeHtml(tr("feedbackTitle"))}">
+      <div class="sheet-grabber" aria-hidden="true"></div>
+      <div class="lang-sheet-header">
+        <p class="screen-title">${escapeHtml(tr("feedbackTitle"))}</p>
+        <button type="button" class="filter-close" aria-label="${escapeHtml(tr("back"))}">${icon("close", 20)}</button>
       </div>
-      <button type="button" class="primary-button feedback-send" disabled>${escapeHtml(tr("feedbackSend"))}</button>
+      <div class="field-block">
+        <textarea class="feedback-sheet-input" rows="4" maxlength="2000" placeholder="${escapeHtml(tr("feedbackPlaceholder"))}"></textarea>
+      </div>
+      <button type="button" class="primary-button feedback-sheet-send" disabled>${escapeHtml(tr("feedbackSend"))}</button>
     </div>
   `);
-  const textarea = block.querySelector("textarea");
-  const sendBtn = block.querySelector(".feedback-send");
+  const textarea = sheet.querySelector(".feedback-sheet-input");
+  const sendBtn = sheet.querySelector(".feedback-sheet-send");
+
+  function close() {
+    document.removeEventListener("keydown", onKey);
+    overlay.remove();
+  }
+  function onKey(e) {
+    if (e.key === "Escape") {
+      close();
+      trigger?.focus();
+    }
+  }
+
   textarea.addEventListener("input", () => {
     sendBtn.disabled = !textarea.value.trim();
   });
@@ -2379,14 +2408,30 @@ function buildFeedbackField() {
     const contactEmail = state.communicationEmail || state.registeredEmail || undefined;
     try {
       await api("/api/feedback", { method: "POST", body: JSON.stringify({ message, email: contactEmail }) });
-      textarea.value = "";
+      close();
+      trigger?.focus();
       showToast(tr("feedbackSentToast"));
     } catch {
       showToast(tr("feedbackSendFailedToast"));
       sendBtn.disabled = false;
     }
   });
-  return block;
+
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) {
+      close();
+      trigger?.focus();
+    }
+  });
+  sheet.querySelector(".filter-close").addEventListener("click", () => {
+    close();
+    trigger?.focus();
+  });
+  document.addEventListener("keydown", onKey);
+
+  overlay.append(sheet);
+  deviceScreen.append(overlay);
+  textarea.focus();
 }
 
 // Re-validates a past order against TODAY's live menu -- never blindly

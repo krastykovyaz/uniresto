@@ -1172,11 +1172,6 @@ svg { display: block; }
 .profile-about p { margin: 0; font-size: 0.85rem; color: var(--color-text-muted); line-height: 1.5; }
 .profile-about p.profile-about-independent { margin-top: var(--space-2); font-size: 0.78rem; opacity: 0.8; }
 
-.profile-feedback { margin: var(--space-4) var(--space-4) var(--space-3); }
-.profile-feedback h4 { margin: 0 0 var(--space-2); font-size: 0.9rem; }
-.profile-feedback .field-block { padding: 0 0 var(--space-3); }
-.profile-feedback .primary-button { width: 100%; margin: 0; }
-
 /* =========================================================== Device frame */
 
 /* Phones: these wrappers are layout-neutral and the page scrolls natively,
