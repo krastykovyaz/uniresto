@@ -37,7 +37,15 @@ def _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, 
     )
     order_store = OrderStore(tmp_path / "orders.db")
     delivery_subscriber_store = DeliverySubscriberStore(tmp_path / "orders.db")
-    app = create_app(service=service, order_store=order_store, delivery_subscriber_store=delivery_subscriber_store)
+    app = create_app(
+        service=service,
+        order_store=order_store,
+        delivery_subscriber_store=delivery_subscriber_store,
+        # No background cache-warmer thread here -- this app/FakeRestopolisClient
+        # only lives for one test, and the warmer's own behavior is covered
+        # directly in tests/test_cache_warmer.py instead.
+        enable_cache_warmer=False,
+    )
     app.testing = True
     return app.test_client()
 

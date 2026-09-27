@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 from flask import Flask, abort, jsonify, redirect, render_template, request
 
 from orderability_engine.cache import OrderabilityCache
+from orderability_engine.cache_warmer import start_cache_warmer
 from orderability_engine.delivery_subscribers import DeliverySubscriberStore
 from orderability_engine.email_verification import EmailVerificationStore
 from orderability_engine.mailer import (
@@ -95,6 +96,7 @@ def create_app(
     order_store: OrderStore | None = None,
     email_verification_store: EmailVerificationStore | None = None,
     delivery_subscriber_store: DeliverySubscriberStore | None = None,
+    enable_cache_warmer: bool = True,
 ) -> Flask:
     app = Flask(__name__)
 
@@ -134,6 +136,16 @@ def create_app(
         if restaurant is None:
             abort(404, description=f"Unknown restaurant slug {slug!r}")
         return restaurant
+
+    # Keeps the orderability/menu cache warm on its own schedule, off the
+    # request path (see cache_warmer.py's own docstring) -- default ON
+    # for the real app (both the local dev entry point below and
+    # gunicorn's factory call in production), explicitly OFF in tests
+    # (see tests/test_app.py's _make_client()), which construct their own
+    # short-lived app + FakeRestopolisClient per test and have no use for
+    # a background thread outliving the test itself.
+    if enable_cache_warmer:
+        start_cache_warmer(svc(), list(restaurants.values()))
 
     def parse_date_arg(value: str | None):
         if not value:
