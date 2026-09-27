@@ -8,6 +8,7 @@ from orderability_engine.cache import OrderabilityCache
 from orderability_engine.coming_soon_clicks import ComingSoonClickStore
 from orderability_engine.delivery_subscribers import DeliverySubscriberStore
 from orderability_engine.email_verification import EmailVerificationStore
+from orderability_engine.feedback import FeedbackStore
 from orderability_engine.models import TZINFO
 from orderability_engine.orders import OrderStore
 from orderability_engine.service import OrderabilityService
@@ -41,11 +42,13 @@ def _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, 
     order_store = OrderStore(tmp_path / "orders.db")
     delivery_subscriber_store = DeliverySubscriberStore(tmp_path / "orders.db")
     coming_soon_click_store = ComingSoonClickStore(tmp_path / "orders.db")
+    feedback_store = FeedbackStore(tmp_path / "orders.db")
     app = create_app(
         service=service,
         order_store=order_store,
         delivery_subscriber_store=delivery_subscriber_store,
         coming_soon_click_store=coming_soon_click_store,
+        feedback_store=feedback_store,
         # Explicit ":memory:" instances -- isolated per test, never the
         # real email_verification.db/delivery_email_verification.db
         # files create_app() defaults to for the real app.
@@ -939,6 +942,40 @@ def test_admin_coming_soon_clicks_shows_counts(client, monkeypatch):
     assert resp.status_code == 200
     assert b"Food Lab" in resp.data
     assert b"Food Zone" in resp.data
+
+
+def test_feedback_records_a_message(client):
+    resp = client.post("/api/feedback", json={"message": "Please add Belval restaurants soon!"})
+    assert resp.status_code == 200
+    assert resp.get_json()["recorded"] is True
+
+
+def test_feedback_rejects_empty_message(client):
+    resp = client.post("/api/feedback", json={"message": "   "})
+    assert resp.status_code == 400
+
+
+def test_feedback_rejects_an_invalid_contact_email(client):
+    resp = client.post("/api/feedback", json={"message": "Hello", "email": "not-an-email"})
+    assert resp.status_code == 400
+
+
+def test_feedback_accepts_an_optional_contact_email(client):
+    resp = client.post("/api/feedback", json={"message": "Love the app!", "email": "student@uni.lu"})
+    assert resp.status_code == 200
+
+
+def test_admin_feedback_requires_token(client):
+    resp = client.get("/admin/feedback")
+    assert resp.status_code == 404
+
+
+def test_admin_feedback_shows_submitted_messages(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    client.post("/api/feedback", json={"message": "The green box idea is great"})
+    resp = client.get("/admin/feedback?token=correct-token")
+    assert resp.status_code == 200
+    assert b"The green box idea is great" in resp.data
 
 
 def test_admin_orders_lists_reviewing_orders_too(client, monkeypatch):

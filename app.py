@@ -21,6 +21,7 @@ from orderability_engine.cache_warmer import start_cache_warmer
 from orderability_engine.coming_soon_clicks import ComingSoonClickStore
 from orderability_engine.delivery_subscribers import DeliverySubscriberStore
 from orderability_engine.email_verification import EmailVerificationStore
+from orderability_engine.feedback import FeedbackStore
 from orderability_engine.mailer import (
     generate_verification_code,
     send_delivery_notification,
@@ -33,7 +34,7 @@ from orderability_engine.models import STATUS_VALUES
 from orderability_engine.orders import MAX_QUANTITY, OrderStore, OrderValidationError, recalculate_order
 from orderability_engine.service import OrderabilityService
 from orderability_engine.smart_lunch import TIER_ORDER, find_smart_lunch
-from orderability_engine.telegram_notify import send_admin_notification
+from orderability_engine.telegram_notify import send_admin_notification, send_feedback_notification
 from restopolis.client import BASE_URL as RESTOPOLIS_BASE_URL
 from restopolis.config import load_restaurants
 from scraper import slug_for
@@ -156,6 +157,7 @@ def create_app(
     delivery_verification_store: EmailVerificationStore | None = None,
     delivery_subscriber_store: DeliverySubscriberStore | None = None,
     coming_soon_click_store: ComingSoonClickStore | None = None,
+    feedback_store: FeedbackStore | None = None,
     enable_cache_warmer: bool = True,
 ) -> Flask:
     app = Flask(__name__)
@@ -192,6 +194,7 @@ def create_app(
     )
     app.config["DELIVERY_SUBSCRIBER_STORE"] = delivery_subscriber_store or DeliverySubscriberStore("orders.db")
     app.config["COMING_SOON_CLICK_STORE"] = coming_soon_click_store or ComingSoonClickStore("orders.db")
+    app.config["FEEDBACK_STORE"] = feedback_store or FeedbackStore("orders.db")
     app.config["RESTAURANTS_BY_SLUG"] = by_slug
 
     def svc() -> OrderabilityService:
@@ -211,6 +214,9 @@ def create_app(
 
     def coming_soon_clicks() -> ComingSoonClickStore:
         return app.config["COMING_SOON_CLICK_STORE"]
+
+    def feedback() -> FeedbackStore:
+        return app.config["FEEDBACK_STORE"]
 
     def get_restaurant_or_404(slug: str):
         restaurant = by_slug.get(slug)
@@ -613,6 +619,28 @@ def create_app(
         coming_soon_clicks().record(location)
         return jsonify({"recorded": True})
 
+    @app.post("/api/feedback")
+    def api_feedback():
+        """The Profile screen's free-text "Send feedback" field (Part 71)
+        -- always stored (visible at /admin/feedback) and, best-effort,
+        pinged to the admin over Telegram the same way a new order is
+        (never fails the request if that ping fails, same reasoning as
+        send_admin_notification's own call site above)."""
+        body = request.get_json(force=True, silent=True) or {}
+        message = (body.get("message") or "").strip()
+        contact_email = (body.get("email") or "").strip() or None
+        if not message:
+            abort(400, description="'message' must not be empty")
+        if len(message) > 2000:
+            abort(400, description="'message' must be at most 2000 characters")
+        if contact_email is not None and not _is_valid_email_format(contact_email):
+            abort(400, description="'email' is not a valid email address")
+        feedback().record(message, contact_email)
+        admin_token = os.environ.get("ADMIN_TOKEN")
+        admin_url = f"{request.host_url}admin/feedback?token={admin_token}" if admin_token else None
+        send_feedback_notification(message, contact_email, admin_url=admin_url)
+        return jsonify({"recorded": True})
+
     @app.post("/api/smart-lunch")
     def api_smart_lunch():
         """Deterministic Smart Lunch search (Part 51) over the live menu --
@@ -714,6 +742,15 @@ def create_app(
         return render_template(
             "admin_coming_soon_clicks.html", counts=coming_soon_clicks().counts(), token=request.args.get("token")
         )
+
+    @app.get("/admin/feedback")
+    def admin_feedback():
+        """Free-text feedback inbox (Part 71) -- gated the same way as
+        /admin/orders since it's user-submitted content, not a public
+        read-only debug view."""
+        if not _is_admin_authorized():
+            abort(404)
+        return render_template("admin_feedback.html", entries=feedback().list_recent(), token=request.args.get("token"))
 
     @app.get("/admin/orders/<int:order_id>/mark-reviewing")
     def admin_mark_order_reviewing(order_id):

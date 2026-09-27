@@ -128,17 +128,25 @@ def send_admin_notification(
     group dishes by -- claiming this link jumps straight to the exact
     order would be a promise this app can't back with real data, so it
     doesn't."""
-    config = _bot_config()
-    if config is None:
-        return False, "Telegram not configured (TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID unset)"
-
     text = _format_order_message(order, admin_url, restopolis_url)
-    payload = {"chat_id": config["chat_id"], "text": text}
     buttons = []
     if restopolis_url:
         buttons.append([{"text": "Open on Restopolis", "url": restopolis_url}])
     if mark_reviewing_url:
         buttons.append([{"text": "I'm checking this order", "url": mark_reviewing_url}])
+    return _send_message(text, buttons, log_context=f"order #{order.get('id')}")
+
+
+def _send_message(text: str, buttons: list | None, log_context: str) -> tuple[bool, str | None]:
+    """Shared by send_admin_notification and send_feedback_notification
+    below -- the one thing that actually differs between admin
+    notifications is what text/buttons they send, not how the Telegram
+    API call itself works or degrades on failure."""
+    config = _bot_config()
+    if config is None:
+        return False, "Telegram not configured (TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID unset)"
+
+    payload = {"chat_id": config["chat_id"], "text": text}
     if buttons:
         payload["reply_markup"] = {"inline_keyboard": buttons}
     try:
@@ -150,9 +158,22 @@ def send_admin_notification(
         body = resp.json()
         if not body.get("ok"):
             error = body.get("description") or f"HTTP {resp.status_code}"
-            logger.warning("[TELEGRAM] failed to notify admin about order #%s: %s", order.get("id"), error)
+            logger.warning("[TELEGRAM] failed to notify admin about %s: %s", log_context, error)
             return False, error
         return True, None
     except Exception as exc:  # noqa: BLE001 -- any network/API failure must degrade gracefully, not crash the request
-        logger.warning("[TELEGRAM] failed to notify admin about order #%s: %s", order.get("id"), exc)
+        logger.warning("[TELEGRAM] failed to notify admin about %s: %s", log_context, exc)
         return False, str(exc)
+
+
+def send_feedback_notification(message: str, contact_email: str | None, admin_url: str | None = None) -> tuple[bool, str | None]:
+    """Best-effort send, same contract as send_admin_notification above --
+    pings the admin the moment free-text feedback (Part 71) comes in from
+    the Profile screen. `admin_url`, when given, links to /admin/feedback
+    so the admin can see the full inbox, not just this one message."""
+    lines = ["New feedback", "", message]
+    if contact_email:
+        lines += ["", f"Contact: {contact_email}"]
+    if admin_url:
+        lines += ["", f"See all feedback: {admin_url}"]
+    return _send_message("\n".join(lines), buttons=None, log_context="new feedback")

@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from orderability_engine.telegram_notify import is_configured, send_admin_notification
+from orderability_engine.telegram_notify import is_configured, send_admin_notification, send_feedback_notification
 
 
 def _order(**overrides):
@@ -209,3 +209,37 @@ def test_no_reply_markup_when_neither_url_given(monkeypatch):
         send_admin_notification(_order())
 
     assert "reply_markup" not in mock_post.call_args.kwargs["json"]
+
+
+def test_feedback_send_returns_not_sent_when_unconfigured():
+    sent, error = send_feedback_notification("Great app!", None)
+    assert sent is False
+    assert "not configured" in error
+
+
+def test_feedback_message_includes_the_free_text(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "999")
+
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"ok": True}
+    with patch("orderability_engine.telegram_notify.requests.post", return_value=mock_resp) as mock_post:
+        sent, error = send_feedback_notification("Please add Belval restaurants", "student@uni.lu", admin_url="https://x/admin/feedback?token=y")
+
+    assert sent is True
+    text = mock_post.call_args.kwargs["json"]["text"]
+    assert "Please add Belval restaurants" in text
+    assert "student@uni.lu" in text
+    assert "https://x/admin/feedback?token=y" in text
+
+
+def test_feedback_message_omits_contact_line_when_no_email_given(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "999")
+
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"ok": True}
+    with patch("orderability_engine.telegram_notify.requests.post", return_value=mock_resp) as mock_post:
+        send_feedback_notification("Love the app", None)
+
+    assert "Contact:" not in mock_post.call_args.kwargs["json"]["text"]

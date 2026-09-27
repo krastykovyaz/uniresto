@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Admin: feedback{% endblock %}
+{% block content %}
+<h1>Admin &mdash; Feedback (Part 71)</h1>
+<p class="muted">
+    Free text from the Profile screen's "Send feedback" field. Every submission also pings Telegram
+    the moment it comes in -- this page is the full inbox, newest first.
+</p>
+
+{% if not entries %}
+<p class="muted">No feedback yet.</p>
+{% else %}
+{% for entry in entries %}
+<div class="card">
+    <div class="muted">#{{ entry.id }} &middot; {{ entry.created_at }}{% if entry.contact_email %} &middot; {{ entry.contact_email }}{% endif %}</div>
+    <p style="white-space: pre-wrap;">{{ entry.message }}</p>
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}

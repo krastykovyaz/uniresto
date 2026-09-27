@@ -2339,6 +2339,8 @@ function renderProfile() {
 
   app.append(rows);
 
+  app.append(buildFeedbackField());
+
   app.append(el(`
     <div class="profile-about">
       <h4>${escapeHtml(tr("aboutTitle"))}</h4>
@@ -2346,6 +2348,45 @@ function renderProfile() {
       <p class="profile-about-independent">${escapeHtml(tr("aboutIndependent"))}</p>
     </div>
   `));
+}
+
+// Free-text feedback (Part 71) -- the one place in the app for a user to
+// say anything that doesn't fit an order comment (Part 55, which is
+// scoped to a single order and only reaches the admin placing THAT
+// order). Always stored server-side and, best-effort, pinged to the
+// admin over Telegram (see app.py's /api/feedback and
+// telegram_notify.send_feedback_notification) -- never parsed or acted
+// on automatically here, just relayed as-is, same as the order comment.
+function buildFeedbackField() {
+  const block = el(`
+    <div class="profile-feedback">
+      <h4>${escapeHtml(tr("feedbackTitle"))}</h4>
+      <div class="field-block">
+        <textarea rows="3" maxlength="2000" placeholder="${escapeHtml(tr("feedbackPlaceholder"))}"></textarea>
+      </div>
+      <button type="button" class="primary-button feedback-send" disabled>${escapeHtml(tr("feedbackSend"))}</button>
+    </div>
+  `);
+  const textarea = block.querySelector("textarea");
+  const sendBtn = block.querySelector(".feedback-send");
+  textarea.addEventListener("input", () => {
+    sendBtn.disabled = !textarea.value.trim();
+  });
+  sendBtn.addEventListener("click", async () => {
+    const message = textarea.value.trim();
+    if (!message) return;
+    sendBtn.disabled = true;
+    const contactEmail = state.communicationEmail || state.registeredEmail || undefined;
+    try {
+      await api("/api/feedback", { method: "POST", body: JSON.stringify({ message, email: contactEmail }) });
+      textarea.value = "";
+      showToast(tr("feedbackSentToast"));
+    } catch {
+      showToast(tr("feedbackSendFailedToast"));
+      sendBtn.disabled = false;
+    }
+  });
+  return block;
 }
 
 // Re-validates a past order against TODAY's live menu -- never blindly
