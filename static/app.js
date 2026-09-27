@@ -1163,10 +1163,11 @@ function renderRole() {
       iconName: "delivery",
       colorClass: "is-drink",
       go: () => goTo("delivery"),
-      // Short version of the same recruiting line as the full banner on
-      // the Delivery screen itself (deliveryEarnBannerTitle/Body) -- see
-      // that banner's own comment in app.css for why this doesn't
-      // conflict with the app's "no payment taken" disclaimers.
+      // A recruiting pitch, not a feature: the app itself takes no
+      // payment and pays nothing (see the Profile screen's own "About
+      // UniResto" text and every order-confirmation email) -- any tip
+      // is a real-world arrangement made directly between the two
+      // people, in person, which this phrase doesn't claim otherwise.
       earnBadgeKey: "deliveryEarnBadge",
     },
   ];
@@ -1338,12 +1339,6 @@ function deliveryRegisterCard() {
 async function renderDelivery() {
   app.innerHTML = "";
   app.append(header({ title: tr("deliveryOrdersTitle"), back: () => goTo("role") }));
-  app.append(el(`
-    <div class="delivery-earn-banner">
-      <p class="delivery-earn-banner-title">${escapeHtml(tr("deliveryEarnBannerTitle"))}</p>
-      <p class="delivery-earn-banner-body">${escapeHtml(tr("deliveryEarnBannerBody"))}</p>
-    </div>
-  `));
   app.append(deliveryRegisterCard());
   app.append(loadingState(tr("loadingOrders")));
 
