@@ -10,6 +10,7 @@ import {
   SNACK_PRICE,
   VIENNOISERIE_PRICES,
   computeFormulaTotal,
+  priceForItem,
 } from "../static/pricing.js";
 
 const line = (category, quantity = 1, name = "Test item") => ({ category, quantity, name });
@@ -243,4 +244,17 @@ test("new price tables match the official adultes tariff for known items", () =>
   assert.equal(COLD_DRINK_PRICES["Rosport Blue 1,00 l btl"], 3.1);
   assert.equal(REUSABLE_PACKAGING_PRICES["myCan"], 9.0);
   assert.equal(REUSABLE_PACKAGING_PRICES["Remboursement Consigne ECOBOX (1000 ml)"], -5.0);
+});
+
+test("priceForItem shows the Formule 3 main-alone price for any main dish", () => {
+  assert.equal(priceForItem({ category: "Non-végétarien", name: "Rôti de porc Orloff" }), MEAL_TIER_PRICES.main);
+  assert.equal(priceForItem({ category: "Végétarien", name: "Anything" }), MEAL_TIER_PRICES.main);
+  assert.equal(priceForItem({ category: "Végan", name: "Anything" }), MEAL_TIER_PRICES.main);
+});
+
+test("priceForItem still has no standalone price for a starter or dessert", () => {
+  // Formule 2/1 only exist as an upgrade on top of a main -- neither
+  // category is ever priced alone.
+  assert.equal(priceForItem({ category: "Entrée", name: "Anything" }), null);
+  assert.equal(priceForItem({ category: "Dessert", name: "Anything" }), null);
 });

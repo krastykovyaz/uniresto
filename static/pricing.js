@@ -239,14 +239,22 @@ const NAME_PRICED_GROUPS = [
 /**
  * The single, real adultes-tier price for ONE item ({ category, name }),
  * or null when this module doesn't have a fixed per-item price for it --
- * either because its category is bundle-priced (main/starter/dessert:
- * the real price depends on what else is in the order, see
- * computeFormulaTotal()) or because its exact name isn't in its
- * category's price table. Used to show a real number on a food card
- * instead of the generic "Canteen Price" label wherever one genuinely
- * exists and doesn't depend on the rest of the cart.
+ * either because its exact name isn't in its category's price table, or
+ * (starters/desserts) because that category has no price of its own at
+ * all: Formule 2/1 only exist as an UPGRADE on top of a main (see
+ * computeFormulaTotal()), never as a standalone item, so there's no
+ * single number honest to show for one on its own.
+ *
+ * A main dish IS given a number here -- MEAL_TIER_PRICES.main (Formule
+ * 3, "main dish alone") -- since that's the real, fixed, official price
+ * for ordering just this one dish. It's a floor, not a promise the
+ * total stays there: adding a starter and/or dessert to the SAME order
+ * upgrades the whole meal to Formule 2/1 (€7.70/€8.70), which the
+ * cart/review totals (computeFormulaTotal(), never this function) work
+ * out correctly regardless of what a single card showed beforehand.
  */
 export function priceForItem(item) {
+  if (MAIN_CATEGORIES.has(item.category)) return MEAL_TIER_PRICES.main;
   if (SNACK_CATEGORIES.has(item.category)) return SNACK_PRICE;
   for (const [categories, prices] of NAME_PRICED_GROUPS) {
     if (categories.has(item.category) && prices[item.name] !== undefined) {
