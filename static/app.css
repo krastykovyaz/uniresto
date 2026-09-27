@@ -356,7 +356,7 @@ svg { display: block; }
    orders are the ones least likely to need a second look. Its own class
    names (rather than reusing .canteen-group*) keep this screen free to
    change independently of the Delivery screen's canteen grouping. */
-.section-heading { font-size: 1rem; font-weight: 700; margin: var(--space-3) 0 var(--space-2); }
+.section-heading { font-size: 1rem; font-weight: 700; margin: var(--space-3) 0 var(--space-2); padding: 0 var(--space-4); }
 .history-list { display: grid; grid-template-columns: 1fr; gap: var(--space-3); }
 .history-group { margin-top: var(--space-3); }
 .history-group-header {
@@ -364,7 +364,7 @@ svg { display: block; }
   align-items: center;
   gap: var(--space-2);
   width: 100%;
-  padding: var(--space-2) 0;
+  padding: var(--space-2) var(--space-4);
   background: none;
   border: 0;
   border-top: 1px solid var(--color-border);

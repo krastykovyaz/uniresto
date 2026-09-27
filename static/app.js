@@ -1967,6 +1967,41 @@ function historyRow(order) {
   return row;
 }
 
+// The picks made on a restaurant's menu but not yet submitted via
+// "Confirm order" -- still just state.selection, no backend order id at
+// all. Shown at the top of the Basket screen so tapping a dish's + is
+// visible somewhere immediately, not only once actually confirmed (the
+// name "Basket" implies exactly that). Reuses .history-row's own markup
+// since it's the same shape (restaurant/date/items/a totals line/a
+// button), just sourced from live client state instead of a fetched
+// order. Returns null when there's nothing to show -- a stale
+// selection (every item since removed from the live menu) counts as
+// nothing, same as an empty one.
+function draftOrderCard() {
+  if (state.selection.length === 0 || !state.menu) return null;
+  const byId = menuById();
+  const itemsSummary = state.selection
+    .map((s) => {
+      const item = byId.get(s.menuItemId);
+      return item ? `${dishNameLabel(item.name, state.lang)}${s.quantity > 1 ? ` ×${s.quantity}` : ""}` : null;
+    })
+    .filter(Boolean)
+    .join(", ");
+  if (!itemsSummary) return null;
+
+  const totals = computeOrderTotals(state.selection, byId);
+  const card = el(`
+    <article class="history-row">
+      <p class="restaurant">${escapeHtml(shortName(state.restaurantName))} · ${escapeHtml(fmtLong(state.targetDate))}</p>
+      <p class="items-summary">${escapeHtml(itemsSummary)}</p>
+      <p class="meta">${escapeHtml(tr("itemCount", { n: totals.itemCount }))} · ${escapeHtml(localizedPriceSummary(totals))}</p>
+      <button type="button" class="history-reorder-btn">${escapeHtml(tr("viewOrder"))}</button>
+    </article>
+  `);
+  card.querySelector("button").addEventListener("click", () => goTo("review"));
+  return card;
+}
+
 function renderOrderHistory() {
   app.innerHTML = "";
   app.append(header({ title: tr("orderHistory"), back: () => goTo("restaurants") }));
@@ -1976,9 +2011,18 @@ function renderOrderHistory() {
     return;
   }
 
-  if (state.orderHistoryOrders.length === 0) {
+  const draft = draftOrderCard();
+
+  if (!draft && state.orderHistoryOrders.length === 0) {
     app.append(emptyState("clock", tr("orderHistoryEmptyTitle"), tr("orderHistoryEmptyBody")));
     return;
+  }
+
+  if (draft) {
+    app.append(el(`<h3 class="section-heading">${escapeHtml(tr("draftOrderHeading"))}</h3>`));
+    const list = el(`<div class="history-list"></div>`);
+    list.append(draft);
+    app.append(list);
   }
 
   const current = state.orderHistoryOrders.filter((o) => !TERMINAL_ORDER_STATUSES.has(o.status));
@@ -3411,6 +3455,12 @@ async function confirmOrder() {
       }),
     });
     state.confirmedOrder = order;
+    // These items are a real submitted order now (in state.confirmedOrder/
+    // order history), not still a draft -- clearing the selection here
+    // (not just the persisted cart above) keeps draftOrderCard() from
+    // showing this same order a second time as "not yet ordered".
+    state.selection = [];
+    state.serverQuote = null;
     clearSavedCart();
     addToOrderHistory(order.id);
     goTo("confirmation");
