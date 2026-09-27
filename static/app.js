@@ -2085,7 +2085,7 @@ function renderProfile() {
   const historyRow = el(`
     <button type="button" class="profile-row">
       <span class="profile-row-icon">${icon("receipt", 20)}</span>
-      <span class="profile-row-label">${escapeHtml(tr("orderHistory"))}</span>
+      <span class="profile-row-label">${escapeHtml(tr("orderHistorySectionLabel"))}</span>
       <span class="profile-row-count">${loadOrderHistoryIds().length}</span>
       <span class="profile-row-chevron">${icon("chevron", 16)}</span>
     </button>
