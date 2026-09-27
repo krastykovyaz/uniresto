@@ -973,6 +973,28 @@ def test_track_home_records_a_page_view(client):
     assert page_views.count_between("home", now - datetime.timedelta(minutes=1), now + datetime.timedelta(minutes=1)) == 1
 
 
+def test_track_home_records_the_given_source(client):
+    client.post("/api/track/home", json={"source": "flyer-a"})
+    page_views = client.application.config["PAGE_VIEW_STORE"]
+    assert page_views.source_counts("home") == [("flyer-a", 1)]
+
+
+def test_track_home_with_no_source_groups_as_direct(client):
+    client.post("/api/track/home")
+    page_views = client.application.config["PAGE_VIEW_STORE"]
+    assert page_views.source_counts("home") == [("(direct)", 1)]
+
+
+def test_track_home_source_is_trimmed_and_capped(client):
+    client.post("/api/track/home", json={"source": "  flyer-a  "})
+    client.post("/api/track/home", json={"source": "x" * 500})
+    page_views = client.application.config["PAGE_VIEW_STORE"]
+    counts = dict(page_views.source_counts("home"))
+    assert counts["flyer-a"] == 1
+    assert "x" * 500 not in counts
+    assert any(len(src) <= 60 for src in counts if src.startswith("x"))
+
+
 def _count_now(client, event):
     page_views = client.application.config["PAGE_VIEW_STORE"]
     now = datetime.datetime.now(TZINFO)
@@ -1195,6 +1217,24 @@ def test_admin_coming_soon_clicks_shows_counts(client, monkeypatch):
     assert resp.status_code == 200
     assert b"Food Lab" in resp.data
     assert b"Food Zone" in resp.data
+
+
+def test_admin_sources_requires_token(client):
+    resp = client.get("/admin/sources")
+    assert resp.status_code == 404
+
+
+def test_admin_sources_shows_counts_by_source(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    client.post("/api/track/home", json={"source": "flyer-a"})
+    client.post("/api/track/home", json={"source": "flyer-a"})
+    client.post("/api/track/home", json={"source": "flyer-b"})
+    client.post("/api/track/home")
+    resp = client.get("/admin/sources?token=correct-token")
+    assert resp.status_code == 200
+    assert b"flyer-a" in resp.data
+    assert b"flyer-b" in resp.data
+    assert b"(direct)" in resp.data
 
 
 def test_feedback_records_a_message(client):

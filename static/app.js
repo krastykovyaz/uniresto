@@ -4238,12 +4238,17 @@ async function init() {
   syncLangInUrl(state.lang);
   applyLanguage();
   playIntro();
-  // Part 74: a real "the app actually opened" signal for the admin's
+  // Part 74/78: a real "the app actually opened" signal for the admin's
   // evening report -- fired exactly once per load, only from here (never
   // at GET / itself, which a link-preview crawler also fetches without
   // ever running this code). Best-effort, same as the coming-soon click
   // tracker: never blocks or affects anything else this app is doing.
-  api("/api/track/home", { method: "POST" }).catch(() => {});
+  // `source` is whatever ?src= this exact load was opened with (e.g. a
+  // printed flyer's own QR code, see /admin/sources) -- read ONCE here,
+  // never persisted, so it only ever attributes the visit it actually
+  // arrived on, not anything the person does afterwards.
+  const urlSource = new URLSearchParams(window.location.search).get("src") || undefined;
+  api("/api/track/home", { method: "POST", body: JSON.stringify({ source: urlSource }) }).catch(() => {});
   setInterval(tickStatusClock, 30000);
   app.append(loadingState(tr("loadingRestaurants")));
   try {

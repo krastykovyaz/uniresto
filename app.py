@@ -35,7 +35,7 @@ from orderability_engine.menu_service import flatten_menu_items, get_customer_me
 from orderability_engine.delivery_rules import is_delivery_expired
 from orderability_engine.models import STATUS_VALUES, TZINFO
 from orderability_engine.orders import MAX_QUANTITY, OrderStore, OrderValidationError, recalculate_order
-from orderability_engine.page_views import PageViewStore
+from orderability_engine.page_views import MAX_SOURCE_LENGTH, PageViewStore
 from orderability_engine.rate_limits import RateLimitStore
 from orderability_engine.service import OrderabilityService
 from orderability_engine.smart_lunch import TIER_ORDER, find_smart_lunch
@@ -799,12 +799,19 @@ def create_app(
     def api_track(event):
         """Fired by static/app.js -- "home" once from init(), "menu" from
         selectDate() once a day's menu has actually loaded for someone
-        who picked it. Best-effort on the client: never blocks anything."""
+        who picked it. Best-effort on the client: never blocks anything.
+
+        `source` (Part 78, "home" only in practice -- see init()) is
+        whatever ?src= the URL was opened with, e.g. a QR code's own
+        label -- an open string, truncated rather than validated against
+        a fixed list, since a new QR/flyer needs no code change here."""
         if event not in CLIENT_TRACKED_EVENTS:
             abort(404)
         if (limited := rate_limited_response("track", event)) is not None:
             return limited
-        page_views().record(event)
+        body = request.get_json(force=True, silent=True) or {}
+        source = (body.get("source") or "").strip()[:MAX_SOURCE_LENGTH] or None
+        page_views().record(event, source=source)
         return jsonify({"recorded": True})
 
     @app.post("/api/feedback")
@@ -931,6 +938,17 @@ def create_app(
             abort(404)
         return render_template(
             "admin_coming_soon_clicks.html", counts=coming_soon_clicks().counts(), token=request.args.get("token")
+        )
+
+    @app.get("/admin/sources")
+    def admin_sources():
+        """Part 78: how many app opens each ?src= label (e.g. a printed
+        flyer's own QR code) brought in, all-time -- gated the same way
+        as /admin/coming-soon-clicks above."""
+        if not _is_admin_authorized():
+            abort(404)
+        return render_template(
+            "admin_sources.html", counts=page_views().source_counts("home"), token=request.args.get("token")
         )
 
     @app.get("/admin/feedback")

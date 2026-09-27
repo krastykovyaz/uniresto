@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Admin: sources{% endblock %}
+{% block content %}
+<h1>Admin &mdash; App opens by source (Part 78)</h1>
+<p class="muted">
+    How many app opens each <code>?src=</code> label brought in, all-time -- e.g. one row per printed
+    flyer's own QR code, plus "(direct)" for opens with no ?src= at all. A raw open count, not unique
+    visitors (no account/session to dedupe by).
+</p>
+
+{% if not counts %}
+<p class="muted">No opens recorded yet.</p>
+{% else %}
+<table>
+    <tr><th>Source</th><th>Opens</th></tr>
+    {% for source, count in counts %}
+    <tr><td>{{ source }}</td><td>{{ count }}</td></tr>
+    {% endfor %}
+</table>
+{% endif %}
+{% endblock %}

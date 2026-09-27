@@ -18,6 +18,16 @@ traffic there would silently inflate itself every time a link gets
 shared -- exactly the class of bug that make analytics numbers
 untrustworthy, which this app's whole ethos (see README) tries hard to
 avoid.
+
+`source` (Part 78) is the optional `?src=` a "home" open arrived with --
+e.g. two different QR codes on two different printed flyers, each
+encoding its own resto.unilu.space/?src=<label>, so scans of one can be
+told apart from the other (see /admin/sources). It's whatever label the
+flyer/QR was made with, an open string, not a fixed registry -- a new
+campaign needs no code change, just a QR encoding a new ?src= value.
+Recorded once, from the client, at the SAME init() beacon as "home"
+itself: never re-derived or re-attributed to a later action in the same
+visit.
 """
 
 from __future__ import annotations
@@ -31,11 +41,26 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS page_views (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     event TEXT NOT NULL,
+    source TEXT,
     created_at TEXT NOT NULL
 );
 """
 
+# source added after the original schema shipped -- see orders.py's own
+# _MIGRATIONS for the ALTER TABLE pattern this mirrors, including the
+# "another gunicorn worker already added it" race handled in _migrate()
+# below.
+_MIGRATIONS = [
+    ("source", "ALTER TABLE page_views ADD COLUMN source TEXT"),
+]
+
 EVENTS = ("home", "menu", "delivery")
+
+# A QR code is a physical object -- no way to ever edit what it encodes
+# once printed, so this stays short and forgiving rather than a strict
+# format. Long enough for a real label ("flyer-kirchberg-noticeboard"),
+# capped so a malformed/malicious value can't bloat the table.
+MAX_SOURCE_LENGTH = 60
 
 
 class PageViewStore:
@@ -45,7 +70,21 @@ class PageViewStore:
         self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
         self._lock = threading.RLock()
         self._conn.executescript(SCHEMA)
+        self._migrate()
         self._conn.commit()
+
+    def _existing_columns(self) -> set[str]:
+        return {row[1] for row in self._conn.execute("PRAGMA table_info(page_views)").fetchall()}
+
+    def _migrate(self) -> None:
+        existing = self._existing_columns()
+        for column_name, statement in _MIGRATIONS:
+            if column_name not in existing:
+                try:
+                    self._conn.execute(statement)
+                except sqlite3.OperationalError as exc:
+                    if "duplicate column name" not in str(exc):
+                        raise
 
     def close(self) -> None:
         self._conn.close()
@@ -56,12 +95,14 @@ class PageViewStore:
     def __exit__(self, *exc_info) -> None:
         self.close()
 
-    def record(self, event: str) -> None:
+    def record(self, event: str, source: str | None = None) -> None:
         if event not in EVENTS:
             raise ValueError(f"Unknown page-view event {event!r}, expected one of {EVENTS}")
         now = datetime.now(timezone.utc).isoformat()
         with self._lock:
-            self._conn.execute("INSERT INTO page_views (event, created_at) VALUES (?, ?)", (event, now))
+            self._conn.execute(
+                "INSERT INTO page_views (event, source, created_at) VALUES (?, ?, ?)", (event, source, now)
+            )
             self._conn.commit()
 
     def count_between(self, event: str, start: datetime, end: datetime) -> int:
@@ -80,3 +121,18 @@ class PageViewStore:
                 (event, start.astimezone(timezone.utc).isoformat(), end.astimezone(timezone.utc).isoformat()),
             ).fetchone()
         return row[0]
+
+    def source_counts(self, event: str = "home") -> list[tuple[str, int]]:
+        """[(source, count), ...], busiest first, all-time -- one row per
+        DISTINCT source actually seen (never a fixed list: a new QR's
+        label shows up here the first time it's scanned, nothing to
+        register in advance). A "home" open with no ?src= at all (opened
+        the site directly, not through a tracked QR) groups under the
+        literal string "(direct)"."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT COALESCE(source, '(direct)') AS src, COUNT(*) AS n FROM page_views "
+                "WHERE event = ? GROUP BY src ORDER BY n DESC, src",
+                (event,),
+            ).fetchall()
+        return [(r[0], r[1]) for r in rows]

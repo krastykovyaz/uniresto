@@ -43,3 +43,52 @@ def test_count_between_survives_a_reopened_store(tmp_path):
     reopened = PageViewStore(db_path)
     now = datetime.now(timezone.utc)
     assert reopened.count_between("delivery", now - timedelta(minutes=1), now + timedelta(minutes=1)) == 1
+
+
+# --- Part 78: source_counts() -------------------------------------------
+
+
+def test_source_counts_empty_when_nothing_recorded(tmp_path):
+    store = PageViewStore(tmp_path / "views.db")
+    assert store.source_counts("home") == []
+
+
+def test_source_counts_groups_by_source_busiest_first(tmp_path):
+    store = PageViewStore(tmp_path / "views.db")
+    for _ in range(3):
+        store.record("home", source="flyer-a")
+    for _ in range(2):
+        store.record("home", source="flyer-b")
+    assert store.source_counts("home") == [("flyer-a", 3), ("flyer-b", 2)]
+
+
+def test_source_counts_groups_no_source_under_direct(tmp_path):
+    store = PageViewStore(tmp_path / "views.db")
+    store.record("home")
+    store.record("home", source=None)
+    store.record("home", source="flyer-a")
+    assert store.source_counts("home") == [("(direct)", 2), ("flyer-a", 1)]
+
+
+def test_source_counts_only_counts_the_given_event(tmp_path):
+    store = PageViewStore(tmp_path / "views.db")
+    store.record("home", source="flyer-a")
+    store.record("menu", source="flyer-a")  # menu never actually gets a source in practice
+    assert store.source_counts("home") == [("flyer-a", 1)]
+
+
+def test_source_counts_survives_a_reopened_store(tmp_path):
+    db_path = tmp_path / "views.db"
+    PageViewStore(db_path).record("home", source="flyer-a")
+    reopened = PageViewStore(db_path)
+    assert reopened.source_counts("home") == [("flyer-a", 1)]
+
+
+def test_migrate_survives_another_worker_adding_the_column_first(tmp_path):
+    from unittest.mock import patch
+
+    db = tmp_path / "views.db"
+    PageViewStore(db)  # "the other worker" -- adds the source column
+    with patch.object(PageViewStore, "_existing_columns", return_value=set()):
+        store = PageViewStore(db)  # must not raise
+    assert "source" in store._existing_columns()
