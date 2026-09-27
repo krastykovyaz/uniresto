@@ -257,6 +257,30 @@ def send_order_confirmation(to_email: str, order: dict) -> tuple[bool, str | Non
     return _send(to_email, subject, text_body, html_body)
 
 
+def send_order_out_for_delivery(to_email: str, order: dict) -> tuple[bool, str | None]:
+    """Sent the moment a courier taps "Take this delivery" (Part 75) --
+    the ONE thing worth telling the customer they didn't already know
+    from their original order-confirmation email: someone is now
+    actually bringing it. Deliberately short (no item list/prices --
+    already in that first email); the green-box reminder repeats here on
+    purpose, since "have it ready" matters most right before the courier
+    actually arrives, not back when the order was first placed."""
+    config = _mail_config()
+    if config is None:
+        return False, "Email not configured (RESEND_API_KEY unset)"
+    subject = f"Your order is on its way -- {order['restaurant_name']}"
+    text_body = (
+        f"Good news -- a courier has picked up your order #{order['id']} from {order['restaurant_name']} "
+        "and is bringing it to you now.\n\n" + GREEN_BOX_CONSUMER_NOTE
+    )
+    body_html = f"""\
+        <p style="margin:0 0 4px;font-size:17px;font-weight:700;">Your order is on its way</p>
+        <p style="margin:0 0 20px;color:#6b7280;">A courier has picked up order #{order['id']} from {order['restaurant_name']} and is bringing it to you now.</p>
+        <p style="margin:0;color:{_BRAND_GREEN};">{GREEN_BOX_CONSUMER_NOTE}</p>"""
+    html_body = _html_shell(f"Order #{order['id']} is on its way.", body_html, config)
+    return _send(to_email, subject, text_body, html_body)
+
+
 def generate_verification_code() -> str:
     """A 6-digit numeric code, zero-padded -- generated with `secrets`
     (cryptographically random), not `random`, since this gates writing a

@@ -3,7 +3,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from orderability_engine.telegram_notify import is_configured, send_admin_notification, send_daily_report, send_feedback_notification
+from orderability_engine.telegram_notify import (
+    is_configured,
+    send_admin_notification,
+    send_daily_report,
+    send_feedback_notification,
+    send_order_claimed_notification,
+)
 
 
 def _order(**overrides):
@@ -269,3 +275,26 @@ def test_daily_report_returns_not_sent_when_unconfigured():
     sent, error = send_daily_report({"home": 0, "menu": 0, "orders": 0, "delivery": 0}, datetime.date(2026, 9, 28))
     assert sent is False
     assert "not configured" in error
+
+
+def test_order_claimed_returns_not_sent_when_unconfigured():
+    sent, error = send_order_claimed_notification(_order())
+    assert sent is False
+    assert "not configured" in error
+
+
+def test_order_claimed_includes_the_order_and_location(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "999")
+
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"ok": True}
+    order = _order(delivery_location="Maison du Savoir 4.150")
+    with patch("orderability_engine.telegram_notify.requests.post", return_value=mock_resp) as mock_post:
+        sent, error = send_order_claimed_notification(order, admin_url="https://x/admin/orders?token=y")
+
+    assert sent is True
+    text = mock_post.call_args.kwargs["json"]["text"]
+    assert f"Order #{order['id']}" in text
+    assert "Maison du Savoir 4.150" in text
+    assert "https://x/admin/orders?token=y" in text

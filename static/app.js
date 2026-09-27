@@ -1663,12 +1663,36 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
           <p class="kind">${escapeHtml(itemsSummary)}</p>
           <p class="kind">${escapeHtml(fmtLong(order.order_date))} · ${escapeHtml(orderStatusLabel(order.status))}</p>
           ${hasEarlyOrderItem ? `<p class="kind delivery-early-order-note">${escapeHtml(tr("deliveryEarlyOrderNote"))}</p>` : ""}
+          ${(sectionKey === "pending" || sectionKey === "expired") && order.claimed_at ? `<p class="kind delivery-claimed-note">${escapeHtml(tr("deliveryClaimedAt", { time: fmtDateTime(order.claimed_at) }))}</p>` : ""}
           ${sectionKey === "delivered" ? `<p class="kind delivery-delivered-note">${escapeHtml(tr("deliveryDeliveredAt", { time: fmtDateTime(order.delivered_at) }))}</p>` : ""}
         </div>
       </div>
     </div>
   `);
   if (sectionKey === "pending" || sectionKey === "expired") {
+    const actions = el(`<div class="delivery-order-actions"></div>`);
+    // "Take this delivery" (Part 75) -- a courier signaling they're the
+    // one bringing it, which pings the admin (Telegram) and, if given,
+    // the customer (email) the FIRST time ANY courier taps it (see
+    // OrderStore.mark_claimed()'s own docstring). Hidden once claimed --
+    // nothing left to re-trigger, the claimed-note above already shows
+    // it was taken.
+    if (!order.claimed_at) {
+      const claimBtn = el(`<button type="button" class="secondary-button delivery-claim-btn">${escapeHtml(tr("deliveryClaimJob"))}</button>`);
+      claimBtn.addEventListener("click", async () => {
+        claimBtn.disabled = true;
+        try {
+          const result = await api(`/api/orders/${order.id}/claim`, { method: "POST" });
+          order.claimed_at = new Date().toISOString();
+          showToast(tr(result.already_claimed ? "deliveryAlreadyClaimedToast" : "deliveryClaimedToast"));
+          onChanged();
+        } catch {
+          showToast(tr("deliveryActionFailed"));
+          claimBtn.disabled = false;
+        }
+      });
+      actions.append(claimBtn);
+    }
     const btn = el(`<button type="button" class="secondary-button delivery-mark-delivered">${escapeHtml(tr("deliveryMarkDelivered"))}</button>`);
     btn.addEventListener("click", async () => {
       btn.disabled = true;
@@ -1682,7 +1706,8 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
         btn.disabled = false;
       }
     });
-    card.append(btn);
+    actions.append(btn);
+    card.append(actions);
   } else if (sectionKey === "delivered") {
     const btn = el(`<button type="button" class="secondary-button delivery-mark-delivered">${escapeHtml(tr("deliveryMarkNotDelivered"))}</button>`);
     btn.addEventListener("click", async () => {

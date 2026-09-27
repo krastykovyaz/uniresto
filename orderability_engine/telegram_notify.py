@@ -179,6 +179,21 @@ def send_feedback_notification(message: str, contact_email: str | None, admin_ur
     return _send_message("\n".join(lines), buttons=None, log_context="new feedback")
 
 
+def send_order_claimed_notification(order: dict, admin_url: str | None = None) -> tuple[bool, str | None]:
+    """Best-effort send, same contract as send_admin_notification above --
+    pings the admin the moment a courier taps "Take this delivery" (Part
+    75) on the Delivery screen. No courier IDENTITY to report (this app
+    has no accounts -- see delivery_subscribers.py's own docstring), just
+    that order #X now has someone on it."""
+    lines = [
+        f"Order #{order['id']} claimed for delivery -- {order['restaurant_name']}",
+        f"Delivery location: {order.get('delivery_location') or 'Not given'}",
+    ]
+    if admin_url:
+        lines += ["", f"See it: {admin_url}"]
+    return _send_message("\n".join(lines), buttons=None, log_context=f"order #{order.get('id')} claimed")
+
+
 def send_daily_report(counts: dict, report_date) -> tuple[bool, str | None]:
     """Best-effort send, same contract as every other function here --
     the evening admin report (Part 74; see daily_report.py). `counts` is

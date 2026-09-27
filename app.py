@@ -28,6 +28,7 @@ from orderability_engine.mailer import (
     send_delivery_notification,
     send_order_confirmation,
     send_order_needs_confirmation,
+    send_order_out_for_delivery,
     send_verification_code,
 )
 from orderability_engine.menu_service import flatten_menu_items, get_customer_menu
@@ -36,7 +37,7 @@ from orderability_engine.orders import MAX_QUANTITY, OrderStore, OrderValidation
 from orderability_engine.page_views import PageViewStore
 from orderability_engine.service import OrderabilityService
 from orderability_engine.smart_lunch import TIER_ORDER, find_smart_lunch
-from orderability_engine.telegram_notify import send_admin_notification, send_feedback_notification
+from orderability_engine.telegram_notify import send_admin_notification, send_feedback_notification, send_order_claimed_notification
 from restopolis.client import BASE_URL as RESTOPOLIS_BASE_URL
 from restopolis.config import load_restaurants
 from scraper import slug_for
@@ -649,6 +650,29 @@ def create_app(
         for order in orders:
             order.pop("customer_email", None)
         return jsonify(orders)
+
+    @app.post("/api/orders/<int:order_id>/claim")
+    def api_claim_order(order_id):
+        """Courier-facing (Part 75), same no-account/no-gate reasoning as
+        /api/delivery/orders -- anyone looking at the Delivery screen can
+        claim an order, same trust level as everyone already seeing every
+        order on it. Only the courier who actually WINS the claim (see
+        OrderStore.mark_claimed()'s own docstring on why a second tap
+        never re-fires this) triggers the admin Telegram ping and, if the
+        customer left an email, the "on its way" email -- both
+        best-effort, same reasoning as every other notification in this
+        app: a flaky send must never fail the claim itself."""
+        order = store().get_order(order_id)
+        if order is None:
+            abort(404, description=f"No order #{order_id}")
+        newly_claimed = store().mark_claimed(order_id)
+        if newly_claimed:
+            admin_token = os.environ.get("ADMIN_TOKEN")
+            admin_url = f"{request.host_url}admin/orders?token={admin_token}" if admin_token else None
+            send_order_claimed_notification(order, admin_url=admin_url)
+            if order.get("customer_email"):
+                send_order_out_for_delivery(order["customer_email"], order)
+        return jsonify({"claimed": True, "already_claimed": not newly_claimed})
 
     @app.post("/api/orders/<int:order_id>/mark-delivered")
     def api_mark_order_delivered(order_id):

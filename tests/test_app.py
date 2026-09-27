@@ -767,6 +767,55 @@ def test_delivery_orders_includes_cancelled_as_closed(client):
     assert order["status"] == "cancelled"
 
 
+def test_claim_order_notifies_admin(client):
+    order_id = _create_basic_order(client)
+    with patch("app.send_order_claimed_notification", return_value=(True, None)) as mock_notify:
+        resp = client.post(f"/api/orders/{order_id}/claim")
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["claimed"] is True
+    assert body["already_claimed"] is False
+    mock_notify.assert_called_once()
+    order_arg = mock_notify.call_args[0][0]
+    assert order_arg["id"] == order_id
+    listed = next(o for o in client.get("/api/delivery/orders").get_json() if o["id"] == order_id)
+    assert listed["claimed_at"] is not None
+
+
+def test_claim_order_emails_the_customer_when_an_email_was_given(client):
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    with patch("app.send_order_claimed_notification", return_value=(True, None)), patch(
+        "app.send_order_out_for_delivery", return_value=(True, None)
+    ) as mock_email:
+        client.post(f"/api/orders/{order_id}/claim")
+    mock_email.assert_called_once()
+    assert mock_email.call_args[0][0] == "student@uni.lu"
+
+
+def test_claim_order_does_not_email_when_no_customer_email_was_given(client):
+    order_id = _create_basic_order(client)
+    with patch("app.send_order_claimed_notification", return_value=(True, None)), patch(
+        "app.send_order_out_for_delivery", return_value=(True, None)
+    ) as mock_email:
+        client.post(f"/api/orders/{order_id}/claim")
+    mock_email.assert_not_called()
+
+
+def test_claim_order_second_tap_does_not_renotify(client):
+    order_id = _create_basic_order(client)
+    with patch("app.send_order_claimed_notification", return_value=(True, None)) as mock_notify:
+        client.post(f"/api/orders/{order_id}/claim")
+        resp = client.post(f"/api/orders/{order_id}/claim")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"claimed": True, "already_claimed": True}
+    mock_notify.assert_called_once()
+
+
+def test_claim_order_unknown_order_404s(client):
+    resp = client.post("/api/orders/999999/claim")
+    assert resp.status_code == 404
+
+
 def test_mark_order_delivered(client):
     order_id = _create_basic_order(client)
     resp = client.post(f"/api/orders/{order_id}/mark-delivered")

@@ -74,6 +74,10 @@ CREATE TABLE IF NOT EXISTS orders (
                                         -- (which tracks the admin's real-price workflow, an
                                         -- orthogonal concern: an order can be confirmed AND not
                                         -- yet delivered, or delivered before it's confirmed)
+    claimed_at TEXT,                   -- NULL until a courier taps "Take this delivery" (Part 75)
+                                        -- -- pings the admin (Telegram) and the customer (email)
+                                        -- the FIRST time this is set; no courier IDENTITY recorded,
+                                        -- this app has no accounts to attribute it to
     created_at TEXT NOT NULL
 );
 
@@ -103,6 +107,7 @@ _MIGRATIONS = [
     ("customer_note", "ALTER TABLE orders ADD COLUMN customer_note TEXT"),
     ("customer_lang", "ALTER TABLE orders ADD COLUMN customer_lang TEXT"),
     ("delivered_at", "ALTER TABLE orders ADD COLUMN delivered_at TEXT"),
+    ("claimed_at", "ALTER TABLE orders ADD COLUMN claimed_at TEXT"),
 ]
 
 
@@ -288,7 +293,7 @@ class OrderStore:
         with self._lock:
             row = self._conn.execute(
                 "SELECT id, restaurant_code, restaurant_name, order_date, delivery_location, customer_email, "
-                "status, real_price, created_at, customer_note, customer_lang, delivered_at FROM orders WHERE id = ?",
+                "status, real_price, created_at, customer_note, customer_lang, delivered_at, claimed_at FROM orders WHERE id = ?",
                 (order_id,),
             ).fetchone()
             if row is None:
@@ -338,6 +343,7 @@ class OrderStore:
             "customer_note": row[9],
             "customer_lang": row[10],
             "delivered_at": row[11],
+            "claimed_at": row[12],
             "items": line_items,
             "totals": aggregate_totals(line_items),
         }
@@ -380,6 +386,22 @@ class OrderStore:
                 (start.astimezone(timezone.utc).isoformat(), end.astimezone(timezone.utc).isoformat()),
             ).fetchone()
         return row[0]
+
+    def mark_claimed(self, order_id: int) -> bool:
+        """Part 75: True only the FIRST time this succeeds for a given
+        order (the WHERE clause below only matches while claimed_at is
+        still NULL) -- app.py uses that to decide whether to actually
+        notify the admin/customer, so two couriers tapping "Take this
+        delivery" at nearly the same moment only trigger one notification
+        pair, not two. False for an order that's already claimed (not an
+        error -- the second courier just sees it was already taken) or
+        that doesn't exist."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock, self._transaction() as conn:
+            cur = conn.execute(
+                "UPDATE orders SET claimed_at = ? WHERE id = ? AND claimed_at IS NULL", (now, order_id)
+            )
+            return cur.rowcount > 0
 
     def mark_delivered(self, order_id: int) -> bool:
         """Part 73: a courier-reported fact ("I physically handed this

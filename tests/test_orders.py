@@ -287,6 +287,35 @@ def test_mark_reviewing_after_a_price_was_already_recorded_does_not_move_it_back
     assert store.get_order(order_id)["status"] == "awaiting_confirmation"
 
 
+def test_mark_claimed_sets_a_timestamp(store):
+    order_id = _basic_order_id(store)
+    assert store.get_order(order_id)["claimed_at"] is None
+    assert store.mark_claimed(order_id) is True
+    assert store.get_order(order_id)["claimed_at"] is not None
+
+
+def test_mark_claimed_on_unknown_order_returns_false(store):
+    assert store.mark_claimed(999999) is False
+
+
+def test_mark_claimed_twice_only_succeeds_the_first_time(store):
+    # Two couriers tapping "Take this delivery" near-simultaneously --
+    # only the first actually claims it (app.py uses this to send exactly
+    # one notification pair, not two).
+    order_id = _basic_order_id(store)
+    assert store.mark_claimed(order_id) is True
+    assert store.mark_claimed(order_id) is False
+
+
+def test_mark_claimed_is_independent_of_status_and_delivered(store):
+    order_id = _basic_order_id(store)
+    store.mark_claimed(order_id)
+    order = store.get_order(order_id)
+    assert order["status"] == "pending"
+    assert order["delivered_at"] is None
+    assert order["claimed_at"] is not None
+
+
 def test_mark_delivered_sets_a_timestamp(store):
     order_id = _basic_order_id(store)
     assert store.get_order(order_id)["delivered_at"] is None

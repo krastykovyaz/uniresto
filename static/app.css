@@ -429,16 +429,19 @@ svg { display: block; }
 .delivery-section.is-collapsed .delivery-section-body { display: none; }
 
 .delivery-order-card { flex-wrap: wrap; }
-.delivery-order-card .delivery-mark-delivered {
+.delivery-order-actions { display: flex; flex-direction: column; gap: var(--space-2); flex: 0 0 auto; }
+.delivery-order-actions .delivery-mark-delivered,
+.delivery-order-actions .delivery-claim-btn {
   display: block;
   width: auto;
   margin: 0;
   padding: 8px 14px;
   font-size: 0.85rem;
   min-height: 0;
-  flex: 0 0 auto;
   white-space: nowrap;
 }
+.delivery-order-actions .delivery-claim-btn { background: var(--color-primary); color: var(--color-primary-contrast); border-color: var(--color-primary); }
+.delivery-claimed-note { color: var(--color-primary-dark); font-weight: 600; }
 .delivery-delivered-note { color: var(--color-primary-dark); font-weight: 600; }
 
 /* Basket screen: a "Current orders" heading + list (always expanded --
