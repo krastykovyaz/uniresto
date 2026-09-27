@@ -38,6 +38,7 @@ from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
 
+from orderability_engine.menu_service import requires_early_order
 from orderability_engine.pricing import compute_formula_total
 
 MAX_QUANTITY = 10
@@ -301,6 +302,11 @@ class OrderStore:
                     "quantity": quantity,
                     "line_price": _line_total(price, quantity),
                     "line_weight": _line_weight(weight_value, quantity),
+                    # Re-derived from the item's own (category, name), same
+                    # rule the food card badge uses (Part 59) -- never
+                    # stored, so it can't go stale against a menu_service
+                    # rule change the way a persisted flag could.
+                    "requires_early_order": requires_early_order(it[0], it[1]),
                 }
             )
 

@@ -43,6 +43,24 @@ def test_get_unknown_order_returns_none(store):
     assert store.get_order(999) is None
 
 
+def test_get_order_flags_items_requiring_early_order(store):
+    # Re-derived from (category, name) at read time (Part 60) -- never
+    # persisted, so the courier-facing Delivery screen (and anywhere else
+    # get_order() is used) always reflects the current rule.
+    order_id = store.create_order(
+        "UDL-CKB-ALTIUS",
+        "UDL-CKB - Altius - Restaurant",
+        datetime.date(2026, 9, 24),
+        items=[
+            {"category": "Non-végétarien", "name": "Mixed grill de saucisses", "price": None, "quantity": 1},
+            {"category": "Non-végétarien", "name": "Rôti de porc Orloff", "price": None, "quantity": 1},
+        ],
+    )
+    order = store.get_order(order_id)
+    assert order["items"][0]["requires_early_order"] is True
+    assert order["items"][1]["requires_early_order"] is False
+
+
 def test_orders_get_incrementing_ids(store):
     id1 = store.create_order("A", "A", datetime.date(2026, 9, 24), [{"category": "x", "name": "y"}])
     id2 = store.create_order("A", "A", datetime.date(2026, 9, 24), [{"category": "x", "name": "y"}])

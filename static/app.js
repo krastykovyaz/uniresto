@@ -1578,6 +1578,12 @@ async function renderDelivery() {
       const itemsSummary = order.items
         .map((it) => `${dishNameLabel(it.name, state.lang)}${it.quantity > 1 ? ` ×${it.quantity}` : ""}`)
         .join(", ");
+      // Grill/BBQ mains and salmon (Part 60) -- the courier needs to know
+      // this order includes one of those, since it had to be pre-ordered
+      // by 08:00 rather than the general 13:00 deadline (see
+      // menu_service.requires_early_order(), re-derived per item on
+      // OrderStore.get_order() rather than stored).
+      const hasEarlyOrderItem = order.items.some((it) => it.requires_early_order);
       body.append(
         el(`
           <div class="restaurant-card">
@@ -1587,6 +1593,7 @@ async function renderDelivery() {
                 <h2>${escapeHtml(order.delivery_location || tr("deliveryLocationNotGiven"))}</h2>
                 <p class="kind">${escapeHtml(itemsSummary)}</p>
                 <p class="kind">${escapeHtml(fmtLong(order.order_date))} · ${escapeHtml(orderStatusLabel(order.status))}</p>
+                ${hasEarlyOrderItem ? `<p class="kind delivery-early-order-note">${escapeHtml(tr("deliveryEarlyOrderNote"))}</p>` : ""}
               </div>
             </div>
           </div>
