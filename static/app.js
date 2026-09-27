@@ -2343,6 +2343,7 @@ function renderProfile() {
     <div class="profile-about">
       <h4>${escapeHtml(tr("aboutTitle"))}</h4>
       <p>${escapeHtml(tr("aboutBody"))}</p>
+      <p class="profile-about-independent">${escapeHtml(tr("aboutIndependent"))}</p>
     </div>
   `));
 }

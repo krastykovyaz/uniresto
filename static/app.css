@@ -1164,6 +1164,7 @@ svg { display: block; }
 .profile-about { margin: var(--space-3) var(--space-4); }
 .profile-about h4 { margin: 0 0 var(--space-1); font-size: 0.9rem; }
 .profile-about p { margin: 0; font-size: 0.85rem; color: var(--color-text-muted); line-height: 1.5; }
+.profile-about p.profile-about-independent { margin-top: var(--space-2); font-size: 0.78rem; opacity: 0.8; }
 
 /* =========================================================== Device frame */
 
