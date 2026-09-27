@@ -18,6 +18,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 from orderability_engine.cache import OrderabilityCache
 from orderability_engine.cache_warmer import start_cache_warmer
+from orderability_engine.coming_soon_clicks import ComingSoonClickStore
 from orderability_engine.delivery_subscribers import DeliverySubscriberStore
 from orderability_engine.email_verification import EmailVerificationStore
 from orderability_engine.mailer import (
@@ -98,6 +99,7 @@ def create_app(
     email_verification_store: EmailVerificationStore | None = None,
     delivery_verification_store: EmailVerificationStore | None = None,
     delivery_subscriber_store: DeliverySubscriberStore | None = None,
+    coming_soon_click_store: ComingSoonClickStore | None = None,
     enable_cache_warmer: bool = True,
 ) -> Flask:
     app = Flask(__name__)
@@ -133,6 +135,7 @@ def create_app(
         "delivery_email_verification.db"
     )
     app.config["DELIVERY_SUBSCRIBER_STORE"] = delivery_subscriber_store or DeliverySubscriberStore("orders.db")
+    app.config["COMING_SOON_CLICK_STORE"] = coming_soon_click_store or ComingSoonClickStore("orders.db")
     app.config["RESTAURANTS_BY_SLUG"] = by_slug
 
     def svc() -> OrderabilityService:
@@ -149,6 +152,9 @@ def create_app(
 
     def delivery_subscribers() -> DeliverySubscriberStore:
         return app.config["DELIVERY_SUBSCRIBER_STORE"]
+
+    def coming_soon_clicks() -> ComingSoonClickStore:
+        return app.config["COMING_SOON_CLICK_STORE"]
 
     def get_restaurant_or_404(slug: str):
         restaurant = by_slug.get(slug)
@@ -529,6 +535,28 @@ def create_app(
             order.pop("customer_email", None)
         return jsonify(orders)
 
+    # The exact 4 "coming soon" cards static/app.js's own
+    # COMING_SOON_LOCATIONS list shows on the restaurant list (Part 66) --
+    # kept here too (rather than trusting whatever string the client
+    # sends) so this can't be used to log arbitrary text.
+    COMING_SOON_LOCATIONS = ("Food House", "Food Café", "Food Lab", "Food Zone")
+
+    @app.post("/api/coming-soon/click")
+    def api_coming_soon_click():
+        """Records a tap on one of the not-yet-real restaurant cards (Part
+        69) -- a raw interest count (see coming_soon_clicks.py's own
+        docstring for why it's never deduplicated), visible to the admin
+        at /admin/coming-soon-clicks. Never fails loudly on the frontend
+        either way -- this is a best-effort signal, not something that
+        should ever block or error out the "opening soon" toast it fires
+        alongside."""
+        body = request.get_json(force=True, silent=True) or {}
+        location = (body.get("location") or "").strip()
+        if location not in COMING_SOON_LOCATIONS:
+            abort(400, description=f"'location' must be one of {', '.join(COMING_SOON_LOCATIONS)}")
+        coming_soon_clicks().record(location)
+        return jsonify({"recorded": True})
+
     @app.post("/api/smart-lunch")
     def api_smart_lunch():
         """Deterministic Smart Lunch search (Part 51) over the live menu --
@@ -617,6 +645,18 @@ def create_app(
             reviewing=store().list_orders_by_status("reviewing"),
             awaiting=store().list_orders_by_status("awaiting_confirmation"),
             token=request.args.get("token"),
+        )
+
+    @app.get("/admin/coming-soon-clicks")
+    def admin_coming_soon_clicks():
+        """Interest signal for the coming-soon restaurant cards (Part 69) --
+        gated the same way as /admin/orders since it's accumulated visitor
+        behavior data, not a public read-only debug view like
+        /admin/orderability above."""
+        if not _is_admin_authorized():
+            abort(404)
+        return render_template(
+            "admin_coming_soon_clicks.html", counts=coming_soon_clicks().counts(), token=request.args.get("token")
         )
 
     @app.get("/admin/orders/<int:order_id>/mark-reviewing")

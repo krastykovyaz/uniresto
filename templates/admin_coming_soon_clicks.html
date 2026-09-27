@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Admin: coming-soon clicks{% endblock %}
+{% block content %}
+<h1>Admin &mdash; Coming-soon interest (Part 69)</h1>
+<p class="muted">
+    How many times each not-yet-real restaurant card (Food House/Café/Lab/Zone) has been tapped --
+    a raw interest count, not unique visitors (no account/session to dedupe by).
+</p>
+
+{% if not counts %}
+<p class="muted">No taps recorded yet.</p>
+{% else %}
+<table>
+    <tr><th>Location</th><th>Taps</th></tr>
+    {% for location, count in counts %}
+    <tr><td>{{ location }}</td><td>{{ count }}</td></tr>
+    {% endfor %}
+</table>
+{% endif %}
+{% endblock %}

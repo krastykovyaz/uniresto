@@ -5,6 +5,7 @@ import pytest
 
 from app import create_app
 from orderability_engine.cache import OrderabilityCache
+from orderability_engine.coming_soon_clicks import ComingSoonClickStore
 from orderability_engine.delivery_subscribers import DeliverySubscriberStore
 from orderability_engine.email_verification import EmailVerificationStore
 from orderability_engine.models import TZINFO
@@ -39,10 +40,12 @@ def _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, 
     )
     order_store = OrderStore(tmp_path / "orders.db")
     delivery_subscriber_store = DeliverySubscriberStore(tmp_path / "orders.db")
+    coming_soon_click_store = ComingSoonClickStore(tmp_path / "orders.db")
     app = create_app(
         service=service,
         order_store=order_store,
         delivery_subscriber_store=delivery_subscriber_store,
+        coming_soon_click_store=coming_soon_click_store,
         # Explicit ":memory:" instances -- isolated per test, never the
         # real email_verification.db/delivery_email_verification.db
         # files create_app() defaults to for the real app.
@@ -899,6 +902,43 @@ def test_admin_orders_shows_customer_note(client, monkeypatch):
     assert resp.status_code == 200
     assert b"no onion, please" in resp.data
     assert f"Order #{order_id}".encode() in resp.data
+
+
+# ---------------------------------------------------------------------------
+# Coming-soon card click tracking (Part 69)
+# ---------------------------------------------------------------------------
+
+
+def test_coming_soon_click_records_a_known_location(client):
+    resp = client.post("/api/coming-soon/click", json={"location": "Food House"})
+    assert resp.status_code == 200
+    assert resp.get_json()["recorded"] is True
+
+
+def test_coming_soon_click_rejects_an_unknown_location(client):
+    resp = client.post("/api/coming-soon/click", json={"location": "Not A Real Place"})
+    assert resp.status_code == 400
+
+
+def test_coming_soon_click_rejects_missing_location(client):
+    resp = client.post("/api/coming-soon/click", json={})
+    assert resp.status_code == 400
+
+
+def test_admin_coming_soon_clicks_requires_token(client):
+    resp = client.get("/admin/coming-soon-clicks")
+    assert resp.status_code == 404
+
+
+def test_admin_coming_soon_clicks_shows_counts(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    client.post("/api/coming-soon/click", json={"location": "Food Lab"})
+    client.post("/api/coming-soon/click", json={"location": "Food Lab"})
+    client.post("/api/coming-soon/click", json={"location": "Food Zone"})
+    resp = client.get("/admin/coming-soon-clicks?token=correct-token")
+    assert resp.status_code == 200
+    assert b"Food Lab" in resp.data
+    assert b"Food Zone" in resp.data
 
 
 def test_admin_orders_lists_reviewing_orders_too(client, monkeypatch):

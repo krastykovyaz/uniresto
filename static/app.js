@@ -1685,12 +1685,17 @@ function restaurantGridContent() {
             <div>
               <h2>${escapeHtml(location.name)}</h2>
               <p class="kind">${escapeHtml(tr(location.kindKey))} · ${escapeHtml(location.building)}</p>
-              <p class="coming-soon-badge">${escapeHtml(tr("comingSoonBadge"))}</p>
             </div>
           </div>
         </button>
       `);
-      card.addEventListener("click", () => showToast(tr("comingSoonToast")));
+      card.addEventListener("click", () => {
+        showToast(tr("comingSoonToast"));
+        // Best-effort interest signal (Part 69) -- never blocks or
+        // surfaces an error for the toast above, which is the actual
+        // point of tapping this card; see /admin/coming-soon-clicks.
+        api("/api/coming-soon/click", { method: "POST", body: JSON.stringify({ location: location.name }) }).catch(() => {});
+      });
       grid.append(card);
     }
     return grid;

@@ -326,20 +326,11 @@ svg { display: block; }
 
 /* Not a real, orderable restaurant -- de-emphasized (Part 66) so it
    reads as "planned", not mistaken for a live option, matching the
-   same "never hide it, explain why" idea .date-card.is-disabled uses. */
+   same "never hide it, explain why" idea .date-card.is-disabled uses.
+   No printed "coming soon" label on the card itself (Part 69) -- a tap
+   still gets the same explanation via toast, and now also counts as an
+   interest signal (see /admin/coming-soon-clicks) instead. */
 .restaurant-card.is-coming-soon { opacity: 0.55; }
-.restaurant-card .coming-soon-badge {
-  display: inline-block;
-  margin-top: 4px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--color-border);
-  color: var(--color-text-muted);
-  font-size: 0.65rem;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-}
 
 /* Delivery screen's campus filter (Part 67) -- same one-row pill
    pattern as .category-nav's chips, minus its sticky positioning
