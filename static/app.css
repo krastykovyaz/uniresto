@@ -253,14 +253,15 @@ svg { display: block; }
   line-height: 1.4;
 }
 
-/* Delivery's own recruiting pitch (Part 54), on the role picker's
-   Delivery card (see renderRole()'s earnBadgeKey) -- a marketing line,
-   not a feature: the app takes no payment and pays nothing itself (see
-   the Profile screen's own "About UniResto" text and every
+/* Short illustrative pitch on a role-picker card (see renderRole()'s
+   badgeKey) -- Delivery's own (Part 54) is a marketing line, not a
+   feature: the app takes no payment and pays nothing itself (see the
+   Profile screen's own "About UniResto" text and every
    order-confirmation email); any tip is a real-world arrangement
    between the two people, made in person, that this phrase just names
-   as common practice. */
-.role-earn-badge {
+   as common practice. Eat's own (Part 56) is the same kind of
+   illustrative claim, not a measured guarantee for any specific order. */
+.role-badge {
   display: inline-block;
   margin: 6px 0 0;
   padding: 2px 9px;

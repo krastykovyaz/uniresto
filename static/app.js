@@ -1288,7 +1288,18 @@ function renderRole() {
 
   const grid = el(`<div class="restaurant-grid"></div>`);
   const roles = [
-    { key: "eat", titleKey: "roleEat", subtitleKey: "roleEatSubtitle", iconName: "fork", colorClass: "is-veg", go: () => goTo("restaurants") },
+    {
+      key: "eat",
+      titleKey: "roleEat",
+      subtitleKey: "roleEatSubtitle",
+      iconName: "fork",
+      colorClass: "is-veg",
+      go: () => goTo("restaurants"),
+      // Illustrative, same as delivery's own badge below -- ordering
+      // ahead here means skipping the canteen line at service time,
+      // never a measured/guaranteed figure for any specific order.
+      badgeKey: "roleEatBadge",
+    },
     {
       key: "delivery",
       titleKey: "roleDelivery",
@@ -1301,7 +1312,7 @@ function renderRole() {
       // UniResto" text and every order-confirmation email) -- any tip
       // is a real-world arrangement made directly between the two
       // people, in person, which this phrase doesn't claim otherwise.
-      earnBadgeKey: "deliveryEarnBadge",
+      badgeKey: "deliveryEarnBadge",
     },
   ];
   for (const role of roles) {
@@ -1312,7 +1323,7 @@ function renderRole() {
           <div>
             <h2>${escapeHtml(tr(role.titleKey))}</h2>
             <p class="kind">${escapeHtml(tr(role.subtitleKey))}</p>
-            ${role.earnBadgeKey ? `<p class="role-earn-badge">${escapeHtml(tr(role.earnBadgeKey))}</p>` : ""}
+            ${role.badgeKey ? `<p class="role-badge">${escapeHtml(tr(role.badgeKey))}</p>` : ""}
           </div>
         </div>
       </button>
