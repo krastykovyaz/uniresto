@@ -1047,6 +1047,14 @@ def test_root_serves_the_spa_shell(client):
     assert b'<div id="app"' in resp.data
     assert b"app.js" in resp.data
     assert b'name="viewport"' in resp.data
+    assert b'rel="icon"' in resp.data
+    assert b'rel="apple-touch-icon"' in resp.data
+
+
+def test_favicon_ico_redirects_to_the_real_png(client):
+    resp = client.get("/favicon.ico")
+    assert resp.status_code in (301, 302)
+    assert resp.headers["Location"].endswith("/static/favicon-32.png")
 
 
 def test_admin_page_renders(client):

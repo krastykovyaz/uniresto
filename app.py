@@ -13,7 +13,7 @@ import secrets
 from datetime import datetime, timedelta
 
 from dotenv import load_dotenv
-from flask import Flask, abort, jsonify, redirect, render_template, request
+from flask import Flask, abort, jsonify, redirect, render_template, request, url_for
 
 from orderability_engine.cache import OrderabilityCache
 from orderability_engine.cache_warmer import start_cache_warmer
@@ -710,6 +710,13 @@ def create_app(
     @app.get("/")
     def mobile_app():
         return render_template("mobile.html")
+
+    # Browsers/crawlers request this path directly regardless of the
+    # <link rel="icon"> tags in <head> -- without this it 404s even
+    # though a favicon is otherwise fully wired up.
+    @app.get("/favicon.ico")
+    def favicon():
+        return redirect(url_for("static", filename="favicon-32.png"))
 
     return app
 
