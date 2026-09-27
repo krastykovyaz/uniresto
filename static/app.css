@@ -605,16 +605,22 @@ svg { display: block; }
 .food-card .description { font-size: 0.78rem; color: var(--color-text-muted); margin: 0; }
 .food-card .meta-row { margin: 0; font-size: 0.78rem; color: var(--color-text-muted); }
 .food-card .meta-row .dot { margin: 0 2px; }
-.food-card .allergen-line { font-size: 0.72rem; line-height: 1.4; color: var(--color-text-muted); margin: auto 0 0; }
+.food-card .allergen-line { font-size: 0.72rem; line-height: 1.4; color: var(--color-text-muted); margin: 0; }
 
 /* The bottom row: price + the add indicator, always pinned to the
-   card's bottom edge (margin-top: auto on .allergen-line above already
-   pushes it there when there's room to spare). */
+   card's bottom edge via its OWN margin-top: auto -- not however much
+   content happens to sit above it. Cards in the same grid row vary in
+   how many lines their name/meta text wraps to (a two-line dish name,
+   a long "0.25 l · ~113 kcal" meta line, an allergen line that may or
+   may not exist), so anchoring this to .allergen-line instead (present
+   on some cards, absent on others) left the price/button row at a
+   different height card to card, even within one row of the grid. */
 .food-card .add-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
+  margin-top: auto;
   padding-top: 4px;
 }
 /* "Canteen Price" (see priceText() in app.js) is a label, not a number
