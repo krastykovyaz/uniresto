@@ -1936,7 +1936,15 @@ function shortName(fullName) {
   return parts.length >= 2 ? parts[1] : fullName;
 }
 
-const DATE_PICKER_DAYS = 10;
+// 42 (6 weeks), not an arbitrary round number -- verified live on
+// 2026-09-28 that Restopolis actually publishes real menus (menu_available)
+// on every weekday out to day +39 (2026-11-06) for both restaurants, then
+// consistently has none from day +42 (2026-11-09) on -- matching this
+// codebase's documented 6-week Restopolis browsable horizon (README.md
+// Part 11). A shorter window (this used to be 10) hid real, orderable
+// days purely because of the picker's own arbitrary cutoff, not because
+// Restopolis had nothing for them.
+const DATE_PICKER_DAYS = 42;
 
 // ------------------------------------------------------ Menu prefetch cache
 //
