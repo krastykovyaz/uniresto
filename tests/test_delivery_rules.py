@@ -119,14 +119,14 @@ def test_early_cutoff_unavailable_after_0800_even_though_general_deadline_has_no
 D = datetime.date(2026, 9, 28)
 
 
-def test_not_expired_before_15_00_on_its_own_date():
-    assert is_delivery_expired(D, datetime.datetime(2026, 9, 28, 14, 59, tzinfo=TZINFO)) is False
+def test_not_expired_before_13_30_on_its_own_date():
+    assert is_delivery_expired(D, datetime.datetime(2026, 9, 28, 13, 29, tzinfo=TZINFO)) is False
 
 
-def test_expired_from_15_00_on_its_own_date():
+def test_expired_from_13_30_on_its_own_date():
     # The old frontend rule only expired an order once its DATE had
     # passed -- it stayed "Pending" all afternoon and evening.
-    assert is_delivery_expired(D, datetime.datetime(2026, 9, 28, 15, 0, tzinfo=TZINFO)) is True
+    assert is_delivery_expired(D, datetime.datetime(2026, 9, 28, 13, 30, tzinfo=TZINFO)) is True
 
 
 def test_expired_on_a_later_day():
@@ -138,7 +138,7 @@ def test_future_order_not_expired():
 
 
 def test_uses_luxembourg_time_not_utc():
-    # 13:30 UTC is 15:30 in Luxembourg (CEST, +02:00) -- already expired.
-    # A UTC-based check would still call this 13:30, i.e. pending.
-    now_utc = datetime.datetime(2026, 9, 28, 13, 30, tzinfo=datetime.timezone.utc)
+    # 11:35 UTC is 13:35 in Luxembourg (CEST, +02:00) -- already expired.
+    # A UTC-based check would still call this 11:35, i.e. pending.
+    now_utc = datetime.datetime(2026, 9, 28, 11, 35, tzinfo=datetime.timezone.utc)
     assert is_delivery_expired(D, now_utc) is True

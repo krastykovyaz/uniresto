@@ -1621,7 +1621,7 @@ function campusFilterRow(stateKey, onChange) {
 // was also cancelled or expired afterwards):
 //   delivered  -- delivered_at is set (mark_delivered(), a courier fact)
 //   closed     -- status === 'cancelled' (the admin/customer called it off)
-//   expired    -- past 15:00 Europe/Luxembourg on order_date, decided by
+//   expired    -- past 13:30 Europe/Luxembourg on order_date, decided by
 //                 the SERVER (order.expired, see delivery_rules.py's
 //                 is_delivery_expired()) -- never this device's own clock,
 //                 whose UTC date runs up to 2h off Luxembourg's

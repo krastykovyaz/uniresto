@@ -65,14 +65,13 @@ def evaluate_our_delivery(
 
 
 # Part 76: when an undelivered order stops being a courier's live job and
-# moves to the Delivery screen's "Expired" section -- 15:00 on its own
-# date, Europe/Luxembourg. OUR rule, same as the 13:00/08:00 cutoffs
-# above: Restopolis reports no service hours at all (service_start/
-# service_end are always None on the live site), so there's no real
-# per-restaurant closing time to anchor this to. Lunch-only canteens,
-# ordering closes at 13:00, so 15:00 leaves a full delivery window after
-# the last possible order before calling it missed.
-DELIVERY_EXPIRY_TIME = time(15, 0)
+# moves to the Delivery screen's "Expired" section -- 13:30 on its own
+# date, Europe/Luxembourg. Confirmed against real Restopolis data
+# (restaurants/status DOES report a real service_start/service_end, e.g.
+# 11:00-14:30 for Altius) that campus lunch service is realistically
+# over by then; a fixed, explicitly-chosen time rather than each
+# restaurant's own service_end so it doesn't vary day to day.
+DELIVERY_EXPIRY_TIME = time(13, 30)
 
 
 def is_delivery_expired(order_date: date, now: datetime | None = None) -> bool:
