@@ -136,3 +136,16 @@ class PageViewStore:
                 (event,),
             ).fetchall()
         return [(r[0], r[1]) for r in rows]
+
+    def source_counts_between(self, event: str, start: datetime, end: datetime) -> list[tuple[str, int]]:
+        """Same as source_counts() above but scoped to [start, end) (both
+        real, timezone-aware datetimes, same UTC-conversion reasoning as
+        count_between()) -- for a real "today's" per-QR-source breakdown
+        (daily_report.py) rather than an all-time total."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT COALESCE(source, '(direct)') AS src, COUNT(*) AS n FROM page_views "
+                "WHERE event = ? AND created_at >= ? AND created_at < ? GROUP BY src ORDER BY n DESC, src",
+                (event, start.astimezone(timezone.utc).isoformat(), end.astimezone(timezone.utc).isoformat()),
+            ).fetchall()
+        return [(r[0], r[1]) for r in rows]

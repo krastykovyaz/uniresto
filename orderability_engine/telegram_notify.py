@@ -213,11 +213,18 @@ def send_daily_report(counts: dict, report_date) -> tuple[bool, str | None]:
     """Best-effort send, same contract as every other function here --
     the evening admin report (Part 74; see daily_report.py). `counts` is
     exactly daily_report.compute_report_counts()'s own dict, real numbers
-    off page_views.py/OrderStore, never estimated."""
+    off page_views.py/OrderStore, never estimated. `.get()`, not `[]`,
+    for home_by_source (Part 82): a caller still passing an
+    older-shaped counts dict just doesn't get that breakdown, rather
+    than crashing the send."""
     lines = [
         f"Daily report -- {report_date.isoformat()}",
         "",
         f"Opened the app: {counts['home']}",
+    ]
+    for source, n in counts.get("home_by_source") or []:
+        lines.append(f"  {source}: {n}")
+    lines += [
         f"Viewed a menu: {counts['menu']}",
         f"Orders placed: {counts['orders']}",
         f"Opened deliveries: {counts['delivery']}",

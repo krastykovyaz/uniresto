@@ -84,6 +84,43 @@ def test_source_counts_survives_a_reopened_store(tmp_path):
     assert reopened.source_counts("home") == [("flyer-a", 1)]
 
 
+# --- Part 82: source_counts_between() -----------------------------------
+
+
+def test_source_counts_between_empty_when_nothing_recorded(tmp_path):
+    store = PageViewStore(tmp_path / "views.db")
+    now = datetime.now(timezone.utc)
+    assert store.source_counts_between("home", now - timedelta(days=1), now + timedelta(days=1)) == []
+
+
+def test_source_counts_between_groups_by_source_busiest_first(tmp_path):
+    store = PageViewStore(tmp_path / "views.db")
+    for _ in range(3):
+        store.record("home", source="flyer-a")
+    for _ in range(2):
+        store.record("home", source="flyer-b")
+    now = datetime.now(timezone.utc)
+    start, end = now - timedelta(minutes=1), now + timedelta(minutes=1)
+    assert store.source_counts_between("home", start, end) == [("flyer-a", 3), ("flyer-b", 2)]
+
+
+def test_source_counts_between_excludes_events_outside_the_window(tmp_path):
+    store = PageViewStore(tmp_path / "views.db")
+    store.record("home", source="flyer-a")
+    now = datetime.now(timezone.utc)
+    # A window that ends before the event happened must not count it.
+    assert store.source_counts_between("home", now - timedelta(days=2), now - timedelta(days=1)) == []
+
+
+def test_source_counts_between_groups_no_source_under_direct(tmp_path):
+    store = PageViewStore(tmp_path / "views.db")
+    store.record("home")
+    store.record("home", source="flyer-a")
+    now = datetime.now(timezone.utc)
+    start, end = now - timedelta(minutes=1), now + timedelta(minutes=1)
+    assert store.source_counts_between("home", start, end) == [("(direct)", 1), ("flyer-a", 1)]
+
+
 def test_migrate_survives_another_worker_adding_the_column_first(tmp_path):
     from unittest.mock import patch
 

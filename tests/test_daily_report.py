@@ -65,7 +65,7 @@ def test_compute_report_counts_reads_real_numbers(tmp_path):
     order_store.create_order("altius", "Altius", today, [{"category": "c", "name": "n", "quantity": 1}])
 
     counts = compute_report_counts(page_views, order_store, today)
-    assert counts == {"home": 2, "menu": 1, "orders": 1, "delivery": 1}
+    assert counts == {"home": 2, "home_by_source": [("(direct)", 2)], "menu": 1, "orders": 1, "delivery": 1}
 
 
 def test_compute_report_counts_excludes_other_days(tmp_path):
@@ -78,7 +78,22 @@ def test_compute_report_counts_excludes_other_days(tmp_path):
     order_store.create_order("altius", "Altius", today, [{"category": "c", "name": "n", "quantity": 1}])
 
     counts = compute_report_counts(page_views, order_store, yesterday)
-    assert counts == {"home": 0, "menu": 0, "orders": 0, "delivery": 0}
+    assert counts == {"home": 0, "home_by_source": [], "menu": 0, "orders": 0, "delivery": 0}
+
+
+def test_compute_report_counts_breaks_home_down_by_source(tmp_path):
+    page_views = PageViewStore(tmp_path / "orders.db")
+    order_store = OrderStore(tmp_path / "orders.db")
+    today = datetime.datetime.now(TZINFO).date()
+
+    page_views.record("home", source="flyer-c")
+    page_views.record("home", source="flyer-c")
+    page_views.record("home", source="flyer-d")
+    page_views.record("home")  # no ?src= -- groups under "(direct)"
+
+    counts = compute_report_counts(page_views, order_store, today)
+    assert counts["home"] == 4
+    assert counts["home_by_source"] == [("flyer-c", 2), ("(direct)", 1), ("flyer-d", 1)]
 
 
 def _stores(tmp_path):

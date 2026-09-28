@@ -97,6 +97,12 @@ def compute_report_counts(page_views: PageViewStore, order_store: OrderStore, re
     start, end = local_day_bounds(report_date)
     return {
         "home": page_views.count_between("home", start, end),
+        # Per-QR-code breakdown of that same "home" count (Part 82) --
+        # e.g. [("flyer-c", 12), ("(direct)", 5)] -- so the admin can see
+        # which printed/digital flyer is actually driving visits, not
+        # just the aggregate total. Same source strings /admin/sources
+        # shows (all-time); this is just scoped to report_date.
+        "home_by_source": page_views.source_counts_between("home", start, end),
         "menu": page_views.count_between("menu", start, end),
         "orders": order_store.count_created_between(start, end),
         "delivery": page_views.count_between("delivery", start, end),

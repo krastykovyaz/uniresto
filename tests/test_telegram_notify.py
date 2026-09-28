@@ -272,6 +272,42 @@ def test_daily_report_includes_every_real_count(monkeypatch):
     assert "5" in text
 
 
+def test_daily_report_includes_the_per_source_breakdown(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "999")
+
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"ok": True}
+    counts = {
+        "home": 42,
+        "home_by_source": [("flyer-c", 30), ("(direct)", 12)],
+        "menu": 27,
+        "orders": 8,
+        "delivery": 5,
+    }
+    with patch("orderability_engine.telegram_notify.requests.post", return_value=mock_resp) as mock_post:
+        send_daily_report(counts, datetime.date(2026, 9, 28))
+
+    text = mock_post.call_args.kwargs["json"]["text"]
+    assert "flyer-c: 30" in text
+    assert "(direct): 12" in text
+
+
+def test_daily_report_omits_the_breakdown_when_absent(monkeypatch):
+    # An older-shaped counts dict (no home_by_source key) must not crash
+    # the send -- it just doesn't get that breakdown.
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "999")
+
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"ok": True}
+    counts = {"home": 42, "menu": 27, "orders": 8, "delivery": 5}
+    with patch("orderability_engine.telegram_notify.requests.post", return_value=mock_resp) as mock_post:
+        sent, error = send_daily_report(counts, datetime.date(2026, 9, 28))
+
+    assert sent is True
+
+
 def test_daily_report_returns_not_sent_when_unconfigured():
     sent, error = send_daily_report({"home": 0, "menu": 0, "orders": 0, "delivery": 0}, datetime.date(2026, 9, 28))
     assert sent is False
