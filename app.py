@@ -483,18 +483,34 @@ def create_app(
     def api_upload_dish_photo(slug):
         """A student submits a real photo for a real menu item straight
         from the food card's own upload tile (see static/app.js's
-        food-card-photo-input) -- no account, but NOT immediately live
-        either (Part 84): it's staged in PENDING_DISH_PHOTO_STORE and
-        pinged to the admin over Telegram (photo attached, plus Approve/
-        Reject/"View full card" buttons -- see
-        telegram_notify.send_dish_photo_review) rather than published
-        straight into DISH_PHOTO_STORE the way the very first version of
-        this endpoint did. Only /admin/dish-photos/<id>/approve actually
-        calls dish_photos().set_photo()."""
+        food-card-photo-input) -- but NOT immediately live (Part 84): it's
+        staged in PENDING_DISH_PHOTO_STORE and pinged to the admin over
+        Telegram (photo attached, plus Approve/Reject/"View full card"
+        buttons -- see telegram_notify.send_dish_photo_review) rather than
+        published straight into DISH_PHOTO_STORE the way the very first
+        version of this endpoint did. Only /admin/dish-photos/<id>/approve
+        (or /replace) actually calls dish_photos().set_photo().
+
+        Gated by a verified University email (Part 85) -- the SAME
+        ALLOWED_EMAIL_DOMAINS/_is_allowed_customer_email restriction as
+        the University Email Profile field, and the SAME shared
+        VerifiedEmailStore checkout/courier registration already feed
+        (see VerifiedEmailStore's own docstring) -- so anyone who's
+        already proven a uni.lu/student.uni.lu address anywhere in the
+        app can upload without proving it again, but a wholly anonymous
+        visitor, or one who only ever verified a non-uni.lu address via
+        checkout, cannot."""
         restaurant = get_restaurant_or_404(slug)
         limited = rate_limited_response("dish_photo")
         if limited:
             return limited
+        email = (request.form.get("email") or "").strip()
+        if not email:
+            abort(400, description="Form must include 'email'")
+        if not _is_allowed_customer_email(email):
+            abort(400, description=f"'email' must be a valid address ending in {' or '.join(ALLOWED_EMAIL_DOMAINS)}")
+        if not verified_emails().is_verified(email):
+            return jsonify({"error": "email_not_verified", "message": "Your University email must be verified before uploading a photo"}), 403
         category = (request.form.get("category") or "").strip()
         name = (request.form.get("name") or "").strip()
         if not category or not name:

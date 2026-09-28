@@ -3607,9 +3607,20 @@ function foodCard(item) {
     e.stopPropagation();
     if (photoTile.classList.contains("has-custom-photo")) {
       openDishDetailSheet(item, photoTile, earlyCutoffPassed);
-    } else {
-      photoInput.click();
+      return;
     }
+    // Part 85: uploading needs a verified University email -- the same
+    // one Profile's "University Email" row registers (state.registeredEmail,
+    // @uni.lu/@student.uni.lu only, see ALLOWED_EMAIL_DOMAINS). Checked
+    // here, BEFORE the picker even opens, so someone who hasn't verified
+    // one yet is sent straight to where they'd fix that instead of
+    // picking a photo just to have the upload itself refuse it.
+    if (!state.registeredEmail) {
+      showToast(tr("dishPhotoNeedsUniversityEmail"));
+      goTo("profile");
+      return;
+    }
+    photoInput.click();
   });
   photoInput.addEventListener("click", (e) => e.stopPropagation());
   photoInput.addEventListener("change", async () => {
@@ -3621,6 +3632,7 @@ function foodCard(item) {
     photoTile.classList.add("has-custom-photo");
     try {
       const form = new FormData();
+      form.append("email", state.registeredEmail || "");
       form.append("category", item.category);
       form.append("name", item.name);
       form.append("photo", file);

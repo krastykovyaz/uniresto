@@ -225,10 +225,10 @@ def test_dish_photos_unknown_restaurant_is_404(client):
     assert client.get("/api/restaurants/does-not-exist/dish-photos").status_code == 404
 
 
-def _upload_dish_photo(client, category="Végétarien", name="Salad'bar", data=_PNG_BYTES, filename="dish.png"):
+def _upload_dish_photo(client, category="Végétarien", name="Salad'bar", data=_PNG_BYTES, filename="dish.png", email="student@uni.lu"):
     return client.post(
         "/api/restaurants/altius/dish-photos",
-        data={"category": category, "name": name, "photo": (io.BytesIO(data), filename)},
+        data={"email": email, "category": category, "name": name, "photo": (io.BytesIO(data), filename)},
         content_type="multipart/form-data",
     )
 
@@ -257,7 +257,7 @@ def test_pending_dish_photo_is_served_back_from_static(client):
 def test_upload_dish_photo_missing_category_or_name_is_400(client):
     resp = client.post(
         "/api/restaurants/altius/dish-photos",
-        data={"name": "Salad'bar", "photo": (io.BytesIO(_PNG_BYTES), "dish.png")},
+        data={"email": "student@uni.lu", "name": "Salad'bar", "photo": (io.BytesIO(_PNG_BYTES), "dish.png")},
         content_type="multipart/form-data",
     )
     assert resp.status_code == 400
@@ -266,7 +266,7 @@ def test_upload_dish_photo_missing_category_or_name_is_400(client):
 def test_upload_dish_photo_missing_file_is_400(client):
     resp = client.post(
         "/api/restaurants/altius/dish-photos",
-        data={"category": "Végétarien", "name": "Salad'bar"},
+        data={"email": "student@uni.lu", "category": "Végétarien", "name": "Salad'bar"},
         content_type="multipart/form-data",
     )
     assert resp.status_code == 400
@@ -275,7 +275,12 @@ def test_upload_dish_photo_missing_file_is_400(client):
 def test_upload_dish_photo_rejects_a_non_image_file(client):
     resp = client.post(
         "/api/restaurants/altius/dish-photos",
-        data={"category": "Végétarien", "name": "Salad'bar", "photo": (io.BytesIO(b"<script>alert(1)</script>"), "evil.svg")},
+        data={
+            "email": "student@uni.lu",
+            "category": "Végétarien",
+            "name": "Salad'bar",
+            "photo": (io.BytesIO(b"<script>alert(1)</script>"), "evil.svg"),
+        },
         content_type="multipart/form-data",
     )
     assert resp.status_code == 400
@@ -286,7 +291,7 @@ def test_upload_dish_photo_rejects_an_oversized_file(client):
     huge = b"\x89PNG\r\n\x1a\n" + b"\x00" * (8 * 1024 * 1024 + 1)
     resp = client.post(
         "/api/restaurants/altius/dish-photos",
-        data={"category": "Végétarien", "name": "Salad'bar", "photo": (io.BytesIO(huge), "big.png")},
+        data={"email": "student@uni.lu", "category": "Végétarien", "name": "Salad'bar", "photo": (io.BytesIO(huge), "big.png")},
         content_type="multipart/form-data",
     )
     assert resp.status_code == 400
@@ -296,21 +301,62 @@ def test_upload_dish_photo_rejects_an_oversized_file(client):
 def test_upload_dish_photo_unknown_restaurant_is_404(client):
     resp = client.post(
         "/api/restaurants/does-not-exist/dish-photos",
-        data={"category": "Végétarien", "name": "Salad'bar", "photo": (io.BytesIO(_PNG_BYTES), "dish.png")},
+        data={"email": "student@uni.lu", "category": "Végétarien", "name": "Salad'bar", "photo": (io.BytesIO(_PNG_BYTES), "dish.png")},
         content_type="multipart/form-data",
     )
     assert resp.status_code == 404
 
 
 def test_upload_dish_photo_is_scoped_per_restaurant(client):
-    client.post(
+    _upload_dish_photo(client)
+    # brasserie-johns -- the other real restaurant in restaurants.yaml
+    # (see UDL-CKB-BRASSERIE-JOHNS), never uploaded to in this test.
+    assert client.get("/api/restaurants/brasserie-johns/dish-photos").get_json() == {}
+
+
+# ---------------------------------------------------------------------------
+# API: dish photo upload requires a verified University email (Part 85)
+# ---------------------------------------------------------------------------
+
+
+def test_upload_dish_photo_missing_email_is_400(client):
+    resp = client.post(
         "/api/restaurants/altius/dish-photos",
         data={"category": "Végétarien", "name": "Salad'bar", "photo": (io.BytesIO(_PNG_BYTES), "dish.png")},
         content_type="multipart/form-data",
     )
-    # brasserie-johns -- the other real restaurant in restaurants.yaml
-    # (see UDL-CKB-BRASSERIE-JOHNS), never uploaded to in this test.
-    assert client.get("/api/restaurants/brasserie-johns/dish-photos").get_json() == {}
+    assert resp.status_code == 400
+
+
+def test_upload_dish_photo_rejects_a_non_university_email(client):
+    resp = _upload_dish_photo(client, email="student@gmail.com")
+    assert resp.status_code == 400
+
+
+def test_upload_dish_photo_rejects_an_unverified_university_email(client):
+    # A real uni.lu address, but this client never verified it (only
+    # "student@uni.lu" is pre-verified in the test fixture -- see
+    # _make_client()).
+    resp = _upload_dish_photo(client, email="someone-else@uni.lu")
+    assert resp.status_code == 403
+    assert resp.get_json()["error"] == "email_not_verified"
+
+
+def test_upload_dish_photo_succeeds_with_a_verified_student_uni_lu_email(client):
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("verified-student@student.uni.lu")
+    resp = _upload_dish_photo(client, email="verified-student@student.uni.lu")
+    assert resp.status_code == 200
+    assert resp.get_json()["status"] == "pending"
+
+
+def test_upload_dish_photo_email_verified_via_a_different_flow_still_counts(client):
+    # Part 83's whole point: VerifiedEmailStore is shared across checkout/
+    # courier/University-email verification -- proving a uni.lu address
+    # via ANY of those flows must be enough here too, not just Profile's
+    # own University Email field specifically.
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("via-checkout@uni.lu")
+    resp = _upload_dish_photo(client, email="via-checkout@uni.lu")
+    assert resp.status_code == 200
 
 
 # ---------------------------------------------------------------------------
