@@ -461,12 +461,16 @@ code is `1` when the final status is `unknown`, `0` otherwise.
 
 ## 16. Caching, `--refresh`, and change detection
 
-Every `check_orderability` call first looks in `orderability.db`'s
-`orderability_cache` table (15-minute TTL by default, `--cache-ttl` /
-`cache_ttl_seconds` to change it). `--refresh` bypasses it and forces a
-live Restopolis check -- but even then, the previous cached value is
-still read first (via `get_raw`, ignoring expiry) purely so a genuine
-change can be logged:
+**Superseded by Part 79, §61 below**: `check_orderability`/`get_week_html`
+no longer have a TTL that gates reads at all -- an ordinary call
+(`refresh=False`, the default, what every real app.py route uses) only
+ever reads `orderability.db`'s `orderability_cache`/`week_html_cache`
+tables exactly as last written, however old, and NEVER performs a live
+Restopolis fetch on its own. `refresh=True` still forces a live check
+the same way (used only by `orderability_engine/menu_refresh.py`'s
+scheduled sweep, and by this CLI's own `--refresh` flag) -- and even
+then, the previous cached value is still read first (via `get_raw`,
+ignoring expiry) purely so a genuine change can be logged:
 
 ```
 [CHANGED]
@@ -2337,3 +2341,58 @@ logic, only markup/CSS/navigation).
   fetch, `refresh=True` still bypassing it, and the TTL being
   configurable/expiry being honored). Tests: 93 JS, 190 Python (9 new),
   all passing.
+
+## 61. Live Restopolis fetching moved onto a fixed daily schedule, off the request path entirely (Part 79)
+
+- **An explicit admin request**, after watching the "Choose your day"
+  date picker take 15-20 seconds to load on a cold cache (`static/
+  app.js`'s `DATE_PICKER_DAYS` had grown from 10 to 42 without the
+  then-existing cache warmer's own window growing to match -- 32 of
+  those days were silently never being proactively warmed at all):
+  "download every day
+  morning at 6, then update at 9 and then update at 14, 18, 21, 00:00
+  the menu and do not load everytime the menu for everyone, show the
+  last state for everyone."
+- **`orderability_engine/menu_refresh.py`** replaces the earlier
+  `cache_warmer.py` (which warmed a rolling 10-minute interval, not
+  fixed times). `REFRESH_TIMES` is exactly those six times, Europe/
+  Luxembourg; `REFRESH_WINDOW_DAYS = 42` mirrors `static/app.js`'s
+  `DATE_PICKER_DAYS` again -- this time with an explicit comment on
+  both sides warning that they have to be kept in sync by hand, since
+  that drift is exactly what caused the slow loads in the first place.
+  `refresh_all_once()` sweeps the whole window with `refresh=True`
+  (always a real fetch), but only ONCE per distinct Restopolis week
+  actually spanned per restaurant, not once per day -- the first date
+  seen in a given week forces the fetch; every other date in that week
+  is served from what it just wrote.
+- **The bigger change**: `check_orderability()`/`get_week_html()` in
+  `orderability_engine/service.py` no longer fall through to a live
+  fetch on a cache miss or an expired TTL at all -- only `refresh=True`
+  (which now only `menu_refresh.py`'s scheduled sweep, and this
+  project's own `--refresh` CLI flag/admin tooling, ever pass) does a
+  real fetch. Every ordinary request-path call (every real app.py
+  route) reads `orderability.db` via new age-ignoring methods
+  (`get_raw_with_checked_at()`, `get_week_html_raw()`) that return
+  whatever was last written however old it is, or an honest "unknown"
+  status if literally nothing has ever been cached yet for that
+  (restaurant, date) -- which in practice only lasts the few seconds
+  between a fresh process start and the scheduler's own immediate
+  startup sweep completing.
+- **Verified live**: restarted the local dev server, confirmed the
+  startup sweep completed within ~20 seconds with zero errors, then
+  timed two real requests -- a warmed date (instant, `from_cache: true`)
+  and a date 45 days out (beyond `REFRESH_WINDOW_DAYS`, correctly
+  `"unknown"`/`from_cache: false`, still instant, never hung waiting on
+  Restopolis). The full 42-card date picker, which previously took
+  15-20 seconds on a cold cache, now loads in about 2 seconds.
+- Every test that exercised the old "live-fetch-on-miss" behavior
+  needed rework, not just new coverage: `tests/test_app.py`'s shared
+  `_make_client()` fixture now does two forced (`refresh=True`) fetches
+  up front (one per fixture week) to simulate the scheduler having
+  already run, and `tests/test_orderability_service.py`'s caching tests
+  were rewritten around the new refresh=True-only-ever-fetches model
+  rather than the old TTL-driven one (e.g. `test_second_check_is_served_
+  from_cache` now explicitly passes `refresh=True` for its first call,
+  since a plain call on an empty cache no longer fetches anything).
+  `tests/test_cache_warmer.py` was deleted outright, replaced by
+  `tests/test_menu_refresh.py`. Tests: 503 Python, all passing.

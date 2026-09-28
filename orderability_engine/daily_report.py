@@ -5,7 +5,7 @@ screen. See page_views.py's own docstring for why "opened the app" is
 tracked via a client-fired beacon rather than at GET / itself (link-
 preview crawlers also hit that route).
 
-Runs as a background thread (same shape as cache_warmer.py's), started
+Runs as a background thread (same shape as menu_refresh.py's), started
 once per gunicorn WORKER PROCESS -- with 2 workers and no --preload,
 that means two threads independently wake up at the same send time
 every evening. DailyReportStore.claim() is what keeps that from sending
@@ -177,8 +177,9 @@ def start_daily_report_scheduler(
     """Sleeps until the next send_hour:00 Europe/Luxembourg, sends (or,
     on every worker process but one, no-ops via claim()), then sleeps
     until the day after. A daemon thread, same reasoning as
-    cache_warmer.start_cache_warmer(): never blocks the process from
-    exiting, needs no coordination beyond the shared SQLite file."""
+    menu_refresh.start_menu_refresh_scheduler(): never blocks the
+    process from exiting, needs no coordination beyond the shared
+    SQLite file."""
 
     def loop() -> None:
         last_send: datetime | None = None

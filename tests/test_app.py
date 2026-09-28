@@ -42,6 +42,18 @@ def _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, 
         # suite happens to run rather than on the fixture's own "today".
         now=now or datetime.datetime.combine(fixture_today, datetime.time(12, 0), tzinfo=TZINFO),
     )
+    # The request path never live-fetches on its own anymore (see
+    # menu_refresh.py) -- every test in this file expects real fixture
+    # data back from a plain (non-refresh) call, so simulate the
+    # scheduler's own immediate startup sweep here: one forced fetch per
+    # fixture week actually registered with fake_client (0 and 1), which
+    # is all every test date in this file falls into. NOT
+    # menu_refresh.refresh_all_once's full 42-day sweep, which would also
+    # probe weeks this fake client has no fixture for.
+    altius = restaurants["UDL-CKB-ALTIUS"]
+    service.check_orderability(altius, fixture_today, refresh=True)
+    service.check_orderability(altius, fixture_today + datetime.timedelta(days=7), refresh=True)
+
     order_store = OrderStore(tmp_path / "orders.db")
     delivery_subscriber_store = DeliverySubscriberStore(tmp_path / "orders.db")
     coming_soon_click_store = ComingSoonClickStore(tmp_path / "orders.db")
@@ -63,11 +75,11 @@ def _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, 
         # files create_app() defaults to for the real app.
         email_verification_store=EmailVerificationStore(),
         delivery_verification_store=EmailVerificationStore(),
-        # No background cache-warmer/daily-report threads here -- this
+        # No background menu-refresh/daily-report threads here -- this
         # app/FakeRestopolisClient only lives for one test, and each
-        # warmer's own behavior is covered directly in its own test file
-        # instead (test_cache_warmer.py, test_daily_report.py).
-        enable_cache_warmer=False,
+        # scheduler's own behavior is covered directly in its own test
+        # file instead (test_menu_refresh.py, test_daily_report.py).
+        enable_menu_refresh_scheduler=False,
         enable_daily_report_scheduler=False,
     )
     app.testing = True

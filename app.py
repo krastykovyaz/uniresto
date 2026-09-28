@@ -17,7 +17,6 @@ from flask import Flask, abort, jsonify, redirect, render_template, request, url
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from orderability_engine.cache import OrderabilityCache
-from orderability_engine.cache_warmer import start_cache_warmer
 from orderability_engine.coming_soon_clicks import ComingSoonClickStore
 from orderability_engine.daily_report import DailyReportStore, start_daily_report_scheduler
 from orderability_engine.delivery_subscribers import DeliverySubscriberStore
@@ -31,6 +30,7 @@ from orderability_engine.mailer import (
     send_order_out_for_delivery,
     send_verification_code,
 )
+from orderability_engine.menu_refresh import start_menu_refresh_scheduler
 from orderability_engine.menu_service import flatten_menu_items, get_customer_menu
 from orderability_engine.delivery_rules import is_delivery_expired
 from orderability_engine.models import STATUS_VALUES, TZINFO
@@ -191,7 +191,7 @@ def create_app(
     page_view_store: PageViewStore | None = None,
     daily_report_store: DailyReportStore | None = None,
     rate_limit_store: RateLimitStore | None = None,
-    enable_cache_warmer: bool = True,
+    enable_menu_refresh_scheduler: bool = True,
     enable_daily_report_scheduler: bool = True,
 ) -> Flask:
     app = Flask(__name__)
@@ -288,20 +288,22 @@ def create_app(
             abort(404, description=f"Unknown restaurant slug {slug!r}")
         return restaurant
 
-    # Keeps the orderability/menu cache warm on its own schedule, off the
-    # request path (see cache_warmer.py's own docstring) -- default ON
-    # for the real app (both the local dev entry point below and
-    # gunicorn's factory call in production), explicitly OFF in tests
-    # (see tests/test_app.py's _make_client()), which construct their own
-    # short-lived app + FakeRestopolisClient per test and have no use for
-    # a background thread outliving the test itself.
-    if enable_cache_warmer:
-        start_cache_warmer(svc(), list(restaurants.values()))
+    # The ONLY thing that ever live-fetches from Restopolis (see
+    # menu_refresh.py's own docstring) -- fixed schedule, entirely off
+    # the request path. Default ON for the real app (both the local dev
+    # entry point below and gunicorn's factory call in production),
+    # explicitly OFF in tests (see tests/test_app.py's _make_client()),
+    # which construct their own short-lived app + FakeRestopolisClient
+    # per test and have no use for a background thread outliving the
+    # test itself.
+    if enable_menu_refresh_scheduler:
+        start_menu_refresh_scheduler(svc(), list(restaurants.values()))
 
     # Off in tests (see tests/test_app.py's _make_client()), same
-    # reasoning as enable_cache_warmer above -- a short-lived per-test app
-    # has no use for a background thread that only ever wakes up once a
-    # day, and it would otherwise outlive the test itself.
+    # reasoning as enable_menu_refresh_scheduler above -- a short-lived
+    # per-test app has no use for a background thread that only ever
+    # wakes up once a day, and it would otherwise outlive the test
+    # itself.
     if enable_daily_report_scheduler:
         start_daily_report_scheduler(page_views(), store(), app.config["DAILY_REPORT_STORE"])
 

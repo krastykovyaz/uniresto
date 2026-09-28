@@ -1,6 +1,22 @@
 """Orderability Service: combines the Restopolis Availability Detector,
 the cache, and OUR delivery rule into one structured decision.
 
+check_orderability()/get_week_html() NEVER perform a live Restopolis
+fetch unless explicitly told to (refresh=True) -- an ordinary request-
+path call (refresh=False, the default, which is what every real app.py
+route uses) only ever reads whatever's already cached, however old, or
+falls back to an "unknown" status if truly nothing has ever been
+cached for that (restaurant, date) yet. All live fetching -- the actual
+"download from Restopolis" -- happens on a fixed daily schedule from
+orderability_engine/menu_refresh.py's background thread instead, which
+is the only normal caller that ever passes refresh=True. This is a
+deliberate choice ("do not load every time the menu for everyone, show
+the last state for everyone"), not an accident of caching: it trades
+the very first request after a fresh cache entry going stale (there is
+no such thing anymore -- staleness no longer matters on this path) for
+a request path that's fast and uniform for every visitor, with none of
+them ever waiting on a live Restopolis round-trip.
+
 Status decision table (see README.md "Status decision table" for the
 full rationale and the exact evidence behind each row -- nothing here is
 guessed):
@@ -151,35 +167,45 @@ class OrderabilityService:
         return self._now_override or datetime.now(TZINFO)
 
     def get_week_html(self, restaurant: RestaurantConfig, target_date: date, refresh: bool = False) -> tuple[str, int]:
-        """Raises PastDateError / HorizonExceededError. Returns (html, weeks_ahead).
+        """Raises PastDateError, or (only when refresh=True) HorizonExceededError.
+        Returns (html, weeks_ahead).
 
-        Checked in order: (1) the in-process dict (cheapest, no I/O at
-        all), (2) the persistent SQLite cache (self.cache), which is what
-        makes the menu survive a process restart without a live
-        Restopolis fetch, (3) only then a real live fetch -- which is
-        stored back into BOTH caches so the next call, in this process or
-        a future one, hits (1) or (2) instead. `refresh=True` skips
-        straight to (3), matching check_orderability's own --refresh."""
+        `refresh=True` (only orderability_engine/menu_refresh.py's
+        scheduled sweep ever passes this) always does a real live
+        Restopolis fetch, storing the result in both caches. Otherwise
+        (every request-path call) this NEVER fetches live -- it only
+        ever reads whatever the scheduler last wrote, however old: (1)
+        the in-process dict (cheapest, no I/O at all), ignoring its own
+        staleness marker, (2) the persistent SQLite cache, same way (see
+        cache.py's module docstring for why age no longer gates a read
+        here). If NEITHER has anything at all -- only possible in the
+        few seconds between a fresh process start and the scheduler's
+        own immediate startup sweep completing -- raises RestopolisError,
+        which check_orderability already turns into a graceful "unknown"
+        status rather than ever blocking a request on a live fetch."""
         today = self._today()
         weeks_ahead = weeks_ahead_for(target_date, today)
         key = (restaurant.code, weeks_ahead)
 
-        if not refresh:
-            cached = self._week_html_cache.get(key)
-            if cached is not None:
-                html, expires_at = cached
-                if time.monotonic() < expires_at:
-                    return html, weeks_ahead
+        if refresh:
+            html = fetch_week_html_for_date(self.client, restaurant, target_date, today)
+            self._week_html_cache[key] = (html, time.monotonic() + self._week_html_ttl)
+            self.cache.set_week_html(restaurant.code, weeks_ahead, html, ttl_seconds=self._week_html_ttl)
+            return html, weeks_ahead
 
-            persisted = self.cache.get_week_html(restaurant.code, weeks_ahead)
-            if persisted is not None:
-                self._week_html_cache[key] = (persisted, time.monotonic() + self._week_html_ttl)
-                return persisted, weeks_ahead
+        cached = self._week_html_cache.get(key)
+        if cached is not None:
+            html, _expires_at = cached
+            return html, weeks_ahead
 
-        html = fetch_week_html_for_date(self.client, restaurant, target_date, today)
-        self._week_html_cache[key] = (html, time.monotonic() + self._week_html_ttl)
-        self.cache.set_week_html(restaurant.code, weeks_ahead, html, ttl_seconds=self._week_html_ttl)
-        return html, weeks_ahead
+        persisted = self.cache.get_week_html_raw(restaurant.code, weeks_ahead)
+        if persisted is not None:
+            self._week_html_cache[key] = (persisted, time.monotonic() + self._week_html_ttl)
+            return persisted, weeks_ahead
+
+        raise RestopolisError(
+            f"No menu data cached yet for {restaurant.code} (week {weeks_ahead}) -- waiting for the next scheduled refresh"
+        )
 
     def check_orderability(
         self,
@@ -191,13 +217,19 @@ class OrderabilityService:
         now = now or self._now()
         logger.info("[CHECK]\n%s\n%s", restaurant.code, target_date)
 
-        previous = self.cache.get_raw(restaurant.code, target_date)
-
-        cached = None if refresh else self.cache.get(restaurant.code, target_date)
+        # Ignores age entirely (get_raw_with_checked_at, not get()) --
+        # this is the request path, and the request path now only ever
+        # shows "the last state", however old, never live-fetching on
+        # its own (see this module's docstring and cache.py's). Only
+        # orderability_engine/menu_refresh.py's scheduled sweep passes
+        # refresh=True, which skips this and always does a real fetch.
+        cached = None if refresh else self.cache.get_raw_with_checked_at(restaurant.code, target_date)
         if cached is not None:
             status, checked_at = cached
             logger.info("[CACHE] hit for %s %s (checked_at=%s)", restaurant.code, target_date, checked_at)
             return self._build_result(restaurant, target_date, status, now, from_cache=True)
+
+        previous = self.cache.get_raw(restaurant.code, target_date)
 
         try:
             html, _weeks_ahead = self.get_week_html(restaurant, target_date, refresh=refresh)

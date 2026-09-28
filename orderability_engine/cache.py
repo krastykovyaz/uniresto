@@ -2,24 +2,29 @@
 plus a separate SQLite cache for the raw week HTML the menu is parsed
 from.
 
-Restopolis is polite-scraped (rate-limited, see restopolis/client.py) and
-we additionally cache each (restaurant, date) check for a TTL so repeated
-UI/API calls don't re-hit the live site. `--refresh` (CLI) / `refresh=True`
-(service) bypasses the cache for that one check, but the *comparison*
-against the previous cached value still happens, so genuine changes are
-logged (see `[CHANGED]` in service.py) even when force-refreshing.
+Restopolis is polite-scraped (rate-limited, see restopolis/client.py).
+This is no longer just a TTL-driven "don't re-hit the live site too
+often" cache: since orderability_engine/menu_refresh.py's scheduled
+sweep took over ALL live fetching (a fixed 6-times-a-day schedule, not
+triggered by requests), OrderabilityService's normal request path reads
+these tables via the *_raw() methods below, which ignore `expires_at`
+entirely and just return whatever was last written, however old --
+"show the last state for everyone" was an explicit requirement, not
+an accident of caching. `expires_at` is still written by set()/
+set_week_html() (harmless, and still meaningful for `--refresh`'s own
+change-detection bookkeeping), but nothing on the request path checks
+it anymore; only menu_refresh.py calls with `refresh=True`, which
+bypasses these tables entirely and always does a real fetch.
 
 The week-HTML table (`week_html_cache`) is what backs the menu itself
 (dish names/descriptions/allergens -- see menu_service.py): it's kept in
-this same SQLite file, PERSISTED ACROSS PROCESS RESTARTS, and on a much
-longer TTL (1 hour, see service.py's WEEK_HTML_TTL_SECONDS) than the
-15-minute orderability-status cache above, since the menu itself changes
-far less often than open/closed signals do. Before this, the menu was
-only ever cached in an in-process Python dict (OrderabilityService's
-`_week_html_cache`), which is lost on every restart -- every restart
-meant every single menu load re-fetched live from Restopolis. That
-in-process dict still exists as a fast first check; this table is the
-persistent fallback behind it, not a replacement for it.
+this same SQLite file, PERSISTED ACROSS PROCESS RESTARTS. Before this,
+the menu was only ever cached in an in-process Python dict
+(OrderabilityService's `_week_html_cache`), which is lost on every
+restart -- every restart meant every single menu load re-fetched live
+from Restopolis. That in-process dict still exists as a fast first
+check; this table is the persistent fallback behind it, not a
+replacement for it.
 """
 
 from __future__ import annotations
@@ -156,6 +161,21 @@ class OrderabilityCache:
             return None
         return self.get_raw(restaurant_code, target_date), checked_at
 
+    def get_raw_with_checked_at(self, restaurant_code: str, target_date: date) -> tuple[RestopolisDayStatus, datetime] | None:
+        """Same as get() above, minus its expiry check -- returns
+        (status, checked_at) for whatever was last written, however old.
+        See this module's own docstring for why the request path uses
+        this instead of get()."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT checked_at FROM orderability_cache WHERE restaurant_code = ? AND target_date = ?",
+                (restaurant_code, target_date.isoformat()),
+            ).fetchone()
+        if row is None:
+            return None
+        checked_at = datetime.fromisoformat(row[0])
+        return self.get_raw(restaurant_code, target_date), checked_at
+
     def set(self, status: RestopolisDayStatus, ttl_seconds: int | None = None) -> None:
         ttl = ttl_seconds if ttl_seconds is not None else self.ttl_seconds
         now = datetime.now(timezone.utc)
@@ -223,6 +243,20 @@ class OrderabilityCache:
         if datetime.now(timezone.utc) >= expires_at:
             return None
         return html
+
+    def get_week_html_raw(self, restaurant_code: str, weeks_ahead: int) -> str | None:
+        """Return the cached HTML regardless of expiry -- the counterpart
+        to get_raw() above, for the same reason: OrderabilityService's
+        request path (see its module docstring) now only ever reads
+        "the last state", however old, and never live-fetches on its
+        own -- only orderability_engine/menu_refresh.py's scheduled sweep
+        does that, via refresh=True."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT html FROM week_html_cache WHERE restaurant_code = ? AND weeks_ahead = ?",
+                (restaurant_code, weeks_ahead),
+            ).fetchone()
+        return row[0] if row is not None else None
 
     def set_week_html(self, restaurant_code: str, weeks_ahead: int, html: str, ttl_seconds: int) -> None:
         now = datetime.now(timezone.utc)
