@@ -331,28 +331,32 @@ svg { display: block; }
    interest signal (see /admin/coming-soon-clicks) instead. */
 .restaurant-card.is-coming-soon { opacity: 0.55; }
 
-/* Delivery screen's campus filter (Part 67) -- same one-row pill
-   pattern as .category-nav's chips, minus its sticky positioning
-   (tuned specifically for the menu screen's own header height). */
+/* Delivery screen's campus filter (Part 67) -- always exactly 2 options
+   (Kirchberg/Belval), so unlike .category-nav's chips (an arbitrary,
+   possibly-long list that genuinely needs to scroll) these split the
+   row's width evenly instead: guarantees both sit fully visible on one
+   straight line at any screen width, rather than the 2nd pill running
+   off the edge needing a horizontal scroll to reach. */
 .campus-filter {
   display: flex;
   gap: var(--space-2);
-  overflow-x: auto;
-  scrollbar-width: none;
   padding: var(--space-3) var(--space-4) 0;
 }
-.campus-filter::-webkit-scrollbar { display: none; }
 .campus-filter-btn {
-  flex: 0 0 auto;
+  flex: 1 1 0;
+  min-width: 0;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 999px;
-  padding: 8px 14px;
-  font-size: 0.72rem;
+  padding: 8px 4px;
+  font-size: 0.56rem;
   font-weight: 700;
-  letter-spacing: 0.03em;
+  letter-spacing: 0;
   text-transform: uppercase;
+  text-align: center;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--color-text-muted);
   min-height: 36px;
 }
