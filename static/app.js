@@ -105,6 +105,11 @@ const state = {
   // does that -- see registeredEmail/communicationEmail below and
   // openEmailSheet()/openCommunicationEmailSheet()).
   customerEmail: loadCommunicationEmail() || loadRegisteredEmail() || "",
+  // Optional, same pre-fill-but-editable-per-order pattern as
+  // customerEmail above -- starts from the Profile-registered phone
+  // (registeredPhone below), editing it here doesn't change what's
+  // registered.
+  customerPhone: loadRegisteredPhone() || "",
   // The Profile-registered University email (Part 25) -- verified via a
   // code, so it doubles as proof of University of Luxembourg
   // affiliation. Kept separate from customerEmail (above) specifically
@@ -3892,7 +3897,11 @@ async function renderReview() {
   app.append(buildDeliveryLocationTextField());
   app.append(buildOrderCommentField());
 
-  // Optional -- only used to email the confirmation (Part 23). Pre-
+  // Required (changed from optional after a real delivery got stuck
+  // with no way to reach the customer -- an ambiguous delivery_location
+  // and no email/phone on file at all). Used to email the confirmation
+  // (Part 23) and, since it's now guaranteed present, gives the admin an
+  // actual way to reach the customer if a courier can't find them. Pre-
   // filled from the Profile Communication email (if set) or else the
   // University email, but editable per order; any well-formed address
   // is accepted here (not restricted to uni.lu -- that restriction is
@@ -3903,7 +3912,7 @@ async function renderReview() {
   const emailBlock = el(`
     <div class="field-block">
       <label for="customer-email">${escapeHtml(tr("customerEmail"))}</label>
-      <input id="customer-email" type="email" inputmode="email" placeholder="${escapeHtml(tr("customerEmailPlaceholder"))}" value="${escapeHtml(state.customerEmail)}">
+      <input id="customer-email" type="email" inputmode="email" required placeholder="${escapeHtml(tr("customerEmailPlaceholder"))}" value="${escapeHtml(state.customerEmail)}">
       ${
         // Only shown while this field is still defaulting to the
         // University email (no Communication email saved yet, Part 61) --
@@ -3924,6 +3933,27 @@ async function renderReview() {
   });
   app.append(emailBlock);
 
+  // Optional (unlike email above) -- another way for the admin to reach
+  // the customer if a courier can't find them, same reasoning as email's
+  // own required-ness but not itself required: email alone already
+  // guarantees SOME contact channel exists. Pre-filled from the Profile
+  // phone number (state.registeredPhone), same pattern as email's own
+  // pre-fill -- see loadRegisteredPhone()'s docstring, which used to say
+  // this was "not wired into checkout"; now it is. Reuses the Profile
+  // field's own loose isValidPhoneNumber() validation and i18n strings
+  // rather than inventing checkout-specific ones.
+  const phoneBlock = el(`
+    <div class="field-block">
+      <label for="customer-phone">${escapeHtml(tr("phoneNumber"))}</label>
+      <input id="customer-phone" type="tel" inputmode="tel" placeholder="${escapeHtml(tr("phoneNumberPlaceholder"))}" value="${escapeHtml(state.customerPhone)}">
+      <p class="field-hint">${escapeHtml(tr("phoneNumberHint"))}</p>
+    </div>
+  `);
+  phoneBlock.querySelector("input").addEventListener("input", (e) => {
+    state.customerPhone = e.target.value;
+  });
+  app.append(phoneBlock);
+
   const confirmBtn = el(`<button type="button" class="primary-button">${escapeHtml(tr("confirmOrder"))}</button>`);
   confirmBtn.addEventListener("click", confirmOrder);
   app.append(confirmBtn);
@@ -3935,14 +3965,23 @@ async function renderReview() {
 
 async function confirmOrder() {
   const email = state.customerEmail.trim();
+  const phone = state.customerPhone.trim();
   // Checked here, before the request, rather than only relying on the
   // server's own re-validation: Flask's abort() returns an HTML body
   // for this app's validation errors (no custom JSON error handler),
   // which api()'s error handling can't pull a specific reason out of --
   // this catches it locally with a real, translated message instead of
   // falling back to a generic "Request failed (400)" toast.
-  if (email && !isValidEmailFormat(email)) {
+  if (!email) {
+    showToast(tr("emailRequired"));
+    return;
+  }
+  if (!isValidEmailFormat(email)) {
     showToast(tr("invalidEmailFormat"));
+    return;
+  }
+  if (phone && !isValidPhoneNumber(phone)) {
+    showToast(tr("invalidPhoneNumber"));
     return;
   }
 
@@ -3957,7 +3996,8 @@ async function confirmOrder() {
         // menuItemId internally (see order-math.js). Map at the boundary.
         items: state.selection.map((s) => ({ id: s.menuItemId, quantity: s.quantity })),
         delivery_location: combinedDeliveryLocation() || null,
-        customer_email: email || null,
+        customer_email: email,
+        customer_phone: phone || null,
         customer_note: state.orderComment.trim() || null,
         // Part 72: shown alongside the courier's own language on each
         // item in the delivery-notification email (see mailer.py's

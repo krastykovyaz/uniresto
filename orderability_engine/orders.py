@@ -81,6 +81,12 @@ CREATE TABLE IF NOT EXISTS orders (
     on_way_emailed_at TEXT,            -- when the customer got the "on its way" email (Part 76) --
                                         -- set at most ONCE per order, so releasing and re-claiming
                                         -- (or a claim/release loop) can't email them again
+    customer_phone TEXT,               -- optional (unlike customer_email, which became required
+                                        -- after a real delivery got stuck with no way to reach the
+                                        -- customer) -- another admin-only contact channel, same
+                                        -- courier-privacy treatment as customer_email: stripped
+                                        -- before the Delivery screen ever sees it (see app.py's
+                                        -- api_delivery_orders())
     created_at TEXT NOT NULL
 );
 
@@ -112,6 +118,7 @@ _MIGRATIONS = [
     ("delivered_at", "ALTER TABLE orders ADD COLUMN delivered_at TEXT"),
     ("claimed_at", "ALTER TABLE orders ADD COLUMN claimed_at TEXT"),
     ("on_way_emailed_at", "ALTER TABLE orders ADD COLUMN on_way_emailed_at TEXT"),
+    ("customer_phone", "ALTER TABLE orders ADD COLUMN customer_phone TEXT"),
 ]
 
 
@@ -270,16 +277,17 @@ class OrderStore:
         customer_email: str | None = None,
         customer_note: str | None = None,
         customer_lang: str | None = None,
+        customer_phone: str | None = None,
     ) -> int:
         """items: recalculate_order()'s "items" list (server-priced/weighed)."""
         now = datetime.now(timezone.utc).isoformat()
         with self._lock, self._transaction() as conn:
             cur = conn.execute(
                 """
-                INSERT INTO orders (restaurant_code, restaurant_name, order_date, delivery_location, customer_email, customer_note, customer_lang, status, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+                INSERT INTO orders (restaurant_code, restaurant_name, order_date, delivery_location, customer_email, customer_note, customer_lang, customer_phone, status, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
                 """,
-                (restaurant_code, restaurant_name, order_date.isoformat(), delivery_location, customer_email, customer_note, customer_lang, now),
+                (restaurant_code, restaurant_name, order_date.isoformat(), delivery_location, customer_email, customer_note, customer_lang, customer_phone, now),
             )
             order_id = cur.lastrowid
             conn.executemany(
@@ -309,7 +317,7 @@ class OrderStore:
         with self._lock:
             row = self._conn.execute(
                 "SELECT id, restaurant_code, restaurant_name, order_date, delivery_location, customer_email, "
-                "status, real_price, created_at, customer_note, customer_lang, delivered_at, claimed_at FROM orders WHERE id = ?",
+                "status, real_price, created_at, customer_note, customer_lang, delivered_at, claimed_at, customer_phone FROM orders WHERE id = ?",
                 (order_id,),
             ).fetchone()
             if row is None:
@@ -360,6 +368,7 @@ class OrderStore:
             "customer_lang": row[10],
             "delivered_at": row[11],
             "claimed_at": row[12],
+            "customer_phone": row[13],
             "items": line_items,
             "totals": aggregate_totals(line_items),
         }

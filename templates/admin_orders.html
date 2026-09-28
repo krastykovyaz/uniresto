@@ -26,6 +26,7 @@
         Approximate price (app estimate): {{ '€%.2f'|format(o.totals.formula.total) if o.totals.formula.total is not none else 'n/a' }}
         {% if o.delivery_location %} &middot; Delivery: {{ o.delivery_location }}{% endif %}
         {% if o.customer_email %} &middot; {{ o.customer_email }}{% else %} &middot; <em>no email on file -- can't request confirmation</em>{% endif %}
+        {% if o.customer_phone %} &middot; {{ o.customer_phone }}{% endif %}
     </div>
     <div style="margin-top: 0.5rem; display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
         {% if o.status == 'pending' %}

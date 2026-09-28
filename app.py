@@ -431,11 +431,19 @@ def create_app(
         date_str = body.get("date")
         selection = body.get("items") or []
         delivery_location = body.get("delivery_location")
-        # Optional (Part 23): only sent when the customer filled in the
-        # checkout email field. No account system, so this is never
-        # persisted -- it's used once, right here, to send the
-        # confirmation, then discarded (see mailer.py).
+        # Required (Part 23, tightened later): sent to the customer's own
+        # confirmation, persisted (Part 30 needs to email them again once
+        # a real price is on file -- see orders.py's module docstring),
+        # and included in the admin's Telegram notification -- the ONE
+        # guaranteed way to reach this customer if a courier ends up
+        # stuck with an ambiguous delivery location and nobody to ask.
         customer_email = (body.get("customer_email") or "").strip() or None
+        # Optional -- an extra admin-only contact channel alongside
+        # email, same courier-privacy treatment (see api_delivery_orders()
+        # below, which strips both before the Delivery screen ever sees
+        # them). No format enforced beyond "looks like a phone number" --
+        # see static/app.js's isValidPhoneNumber() for why it's loose.
+        customer_phone = (body.get("customer_phone") or "").strip() or None
         # Optional (Part 55): relayed as-is to the admin (Telegram ping,
         # /admin/orders) and echoed in the customer's own confirmation
         # email -- never parsed/acted on here, e.g. "no onion".
@@ -450,7 +458,9 @@ def create_app(
 
         if not slug or not date_str or not selection:
             abort(400, description="Body must include 'restaurant', 'date', and a non-empty 'items' list of {id, quantity}")
-        if customer_email is not None and not _is_valid_email_format(customer_email):
+        if not customer_email:
+            abort(400, description="'customer_email' is required")
+        if not _is_valid_email_format(customer_email):
             abort(400, description="'customer_email' must be a valid email address")
         if customer_note is not None and len(customer_note) > 500:
             abort(400, description="'customer_note' must be at most 500 characters")
@@ -493,18 +503,18 @@ def create_app(
             customer_email,
             customer_note,
             customer_lang,
+            customer_phone,
         )
         order = store().get_order(order_id)
 
         # Best-effort, never fails the order itself: a flaky mail API
-        # or unset RESEND_API_KEY must never turn a successful
-        # order into a 500 (see mailer.py's module docstring). Only
-        # attempted when an email was actually given -- most orders in
-        # this dev-only app won't have one.
-        if customer_email is not None:
-            sent, error = send_order_confirmation(customer_email, order)
-            order["email_sent"] = sent
-            order["email_error"] = error
+        # or unset RESEND_API_KEY must never turn a successful order into
+        # a 500 (see mailer.py's module docstring). customer_email is
+        # guaranteed present at this point (validated above), unlike
+        # before it became required.
+        sent, error = send_order_confirmation(customer_email, order)
+        order["email_sent"] = sent
+        order["email_error"] = error
 
         # Also best-effort (Part 30): pings the admin to go place the
         # matching reservation in real Restopolis. Never blocks or fails
@@ -675,9 +685,11 @@ def create_app(
         order regardless of status, newest first (see
         OrderStore.list_recent_orders()'s own docstring for why a
         cancelled one is still included, for the screen's own "Closed"
-        section). Deliberately strips customer_email from every order
-        before returning: a courier needs to know WHERE to bring the
-        order, never who placed it. Viewing this list needs no
+        section). Deliberately strips customer_email AND customer_phone
+        from every order before returning: a courier needs to know WHERE
+        to bring the order, never who placed it or how to contact them
+        directly -- that's the admin's job (Telegram notification), not
+        a random courier's. Viewing this list needs no
         registration/verification at all (see delivery_subscribers.py's
         own docstring) -- registering only controls whether an address
         gets emailed."""
@@ -690,6 +702,7 @@ def create_app(
         now = datetime.now(TZINFO)
         for order in orders:
             order.pop("customer_email", None)
+            order.pop("customer_phone", None)
             # Part 76: the Delivery screen's "Expired" section reads this
             # instead of comparing dates on the courier's own device.
             order["expired"] = is_delivery_expired(date.fromisoformat(order["order_date"]), now)

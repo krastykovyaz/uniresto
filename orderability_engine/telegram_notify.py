@@ -82,6 +82,8 @@ def _format_order_message(order: dict, admin_url: str | None, restopolis_url: st
         lines.append(f"Delivery location: {order['delivery_location']}")
     if order.get("customer_email"):
         lines.append(f"Customer email: {order['customer_email']}")
+    if order.get("customer_phone"):
+        lines.append(f"Customer phone: {order['customer_phone']}")
 
     if admin_url:
         lines.append("")
