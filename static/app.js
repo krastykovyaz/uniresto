@@ -76,12 +76,6 @@ const COMMUNICATION_EMAIL_STORAGE_KEY = "uniresto.communicationEmail.v1";
 
 const state = {
   screen: "restaurants",
-  // Tracks the last of EAT_FLOW_SCREENS actually reached (see goTo()),
-  // separately from state.screen itself -- the Home tab (goHome()) uses
-  // this to return to wherever browsing left off (the date picker, or a
-  // restaurant's menu) after a detour to another tab, rather than always
-  // resetting to the restaurant list the way it used to.
-  lastEatScreen: "restaurants",
   lang: getLanguage(),
   restaurants: [],
   slug: null,
@@ -1164,7 +1158,7 @@ function openCommunicationEmailSheet(trigger) {
 // as "active" while on a drill-down screen, since none of them
 // literally is the current screen -- that's honest, not a bug.
 const BOTTOM_NAV_TABS = [
-  { screen: "restaurants", labelKey: "home", iconName: "home", go: () => goHome() },
+  { screen: "role", labelKey: "home", iconName: "home", go: () => goHome() },
   { screen: "favorites", labelKey: "favorites", iconName: "heart", go: () => openFavorites() },
   { screen: "order-history", labelKey: "orderHistory", iconName: "receipt", go: () => openOrderHistory() },
   { screen: "profile", labelKey: "profile", iconName: "user", go: () => goTo("profile") },
@@ -1291,37 +1285,21 @@ async function restoreLocation() {
   return false;
 }
 
-// The 3 screens the Home tab itself is "for" -- goHome() below restores
-// to whichever of these was last reached, so leaving mid-browse for
-// another tab and tapping Home again doesn't lose that place.
-const EAT_FLOW_SCREENS = new Set(["restaurants", "dates", "menu"]);
-
 function goTo(screen) {
   state.screen = screen;
-  if (EAT_FLOW_SCREENS.has(screen)) state.lastEatScreen = screen;
   render();
   scrollToTop();
   saveLocation();
 }
 
-// Bottom-nav Home tab's own destination (Part 58) -- re-enters wherever
-// browsing last left off (a restaurant's date picker or menu) rather
-// than always resetting to the restaurant list, PROVIDED the state that
-// screen renders from is still actually in memory (it always is: goTo()
-// itself is the only thing that clears state.slug/menu/etc, and this
-// app never does that just for visiting another tab). Falls back to the
-// restaurant list itself otherwise -- never a fetch, just a re-render of
-// whatever's already there, so this is always instant.
+// Bottom-nav Home tab's own destination -- always the role picker
+// ("What would you like to do?"), regardless of where browsing last
+// left off. An earlier version resumed mid-browse instead (the date
+// picker or a restaurant's menu); that's what a manual page refresh
+// still does (see RESTORABLE_SCREENS/restoreLocation()), but the Home
+// tap itself is meant as a genuine reset back to the top-level choice.
 function goHome() {
-  if (state.lastEatScreen === "menu" && state.slug && state.menu) {
-    goTo("menu");
-    return;
-  }
-  if (state.lastEatScreen === "dates" && state.slug && state.availableDates.length > 0) {
-    goTo("dates");
-    return;
-  }
-  goTo("restaurants");
+  goTo("role");
 }
 
 // ---------------------------------------------------------- Screen: restaurants
@@ -1352,11 +1330,12 @@ function buildingLabel(building) {
 
 // The very first screen on a fresh launch (see init()'s fallback below) --
 // picks between the two personas this app now serves: a customer placing
-// an order, or the person delivering already-placed orders. A returning
-// visit mid-session (a manual refresh) skips straight back to whichever
-// of the two screens below the user was already on -- see
-// RESTORABLE_SCREENS/restoreLocation() -- this picker itself is never
-// re-shown just because the user tapped "Home".
+// an order, or the person delivering already-placed orders. Also the
+// bottom-nav Home tab's own destination (goHome()) -- tapping Home
+// always resets back here, regardless of where browsing left off. A
+// manual page refresh is different: that skips straight back to
+// whichever screen the user was already on instead (see
+// RESTORABLE_SCREENS/restoreLocation()).
 function renderRole() {
   app.innerHTML = "";
   app.append(el(`<h1 class="large-title" style="padding-top:28px">${escapeHtml(tr("roleQuestion"))}</h1>`));
