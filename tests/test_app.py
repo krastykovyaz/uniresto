@@ -667,7 +667,8 @@ def test_create_order_ignores_any_price_client_tries_to_send(client):
     # server's own (null, real) price is what's stored regardless.
     resp = client.post(
         "/api/orders",
-        json={"restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu"},
+        json={
+            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu"},
     )
     body = resp.get_json()
     assert body["items"][0]["price"] is None
@@ -678,6 +679,7 @@ def test_create_order_with_uni_lu_email_sends_confirmation(client):
         resp = client.post(
             "/api/orders",
             json={
+                "delivery_location": "Building A — Room 1.01",
                 "restaurant": "altius",
                 "date": "2026-09-24",
                 "items": [{"id": SALAD_BAR_ID, "quantity": 1}],
@@ -698,6 +700,7 @@ def test_create_order_with_student_uni_lu_email_is_also_allowed(client):
         resp = client.post(
             "/api/orders",
             json={
+                "delivery_location": "Building A — Room 1.01",
                 "restaurant": "altius",
                 "date": "2026-09-24",
                 "items": [{"id": SALAD_BAR_ID, "quantity": 1}],
@@ -717,6 +720,7 @@ def test_create_order_with_non_uni_lu_email_is_allowed(client):
         resp = client.post(
             "/api/orders",
             json={
+                "delivery_location": "Building A — Room 1.01",
                 "restaurant": "altius",
                 "date": "2026-09-24",
                 "items": [{"id": SALAD_BAR_ID, "quantity": 1}],
@@ -732,6 +736,7 @@ def test_create_order_with_malformed_email_is_400(client):
     resp = client.post(
         "/api/orders",
         json={
+            "delivery_location": "Building A — Room 1.01",
             "restaurant": "altius",
             "date": "2026-09-24",
             "items": [{"id": SALAD_BAR_ID, "quantity": 1}],
@@ -745,6 +750,7 @@ def test_create_order_persists_customer_note(client):
     resp = client.post(
         "/api/orders",
         json={
+            "delivery_location": "Building A — Room 1.01",
             "restaurant": "altius",
             "date": "2026-09-24",
             "items": [{"id": SALAD_BAR_ID, "quantity": 1}],
@@ -762,6 +768,7 @@ def test_create_order_with_overly_long_note_is_400(client):
     resp = client.post(
         "/api/orders",
         json={
+            "delivery_location": "Building A — Room 1.01",
             "restaurant": "altius",
             "date": "2026-09-24",
             "items": [{"id": SALAD_BAR_ID, "quantity": 1}],
@@ -780,7 +787,8 @@ def test_create_order_without_email_is_400(client):
     with patch("app.send_order_confirmation") as mock_send:
         resp = client.post(
             "/api/orders",
-            json={"restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}]},
+            json={
+            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}]},
         )
     assert resp.status_code == 400
     mock_send.assert_not_called()
@@ -792,6 +800,7 @@ def test_create_order_still_succeeds_even_when_sending_the_email_fails(client):
         resp = client.post(
             "/api/orders",
             json={
+                "delivery_location": "Building A — Room 1.01",
                 "restaurant": "altius",
                 "date": "2026-09-24",
                 "items": [{"id": SALAD_BAR_ID, "quantity": 1}],
@@ -807,7 +816,8 @@ def test_create_order_still_succeeds_even_when_sending_the_email_fails(client):
 def test_create_order_for_unavailable_date_is_409(client):
     resp = client.post(
         "/api/orders",
-        json={"restaurant": "altius", "date": "2026-09-26", "items": [{"id": 0, "quantity": 1}], "customer_email": "student@uni.lu"},  # no_menu
+        json={
+            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-26", "items": [{"id": 0, "quantity": 1}], "customer_email": "student@uni.lu"},  # no_menu
     )
     assert resp.status_code == 409
 
@@ -826,7 +836,13 @@ def test_create_order_after_our_deadline_is_409_even_though_restopolis_still_say
     with _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, now=after_deadline) as late_client:
         resp = late_client.post(
             "/api/orders",
-            json={"restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu"},
+            json={
+                "delivery_location": "Building A — Room 1.01",
+                "restaurant": "altius",
+                "date": "2026-09-24",
+                "items": [{"id": SALAD_BAR_ID, "quantity": 1}],
+                "customer_email": "student@uni.lu",
+            },
         )
     assert resp.status_code == 409
     body = resp.get_json()
@@ -888,7 +904,8 @@ def test_create_order_rejects_early_cutoff_item_once_0800_has_passed(tmp_path, a
         with patch("orderability_engine.menu_service.requires_early_order", return_value=True):
             resp = late_client.post(
                 "/api/orders",
-                json={"restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu"},
+                json={
+            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu"},
             )
     assert resp.status_code == 409
     assert resp.get_json()["error"] == "early_cutoff_passed"
@@ -900,7 +917,8 @@ def test_create_order_allows_early_cutoff_item_before_0800(tmp_path, altius_html
         with patch("orderability_engine.menu_service.requires_early_order", return_value=True):
             resp = early_client.post(
                 "/api/orders",
-                json={"restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu"},
+                json={
+            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu"},
             )
     assert resp.status_code == 201
 
@@ -918,14 +936,49 @@ def test_quote_rejects_early_cutoff_item_once_0800_has_passed(tmp_path, altius_h
 
 
 def test_create_order_without_items_is_400(client):
-    resp = client.post("/api/orders", json={"restaurant": "altius", "date": "2026-09-24", "items": []})
+    resp = client.post("/api/orders", json={
+            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": []})
+    assert resp.status_code == 400
+
+
+def test_create_order_without_delivery_location_is_400(client):
+    # Part 89: Building/Delivery location used to be labelled "(optional)"
+    # but were never actually enforced -- an ambiguous/missing location is
+    # exactly what left couriers stuck (see api_create_order's own
+    # docstring comment).
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("student@uni.lu")
+    resp = client.post(
+        "/api/orders",
+        json={
+            "restaurant": "altius",
+            "date": "2026-09-24",
+            "items": [{"id": SALAD_BAR_ID, "quantity": 1}],
+            "customer_email": "student@uni.lu",
+        },
+    )
+    assert resp.status_code == 400
+
+
+def test_create_order_with_blank_delivery_location_is_400(client):
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("student@uni.lu")
+    resp = client.post(
+        "/api/orders",
+        json={
+            "restaurant": "altius",
+            "date": "2026-09-24",
+            "items": [{"id": SALAD_BAR_ID, "quantity": 1}],
+            "customer_email": "student@uni.lu",
+            "delivery_location": "   ",
+        },
+    )
     assert resp.status_code == 400
 
 
 def test_create_order_with_invalid_item_id_is_400(client):
     resp = client.post(
         "/api/orders",
-        json={"restaurant": "altius", "date": "2026-09-24", "items": [{"id": 999999, "quantity": 1}], "customer_email": "student@uni.lu"},
+        json={
+            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": 999999, "quantity": 1}], "customer_email": "student@uni.lu"},
     )
     assert resp.status_code == 400
 
@@ -933,7 +986,8 @@ def test_create_order_with_invalid_item_id_is_400(client):
 def test_get_order_by_id_returns_the_confirmed_order(client):
     create_resp = client.post(
         "/api/orders",
-        json={"restaurant": "altius", "date": "2026-09-24", "items": [{"id": BRETZEL_ID, "quantity": 2}], "customer_email": "student@uni.lu"},
+        json={
+            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": BRETZEL_ID, "quantity": 2}], "customer_email": "student@uni.lu"},
     )
     order_id = create_resp.get_json()["id"]
 
@@ -1708,7 +1762,8 @@ def test_create_order_notifies_every_registered_courier(client):
     ) as mock_notify:
         resp = client.post(
             "/api/orders",
-            json={"restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu"},
+            json={
+            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu"},
         )
     assert resp.status_code == 201
     mock_notify.assert_called_once()
@@ -1722,7 +1777,8 @@ def test_create_order_with_no_registered_couriers_notifies_no_one(client):
     ) as mock_notify:
         client.post(
             "/api/orders",
-            json={"restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu"},
+            json={
+            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu"},
         )
     mock_notify.assert_not_called()
 
@@ -1739,7 +1795,8 @@ def test_create_order_still_succeeds_when_courier_notification_fails(client):
     ):
         resp = client.post(
             "/api/orders",
-            json={"restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu"},
+            json={
+            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu"},
         )
     assert resp.status_code == 201
 
@@ -1749,8 +1806,10 @@ def test_create_order_still_succeeds_when_courier_notification_fails(client):
 # ---------------------------------------------------------------------------
 
 
-def _create_basic_order(client, customer_email="student@uni.lu", customer_note=None):
+def _create_basic_order(client, customer_email="student@uni.lu", customer_note=None, delivery_location="Building A — Room 1.01"):
     payload = {"restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}]}
+    if delivery_location:
+        payload["delivery_location"] = delivery_location
     if customer_email:
         payload["customer_email"] = customer_email
         # Part 83: customer_email must now be verified (not just well-
@@ -1786,7 +1845,8 @@ def test_create_order_pings_the_admin_via_telegram(client):
     with patch("app.send_admin_notification", return_value=(True, None)) as mock_notify:
         resp = client.post(
             "/api/orders",
-            json={"restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu"},
+            json={
+            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu"},
         )
     assert resp.status_code == 201
     mock_notify.assert_called_once()
@@ -1799,7 +1859,8 @@ def test_create_order_passes_a_mark_reviewing_url_when_admin_token_is_set(client
     with patch("app.send_admin_notification", return_value=(True, None)) as mock_notify:
         resp = client.post(
             "/api/orders",
-            json={"restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu"},
+            json={
+            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu"},
         )
     order_id = resp.get_json()["id"]
     mark_reviewing_url = mock_notify.call_args.kwargs["mark_reviewing_url"]
@@ -1814,7 +1875,8 @@ def test_create_order_passes_a_restopolis_url_for_the_ordered_restaurant(client)
     with patch("app.send_admin_notification", return_value=(True, None)) as mock_notify:
         client.post(
             "/api/orders",
-            json={"restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu"},
+            json={
+            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu"},
         )
     restopolis_url = mock_notify.call_args.kwargs["restopolis_url"]
     assert restopolis_url is not None
@@ -1827,7 +1889,8 @@ def test_create_order_mark_reviewing_url_is_none_without_admin_token(client):
     with patch("app.send_admin_notification", return_value=(True, None)) as mock_notify:
         client.post(
             "/api/orders",
-            json={"restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu"},
+            json={
+            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu"},
         )
     assert mock_notify.call_args.kwargs["mark_reviewing_url"] is None
 
@@ -1838,7 +1901,8 @@ def test_create_order_still_succeeds_when_telegram_notify_fails(client):
     with patch("app.send_admin_notification", return_value=(False, "chat not found")):
         resp = client.post(
             "/api/orders",
-            json={"restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu"},
+            json={
+            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu"},
         )
     assert resp.status_code == 201
 

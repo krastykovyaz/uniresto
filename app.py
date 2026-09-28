@@ -661,13 +661,16 @@ def create_app(
         slug = body.get("restaurant")
         date_str = body.get("date")
         selection = body.get("items") or []
-        delivery_location = body.get("delivery_location")
-        # Required (Part 23, tightened later): sent to the customer's own
-        # confirmation, persisted (Part 30 needs to email them again once
-        # a real price is on file -- see orders.py's module docstring),
-        # and included in the admin's Telegram notification -- the ONE
-        # guaranteed way to reach this customer if a courier ends up
-        # stuck with an ambiguous delivery location and nobody to ask.
+        delivery_location = (body.get("delivery_location") or "").strip() or None
+        # Required (Part 23, tightened for real Part 89 -- the frontend's
+        # Building + Delivery location fields were "(optional)" text
+        # labels only, never actually enforced here despite this
+        # docstring already claiming otherwise): sent to the customer's
+        # own confirmation, persisted (Part 30 needs to email them again
+        # once a real price is on file -- see orders.py's module
+        # docstring), and included in the admin's Telegram notification --
+        # the ONE guaranteed way to reach this customer if a courier ends
+        # up stuck with an ambiguous delivery location and nobody to ask.
         customer_email = (body.get("customer_email") or "").strip() or None
         # Optional -- an extra admin-only contact channel alongside
         # email, same courier-privacy treatment (see api_delivery_orders()
@@ -689,6 +692,8 @@ def create_app(
 
         if not slug or not date_str or not selection:
             abort(400, description="Body must include 'restaurant', 'date', and a non-empty 'items' list of {id, quantity}")
+        if not delivery_location:
+            abort(400, description="'delivery_location' is required")
         if not customer_email:
             abort(400, description="'customer_email' is required")
         if not _is_valid_email_format(customer_email):

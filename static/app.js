@@ -142,6 +142,15 @@ const state = {
   // temporal-dead-zone hazard documented on FAVORITES_STORAGE_KEY above.
   orderHistoryOrders: [],
   orderHistoryLoading: false,
+  // Favorites and the Basket/Order History screen are each reachable
+  // from two places -- their own bottom-nav tab, or a row on Profile --
+  // and "Back" should return wherever THIS visit actually came from, not
+  // always Home. Set right before navigating to either (Profile's own
+  // rows set "profile"; the bottom-nav tabs and a page-reload resume
+  // both reset it back to "restaurants"), and read by their own header's
+  // back button. One shared field is enough: only one of these two
+  // screens is ever open at a time.
+  subScreenReturnTo: "restaurants",
   smartLunchForm: null, // built lazily by openSmartLunch()
   smartLunchResult: null, // the POST /api/smart-lunch response, or null before searching
   smartLunchLoading: false,
@@ -1335,8 +1344,24 @@ function openOrderEmailVerifySheet(trigger, email, onVerified) {
 // literally is the current screen -- that's honest, not a bug.
 const BOTTOM_NAV_TABS = [
   { screen: "role", labelKey: "home", iconName: "home", go: () => goHome() },
-  { screen: "favorites", labelKey: "favorites", iconName: "heart", go: () => openFavorites() },
-  { screen: "order-history", labelKey: "orderHistory", iconName: "receipt", go: () => openOrderHistory() },
+  {
+    screen: "favorites",
+    labelKey: "favorites",
+    iconName: "heart",
+    go: () => {
+      state.subScreenReturnTo = "restaurants";
+      openFavorites();
+    },
+  },
+  {
+    screen: "order-history",
+    labelKey: "orderHistory",
+    iconName: "receipt",
+    go: () => {
+      state.subScreenReturnTo = "restaurants";
+      openOrderHistory();
+    },
+  },
   { screen: "profile", labelKey: "profile", iconName: "user", go: () => goTo("profile") },
 ];
 
@@ -2425,7 +2450,7 @@ async function openFavorites() {
 
 function renderFavorites() {
   app.innerHTML = "";
-  app.append(header({ title: tr("favorites"), back: () => goTo("restaurants") }));
+  app.append(header({ title: tr("favorites"), back: () => goTo(state.subScreenReturnTo) }));
 
   if (state.favoritesLoading) {
     app.append(loadingState(tr("loadingFavorites")));
@@ -2609,7 +2634,7 @@ function draftOrderCard() {
 
 function renderOrderHistory() {
   app.innerHTML = "";
-  app.append(header({ title: tr("orderHistory"), back: () => goTo("restaurants") }));
+  app.append(header({ title: tr("orderHistory"), back: () => goTo(state.subScreenReturnTo) }));
 
   if (state.orderHistoryLoading) {
     app.append(loadingState(tr("loadingOrderHistory")));
@@ -2681,7 +2706,10 @@ function renderProfile() {
       <span class="profile-row-chevron">${icon("chevron", 16)}</span>
     </button>
   `);
-  favRow.addEventListener("click", () => openFavorites());
+  favRow.addEventListener("click", () => {
+    state.subScreenReturnTo = "profile";
+    openFavorites();
+  });
   rows.append(favRow);
 
   const historyRow = el(`
@@ -2692,7 +2720,10 @@ function renderProfile() {
       <span class="profile-row-chevron">${icon("chevron", 16)}</span>
     </button>
   `);
-  historyRow.addEventListener("click", () => openOrderHistory());
+  historyRow.addEventListener("click", () => {
+    state.subScreenReturnTo = "profile";
+    openOrderHistory();
+  });
   rows.append(historyRow);
 
   // Read-only (Part 87) -- a plain row, not a <button>, since there's no
@@ -4553,6 +4584,19 @@ async function confirmOrder(triggerBtn) {
   }
   if (phone && !isValidPhoneNumber(phone)) {
     showToast(tr("invalidPhoneNumber"));
+    return;
+  }
+  // Part 89: Building and Delivery location are no longer optional -- a
+  // courier with no idea which building (let alone which office/room)
+  // to bring food to is exactly the ambiguity that left real couriers
+  // stuck (see combinedDeliveryLocation()'s own comment on how these two
+  // fields become the one delivery_location string the backend re-checks).
+  if (!state.deliveryBuilding) {
+    showToast(tr("deliveryBuildingRequired"));
+    return;
+  }
+  if (!state.deliveryLocationText.trim()) {
+    showToast(tr("deliveryLocationRequired"));
     return;
   }
 
