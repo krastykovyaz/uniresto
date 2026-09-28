@@ -350,8 +350,10 @@ If Restopolis ever adds one, it goes in `orderability_engine/detector.py`'s
 
 ## 12. Status decision table
 
-`orderability_engine/service.py` computes `status` purely from the two
-signals above (see its module docstring for the exact rationale):
+`orderability_engine/service.py` computes `status` from the two signals
+above (see its module docstring for the exact rationale). Notably,
+`ordering_available` (Restopolis's own reservation-button signal) is
+**not** a gate on `status` -- see §13 for why.
 
 | menu_available | ordering_available | status |
 |---|---|---|
@@ -359,9 +361,11 @@ signals above (see its module docstring for the exact rationale):
 | — | beyond the browsable horizon, or fetch/parse failed | `unknown` |
 | `None` (signal unreadable) | `None` | `unknown` |
 | `False` | `False` | `closed` |
-| `True` | `False` | `ordering_closed` |
 | `False` | `True` | `no_menu` |
-| `True` | `True` | `available` |
+| `True` | `True` or `False` | `available` |
+
+`ordering_closed` is a recognized status value (`orderability_engine/models.py`)
+but is intentionally never emitted anymore (see §13).
 
 `not_yet_published` is a recognized status value (`orderability_engine/models.py`)
 but the engine **never emits it automatically**: Restopolis's public page
@@ -375,25 +379,32 @@ or the date falls outside what Restopolis will show us at all.
 ## 13. OUR delivery rule vs. Restopolis's own signal
 
 `orderability_engine/delivery_rules.py` computes a completely separate
-`our_delivery.deadline` (08:00 Europe/Luxembourg on the target date
-itself, the SAME day -- superseded from an earlier v1 rule of 08:30 the
-day before, see Part 20) and `our_delivery.available`. The two are
-never merged: a result can be `status: "available"` (Restopolis says
+`our_delivery.deadline` (13:00 Europe/Luxembourg on the target date
+itself, the SAME day, plus an earlier 08:00 `early_cutoff` for
+grill/BBQ/salmon dishes -- Part 59) and `our_delivery.available`. The two
+are never merged: a result can be `status: "available"` (Restopolis says
 yes) with `our_delivery.available: false` (our own cutoff already
-passed) -- exactly the task's §12 example, reproduced live (numbers
-updated for the current same-day rule):
+passed):
 
 ```
 Restaurant: Altius, Date: 2026-09-24
-Restopolis: ordering_available = true
-Our deadline: 2026-09-24 08:00 Europe/Luxembourg
-Checked at:  2026-09-24 08:15 (after the deadline)
+Restopolis: menu_available = true
+Our deadline: 2026-09-24 13:00 Europe/Luxembourg
+Checked at:  2026-09-24 13:15 (after the deadline)
 -> status: "available", our_delivery.available: false
 ```
 
-`our_delivery.available` additionally requires Restopolis's own
-`menu_available` and `ordering_available` to both be `true` -- the engine
-never promises a delivery Restopolis itself wouldn't allow.
+`our_delivery.available` requires Restopolis's own `menu_available` to be
+`true` and now/before our own cutoff -- but deliberately does **not**
+require `ordering_available` to be `true`. Our courier buys the food in
+person at the canteen counter rather than through Restopolis's own online
+reservation flow, so that button being disabled doesn't stop us: as
+verified live on 2026-09-28, Restopolis can close its reservation button
+hours before service even starts, while the canteen keeps serving
+walk-ins all through its stated service window. (An earlier version of
+this rule did require `ordering_available = true`, which wrongly blocked
+real, fulfillable orders on days like that -- see the git history around
+`delivery_rules.py`/`service.py` for the change.)
 
 ## 14. Architecture
 

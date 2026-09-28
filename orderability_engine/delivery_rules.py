@@ -47,18 +47,24 @@ def compute_our_deadline(target_date: date, config: DeliveryRuleConfig = DEFAULT
 
 def evaluate_our_delivery(
     target_date: date,
-    restopolis_ordering_available: bool | None,
     restopolis_menu_available: bool | None,
     now: datetime | None = None,
     config: DeliveryRuleConfig = DEFAULT_RULE_CONFIG,
 ) -> OurDeliveryRule:
-    """Our delivery is only offered when Restopolis itself confirms both a
-    menu and open ordering AND our own cutoff hasn't passed yet. We never
-    promise delivery Restopolis itself wouldn't allow."""
+    """Our delivery is offered whenever Restopolis confirms a menu exists
+    AND our own cutoff hasn't passed yet -- deliberately NOT gated on
+    Restopolis's own reservation-button signal (restopolis_ordering_available).
+    Our courier buys the food in person at the canteen counter rather than
+    through Restopolis's online reservation flow, so that button being
+    disabled doesn't stop us: the canteen is still physically serving for
+    as long as its menu is up and service is running (confirmed live,
+    2026-09-28 -- Restopolis closes its own reservation button hours
+    before service even starts some days, while the canteen keeps serving
+    walk-ins all through its stated service window)."""
     now = now or datetime.now(TZINFO)
     deadline = compute_our_deadline(target_date, config)
 
-    restopolis_ok = restopolis_ordering_available is True and restopolis_menu_available is True
+    restopolis_ok = restopolis_menu_available is True
     within_deadline = now <= deadline
 
     return OurDeliveryRule(deadline=deadline, available=bool(restopolis_ok and within_deadline))

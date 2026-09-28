@@ -45,11 +45,18 @@ def test_available_date(cache, altius_html, altius_closed_week_html, altius_conf
     assert result.ordering_available is True
 
 
-def test_ordering_closed_date(cache, altius_html, altius_closed_week_html, altius_config, fixture_today):
+def test_menu_present_but_restopolis_reservation_closed_is_still_available(
+    cache, altius_html, altius_closed_week_html, altius_config, fixture_today
+):
+    # Our courier buys food in person at the counter, not through
+    # Restopolis's own reservation flow -- so its reservation button being
+    # disabled must not block ordering as long as a menu exists.
     service, _ = make_service(cache, altius_html, altius_closed_week_html, altius_config, fixture_today)
     result = service.check_orderability(altius_config, datetime.date(2026, 9, 23))
-    assert result.status == "ordering_closed"
-    assert "reservation button is disabled" in result.reason
+    assert result.status == "available"
+    assert result.reason is None
+    assert result.menu_available is True
+    assert result.ordering_available is False
 
 
 def test_no_menu_date(cache, altius_html, altius_closed_week_html, altius_config, fixture_today):
@@ -239,7 +246,11 @@ def test_get_next_available_dates_finds_available_days_only(
     service, _ = make_service(cache, altius_html, altius_closed_week_html, altius_config, fixture_today)
     now = datetime.datetime(2026, 9, 23, 9, 0, tzinfo=TZINFO)
     results = service.get_next_available_dates(altius_config, current_datetime=now, count=2)
-    assert [r.target_date for r in results] == [datetime.date(2026, 9, 24), datetime.date(2026, 9, 25)]
+    # Wed 23.09 has a menu but Restopolis's own reservation is closed --
+    # that no longer excludes it (see test_orderability_service.py's
+    # test_menu_present_but_restopolis_reservation_closed_is_still_available),
+    # so it's the first result here, still before our 13:00 cutoff.
+    assert [r.target_date for r in results] == [datetime.date(2026, 9, 23), datetime.date(2026, 9, 24)]
     assert all(r.status == "available" for r in results)
 
 

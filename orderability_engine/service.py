@@ -9,9 +9,17 @@ guessed):
     Restopolis fetch/parse fails, or horizon exceeded -> unknown
     menu_available is None or ordering_available None -> unknown
     menu=False, ordering=False                        -> closed
-    menu=True,  ordering=False                        -> ordering_closed
     menu=False, ordering=True                         -> no_menu
-    menu=True,  ordering=True                         -> available
+    menu=True,  ordering=either                        -> available
+
+`ordering_closed` is a recognized status value (see orderability/models.py)
+but is intentionally never emitted anymore: our courier buys food in
+person at the canteen counter rather than through Restopolis's own online
+reservation flow, so Restopolis's reservation button being disabled
+doesn't stop us from ordering -- only the presence of a menu, and our own
+cutoff (evaluate_our_delivery), do (confirmed live, 2026-09-28: Restopolis
+closes that button hours before service even starts some days, while the
+canteen keeps serving walk-ins all through its stated service window).
 
 `not_yet_published` is a recognized status value (see orderability/models.py)
 but is intentionally never emitted automatically: Restopolis's public page
@@ -68,10 +76,12 @@ def _status_from_signals(menu_available: bool | None, ordering_available: bool |
         return "unknown", "Restopolis returned this date's page but a signal (menu or reservation state) could not be read from it."
     if not menu_available and not ordering_available:
         return "closed", "Restopolis has no menu and reservation is closed for this date."
-    if menu_available and not ordering_available:
-        return "ordering_closed", "Restopolis has a menu for this date but its reservation button is disabled (closed)."
     if not menu_available and ordering_available:
         return "no_menu", "Restopolis shows no menu items for this date, though its reservation button is still open."
+    # menu_available is True here, regardless of ordering_available -- our
+    # courier buys the food in person at the counter, not through
+    # Restopolis's own reservation flow, so its button being disabled
+    # doesn't block us (see evaluate_our_delivery).
     return "available", None
 
 
@@ -226,10 +236,10 @@ class OrderabilityService:
             final_status, reason = "unknown", status.fetch_error
 
         our_delivery = evaluate_our_delivery(
-            target_date, status.ordering_available, status.menu_available, now=now, config=self.delivery_config
+            target_date, status.menu_available, now=now, config=self.delivery_config
         )
         early_cutoff = evaluate_our_delivery(
-            target_date, status.ordering_available, status.menu_available, now=now, config=EARLY_CUTOFF_CONFIG
+            target_date, status.menu_available, now=now, config=EARLY_CUTOFF_CONFIG
         )
         logger.info(
             "[OUR RULE]\ndeadline=%s\ndelivery_orderable=%s\nearly_cutoff=%s\nearly_cutoff_orderable=%s",
@@ -267,8 +277,8 @@ class OrderabilityService:
         horizon_exceeded: bool = False,
     ) -> OrderabilityResult:
         logger.info("[RESULT]\n%s", status.upper())
-        our_delivery = evaluate_our_delivery(target_date, None, None, now=now, config=self.delivery_config)
-        early_cutoff = evaluate_our_delivery(target_date, None, None, now=now, config=EARLY_CUTOFF_CONFIG)
+        our_delivery = evaluate_our_delivery(target_date, None, now=now, config=self.delivery_config)
+        early_cutoff = evaluate_our_delivery(target_date, None, now=now, config=EARLY_CUTOFF_CONFIG)
         return OrderabilityResult(
             restaurant_code=restaurant.code,
             restaurant_name=restaurant.name,
@@ -298,7 +308,12 @@ class OrderabilityService:
     ) -> list[OrderabilityResult]:
         """Scan forward day by day, actually checking Restopolis for each
         candidate (via check_orderability, so cache/refresh still apply),
-        keeping only status == 'available'. Stops once `count` are found,
+        keeping only status == 'available' AND still within our own cutoff
+        (our_delivery.available) -- status alone no longer implies "still
+        orderable today" now that it ignores Restopolis's reservation
+        signal (see _status_from_signals), so today must also drop off
+        this list once our 13:00/08:00 deadline passes, same as it always
+        has for order creation itself. Stops once `count` are found,
         `max_days_to_scan` calendar days have been tried, or Restopolis's
         browsable horizon is exhausted (status stays 'unknown' because of
         HorizonExceededError) for several consecutive days."""
@@ -312,7 +327,12 @@ class OrderabilityService:
         found: list[OrderabilityResult] = []
         for offset in range(max_days_to_scan):
             candidate = start + timedelta(days=offset)
-            result = self.check_orderability(restaurant, candidate)
+            # Pass `now` through explicitly -- our_delivery/early_cutoff are
+            # evaluated against whatever "now" check_orderability falls back
+            # to on its own otherwise (self._now(), the real wall clock
+            # unless overridden), which would silently disagree with the
+            # `now`/`start` this scan itself is pinned to.
+            result = self.check_orderability(restaurant, candidate, now=now)
 
             if result.horizon_exceeded:
                 # Horizon is a fixed number of weeks ahead of "today" (see
@@ -324,7 +344,7 @@ class OrderabilityService:
                 )
                 break
 
-            if result.status == "available":
+            if result.status == "available" and result.our_delivery.available:
                 found.append(result)
                 if len(found) >= count:
                     break
