@@ -12,6 +12,8 @@ menu_service.flatten_menu_items's own docstring)."""
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -33,8 +35,18 @@ class DishPhotoStore:
         with self._connect() as conn:
             conn.execute(SCHEMA)
 
-    def _connect(self) -> sqlite3.Connection:
-        return sqlite3.connect(self.db_path)
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
+        """One transaction per `with` block, and the connection actually
+        CLOSED afterwards -- sqlite3.Connection's own context manager only
+        commits/rolls back, so the bare `with sqlite3.connect(...)` this
+        replaces leaked a file handle on every call until GC got to it."""
+        conn = sqlite3.connect(self.db_path, timeout=10)
+        try:
+            with conn:
+                yield conn
+        finally:
+            conn.close()
 
     def set_photo(self, slug: str, category: str, name: str, photo_path: str) -> str | None:
         """Sets this dish's live photo, returning whatever photo_path it

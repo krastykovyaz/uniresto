@@ -13,7 +13,7 @@ import os
 import re
 import secrets
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -177,6 +177,30 @@ def _is_valid_email_format(email: str) -> bool:
     return bool(_EMAIL_FORMAT_RE.match(email.strip()))
 
 
+# Contact details on an order: never returned by any public endpoint
+# (api_get_order, api_delivery_orders) -- only the admin page and the
+# order's own creation response ever show them.
+PRIVATE_ORDER_FIELDS = ("customer_email", "customer_phone", "courier_email", "courier_lang", "reward_email")
+
+
+DELIVERY_LIST_DAYS = 14
+
+
+def _as_utc(iso_timestamp: str) -> datetime:
+    parsed = datetime.fromisoformat(iso_timestamp)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def _building_only(delivery_location: str | None) -> str | None:
+    """"Building G — 2211 room" -> "Building G": the checkout form always
+    joins building and free text with " — " (see combinedDeliveryLocation
+    in static/app.js). Anything not in that shape is dropped entirely
+    rather than guessed at."""
+    if not delivery_location or " — " not in delivery_location:
+        return None
+    return delivery_location.split(" — ", 1)[0]
+
+
 # Part 30's admin page (real-price entry) is more sensitive than
 # /admin/orderability's read-only debug view above -- it triggers a real
 # customer-facing email and changes order status -- so it's gated behind
@@ -297,6 +321,28 @@ def create_app(
     app.config["RATE_LIMIT_STORE"] = rate_limit_store or RateLimitStore("orders.db")
     app.config["RESTAURANTS_BY_SLUG"] = by_slug
 
+    @app.after_request
+    def security_headers(response):
+        headers = response.headers
+        headers.setdefault("X-Content-Type-Options", "nosniff")
+        headers.setdefault("X-Frame-Options", "DENY")
+        # Deliberately minimal: the SPA shell and templates use inline
+        # <script>/<style>, so a script-src policy would need a nonce
+        # pass first. These three lines break nothing and still stop
+        # framing, plugins and <base> hijacking.
+        headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'; object-src 'none'; base-uri 'self'")
+        if request.is_secure:
+            headers.setdefault("Strict-Transport-Security", "max-age=31536000")
+        # Admin pages and the email confirm/cancel pages carry their
+        # secret in the URL: never send it on as a Referer, never cache it.
+        if request.path.startswith(("/admin", "/o/")):
+            headers["Referrer-Policy"] = "no-referrer"
+            headers["Cache-Control"] = "no-store"
+            headers["X-Robots-Tag"] = "noindex"
+        else:
+            headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        return response
+
     def svc() -> OrderabilityService:
         return app.config["ORDERABILITY_SERVICE"]
 
@@ -347,6 +393,13 @@ def create_app(
         "track": (60, 3600),          # per event -- the evening report's page views
         "delivery_view": (60, 3600),  # counting only; the list itself is never blocked
         "dish_photo": (20, 3600),     # each one: a file write to static/dish_photos
+        # Shared by all three send-code routes: each hit emails an address
+        # of the caller's choosing from our sender, so a per-address
+        # resend cooldown alone still let one client mail thousands of
+        # different addresses. Loose enough for a shared campus NAT.
+        "send_code": (20, 3600),
+        "rewards_read": (300, 3600),  # Profile re-reads the balance on every visit
+        "rewards_claim": (30, 3600),
     }
 
     def within_rate_limit(bucket: str, suffix: str = "") -> tuple[bool, int]:
@@ -404,13 +457,16 @@ def create_app(
         just earns nothing. Keyed by order id, so toggling delivered/
         not-delivered can never pay twice."""
         courier = (order.get("courier_email") or "").strip()
-        customer = (order.get("customer_email") or "").strip()
+        # The University email the customer sent along (see
+        # api_create_order), else customer_email itself.
+        customer = (order.get("reward_email") or order.get("customer_email") or "").strip()
         if not (order.get("claimed_at") and order.get("picked_up_at") and courier):
             return
         # Case-insensitive only for the self-delivery check; the award keys
         # keep each address exactly as stored, matching how /api/rewards
         # and every other award look balances up.
-        if courier.lower() == customer.lower():
+        customer_addresses = {(order.get(f) or "").strip().lower() for f in ("reward_email", "customer_email")}
+        if courier.lower() in customer_addresses:
             return
         rewards().award_once(courier, f"{DELIVERY_COMPLETED}:{order['id']}", REWARD_POINTS[DELIVERY_COMPLETED])
         if customer:
@@ -544,6 +600,8 @@ def create_app(
         b"GIF89a": ".gif",
     }
     MAX_DISH_PHOTO_BYTES = 8 * 1024 * 1024
+    MAX_DISH_FIELD_LENGTH = 200
+    PENDING_DISH_PHOTO_MAX_AGE = timedelta(days=30)
 
     def _sniff_dish_photo_extension(data: bytes) -> str | None:
         for signature, ext in _DISH_PHOTO_SIGNATURES.items():
@@ -622,6 +680,10 @@ def create_app(
         name = (request.form.get("name") or "").strip()
         if not category or not name:
             abort(400, description="Form must include 'category' and 'name'")
+        # Both end up in the DB, the admin pages and the Telegram ping;
+        # no real menu name or category is anywhere near this long.
+        if len(category) > MAX_DISH_FIELD_LENGTH or len(name) > MAX_DISH_FIELD_LENGTH:
+            abort(400, description=f"'category' and 'name' must be at most {MAX_DISH_FIELD_LENGTH} characters")
         photo = request.files.get("photo")
         if photo is None or not photo.filename:
             abort(400, description="Form must include a 'photo' file")
@@ -644,6 +706,7 @@ def create_app(
         (photo_dir / filename).write_bytes(clean)
         photo_path = f"/static/dish_photos/{filename}"
 
+        _expire_stale_pending_photos()
         pending_id = pending_dish_photos().create(slug, category, name, photo_path, email=email)
         photo_url = f"{request.host_url.rstrip('/')}{photo_path}"
         review_url, approve_url, reject_url = _admin_dish_photo_urls(pending_id)
@@ -670,6 +733,8 @@ def create_app(
         same "just a fact to read" shape as api_dish_photos above --
         nothing here changes state, so no verification is required to
         merely check a balance."""
+        if (limited := rate_limited_response("rewards_read")) is not None:
+            return limited
         email = (request.args.get("email") or "").strip()
         if not email or not _is_allowed_customer_email(email):
             abort(400, description=f"'email' must be a valid address ending in {' or '.join(ALLOWED_EMAIL_DOMAINS)}")
@@ -692,6 +757,8 @@ def create_app(
 
     @app.post("/api/rewards/claim")
     def api_rewards_claim():
+        if (limited := rate_limited_response("rewards_claim")) is not None:
+            return limited
         body = request.get_json(force=True, silent=True) or {}
         email = (body.get("email") or "").strip()
         action = body.get("action")
@@ -785,6 +852,15 @@ def create_app(
         # missing/unrecognized, so mailer.py can tell "genuinely unknown"
         # apart from "really is English".
         customer_lang = _normalize_lang_arg(body.get("lang"))
+        # Optional: the student's verified University email (Profile's
+        # state.registeredEmail). customer_email defaults to the
+        # Communication Email, often a personal address, but Luni balances
+        # are only ever read by University email -- so this is where the
+        # order's delivery-time Luni goes. Silently dropped unless it's a
+        # verified uni.lu address; it never affects the order itself.
+        reward_email = (body.get("reward_email") or "").strip() or None
+        if reward_email and not (_is_allowed_customer_email(reward_email) and verified_emails().is_verified(reward_email)):
+            reward_email = None
 
         if not slug or not date_str or not selection:
             abort(400, description="Body must include 'restaurant', 'date', and a non-empty 'items' list of {id, quantity}")
@@ -845,6 +921,7 @@ def create_app(
             customer_note,
             customer_lang,
             customer_phone,
+            reward_email=reward_email,
         )
         order = store().get_order(order_id)
         # No Luni here: orders cost nothing and take one request, so paying
@@ -912,7 +989,7 @@ def create_app(
         # walk /api/orders/1..N. Order History never reads these fields
         # (the customer already knows their own email/phone), so strip
         # every contact detail, same treatment as api_delivery_orders.
-        for field in ("customer_email", "customer_phone", "courier_email", "courier_lang"):
+        for field in PRIVATE_ORDER_FIELDS:
             order.pop(field, None)
         return jsonify(order)
 
@@ -925,6 +1002,8 @@ def create_app(
         failure never leaves a code silently un-sendable-but-verifiable,
         and never blocks an immediate retry either (see
         EmailVerificationStore.issue()'s docstring)."""
+        if (limited := rate_limited_response("send_code")) is not None:
+            return limited
         body = request.get_json(force=True, silent=True) or {}
         email = (body.get("email") or "").strip()
         if not email:
@@ -976,6 +1055,8 @@ def create_app(
         point here is only proving the address is real and reachable,
         the same reason customer_email became required in the first
         place, not proving University affiliation."""
+        if (limited := rate_limited_response("send_code")) is not None:
+            return limited
         body = request.get_json(force=True, silent=True) or {}
         email = (body.get("email") or "").strip()
         if not email:
@@ -1024,6 +1105,8 @@ def create_app(
         actually the MORE reliable choice here: university mail systems
         sometimes reject automated mail from this app's sender. Still
         code-verified, just not domain-gated."""
+        if (limited := rate_limited_response("send_code")) is not None:
+            return limited
         body = request.get_json(force=True, silent=True) or {}
         email = (body.get("email") or "").strip()
         if not email:
@@ -1080,6 +1163,10 @@ def create_app(
             abort(400, description="Body must include 'email'")
         if not _is_allowed_customer_email(email):
             abort(400, description=f"'email' must be a valid address ending in {' or '.join(ALLOWED_EMAIL_DOMAINS)}")
+        # The docstring's premise, actually enforced: without this, anyone
+        # could subscribe any uni.lu address to every future order email.
+        if not verified_emails().is_verified(email):
+            return jsonify({"error": "email_not_verified", "message": "Your University email must be verified first"}), 403
         delivery_subscribers().add(email, _normalize_lang_arg(body.get("lang")) or "en")
         return jsonify({"registered": True})
 
@@ -1102,17 +1189,28 @@ def create_app(
         # can't pad the report; the list itself is always served.
         if within_rate_limit("delivery_view")[0]:
             page_views().record("delivery")
-        orders = store().list_recent_orders()
         now = datetime.now(TZINFO)
+        # Only the last DELIVERY_LIST_DAYS days: this list is public, and
+        # an ever-growing history of rooms food was brought to is not
+        # something any courier needs.
+        oldest = now - timedelta(days=DELIVERY_LIST_DAYS)
+        orders = [o for o in store().list_recent_orders() if _as_utc(o["created_at"]) >= oldest]
         for order in orders:
-            order.pop("customer_email", None)
-            order.pop("customer_phone", None)
             # Part 81: the claiming courier's own contact info is exactly
             # as private from every OTHER courier browsing this screen as
             # the customer's is -- nothing here needs to show it, and
             # nothing should.
-            order.pop("courier_email", None)
-            order.pop("courier_lang", None)
+            for field in PRIVATE_ORDER_FIELDS:
+                order.pop(field, None)
+            # Never shown on the Delivery screen, and free text ("call me
+            # at ...", "I'm in room ...") is exactly where contact details
+            # would slip in.
+            order.pop("customer_note", None)
+            # Once there's nothing left to deliver, the building is enough
+            # for the card's heading -- the room/free-text half isn't
+            # needed by anyone browsing this list anymore.
+            if order.get("delivered_at") or order["status"] == "cancelled":
+                order["delivery_location"] = _building_only(order.get("delivery_location"))
             # Part 76: the Delivery screen's "Expired" section reads this
             # instead of comparing dates on the courier's own device.
             order["expired"] = is_delivery_expired(date.fromisoformat(order["order_date"]), now)
@@ -1448,6 +1546,7 @@ def create_app(
         drawn from, for browsing/deciding from a browser instead."""
         if not _is_admin_authorized():
             abort(404)
+        _expire_stale_pending_photos()
         return render_template("admin_dish_photos.html", entries=pending_dish_photos().all_pending(), token=request.args.get("token"))
 
     @app.get("/admin/dish-photos/<int:pending_id>")
@@ -1472,6 +1571,14 @@ def create_app(
     def _delete_dish_photo_file(photo_path: str) -> None:
         (app.config["DISH_PHOTO_DIR"] / Path(photo_path).name).unlink(missing_ok=True)
 
+    def _expire_stale_pending_photos() -> None:
+        """Submissions nobody decided on within PENDING_DISH_PHOTO_MAX_AGE
+        are dropped, file and row -- run on every new upload and every
+        visit to the review queue, so there's no scheduler to maintain."""
+        cutoff = datetime.now(TZINFO) - PENDING_DISH_PHOTO_MAX_AGE
+        for stale in pending_dish_photos().pop_submitted_before(cutoff):
+            _delete_dish_photo_file(stale["photo_path"])
+
     def _discard_other_pending_submissions(entry: dict) -> None:
         """Part 86: `entry`'s dish just got a real decision (approve or
         replace) -- any OTHER still-pending submission for that exact
@@ -1494,7 +1601,42 @@ def create_app(
         if entry.get("email"):
             rewards().award_once(entry["email"], f"{DISH_PHOTO_APPROVED}:{entry['id']}", REWARD_POINTS[DISH_PHOTO_APPROVED])
 
+    def _dish_photo_decision_page(pending_id: int, decision: str):
+        """GET on an approve/reject link (the Telegram buttons): shows the
+        button that actually does it, instead of doing it -- anything that
+        prefetches the URL (a link preview, a browser, a scanner) must
+        never publish or delete a photo."""
+        if not _is_admin_authorized():
+            abort(404)
+        entry = pending_dish_photos().get(pending_id)
+        if entry is None:
+            return render_template(
+                "order_action.html",
+                icon="⚠️",
+                title="This link isn't valid anymore",
+                message="This photo was already approved or rejected.",
+            )
+        approve = decision == "approve"
+        return render_template(
+            "order_action.html",
+            icon="✅" if approve else "❌",
+            title=f"{'Approve' if approve else 'Reject'} this photo?",
+            message=f"{entry['name']} ({entry['category']})",
+            form_action=f"/admin/dish-photos/{pending_id}/{decision}",
+            form_fields={"token": request.args.get("token", "")},
+            form_button="Approve photo" if approve else "Reject photo",
+            form_danger=not approve,
+        )
+
     @app.get("/admin/dish-photos/<int:pending_id>/approve")
+    def admin_approve_dish_photo_page(pending_id):
+        return _dish_photo_decision_page(pending_id, "approve")
+
+    @app.get("/admin/dish-photos/<int:pending_id>/reject")
+    def admin_reject_dish_photo_page(pending_id):
+        return _dish_photo_decision_page(pending_id, "reject")
+
+    @app.post("/admin/dish-photos/<int:pending_id>/approve")
     def admin_approve_dish_photo(pending_id):
         """Part 84: the "✅ Approve" Telegram button (plain URL, same
         no-webhook reasoning as admin_mark_order_reviewing below) --
@@ -1527,7 +1669,7 @@ def create_app(
             message=f"{entry['name']} now shows this photo for every student.",
         )
 
-    @app.get("/admin/dish-photos/<int:pending_id>/reject")
+    @app.post("/admin/dish-photos/<int:pending_id>/reject")
     def admin_reject_dish_photo(pending_id):
         """Part 84: the "❌ Reject" Telegram button -- discards the
         submission (file and pending row both). Never published, and
@@ -1670,16 +1812,7 @@ def create_app(
     # per-order confirmation_token OrderStore.confirm_order/cancel_order
     # requires (see orders.py's docstring for the full state machine).
 
-    @app.get("/o/<int:order_id>/confirm")
-    def order_confirm(order_id):
-        token = request.args.get("token", "")
-        if store().confirm_order(order_id, token):
-            return render_template(
-                "order_action.html",
-                icon="✅",
-                title="Order confirmed",
-                message="Thanks -- your order is confirmed. See you at the canteen!",
-            )
+    def _order_link_not_valid():
         return render_template(
             "order_action.html",
             icon="⚠️",
@@ -1687,9 +1820,56 @@ def create_app(
             message="It may have already been used, or the order was already confirmed or cancelled.",
         )
 
-    @app.get("/o/<int:order_id>/cancel")
-    def order_cancel(order_id):
+    # GET only shows the button; the POST behind it is what acts. Mail
+    # security scanners (Microsoft Safe Links, which uni.lu mailboxes sit
+    # behind) open every link in an email -- when these were plain GETs,
+    # that alone could confirm or cancel a student's order.
+    @app.get("/o/<int:order_id>/confirm")
+    def order_confirm_page(order_id):
         token = request.args.get("token", "")
+        if not store().is_awaiting_confirmation(order_id, token):
+            return _order_link_not_valid()
+        return render_template(
+            "order_action.html",
+            icon="🧾",
+            title="Confirm your order?",
+            message="Confirm at the real price from the email, and we'll get it to you.",
+            form_action=f"/o/{order_id}/confirm",
+            form_fields={"token": token},
+            form_button="Confirm order",
+        )
+
+    @app.post("/o/<int:order_id>/confirm")
+    def order_confirm(order_id):
+        token = request.form.get("token") or request.args.get("token", "")
+        if store().confirm_order(order_id, token):
+            return render_template(
+                "order_action.html",
+                icon="✅",
+                title="Order confirmed",
+                message="Thanks -- your order is confirmed. See you at the canteen!",
+            )
+        return _order_link_not_valid()
+
+    @app.get("/o/<int:order_id>/cancel")
+    def order_cancel_page(order_id):
+        token = request.args.get("token", "")
+        if not store().is_awaiting_confirmation(order_id, token):
+            return _order_link_not_valid()
+        return render_template(
+            "order_action.html",
+            icon="🚫",
+            title="Cancel your order?",
+            message="Nothing has been charged. This can't be undone.",
+            form_action=f"/o/{order_id}/cancel",
+            form_fields={"token": token},
+            form_button="Cancel order",
+            form_danger=True,
+        )
+
+    @app.post("/o/<int:order_id>/cancel")
+    def order_cancel(order_id):
+        token = request.form.get("token") or request.args.get("token", "")
         if store().cancel_order(order_id, token):
             return render_template(
                 "order_action.html",
@@ -1697,12 +1877,7 @@ def create_app(
                 title="Order cancelled",
                 message="Your order has been cancelled. No charge was made.",
             )
-        return render_template(
-            "order_action.html",
-            icon="⚠️",
-            title="This link isn't valid anymore",
-            message="It may have already been used, or the order was already confirmed or cancelled.",
-        )
+        return _order_link_not_valid()
 
     # ----------------------------------------------------------- Customer
     #

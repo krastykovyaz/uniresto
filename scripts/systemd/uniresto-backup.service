@@ -1,0 +1,6 @@
+[Unit]
+Description=Nightly backup of UniResto orders.db and dish photos
+
+[Service]
+Type=oneshot
+ExecStart=/root/uniresto/scripts/backup_db.sh

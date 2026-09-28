@@ -12,6 +12,8 @@ its file) with nothing carried over.
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -44,8 +46,18 @@ class PendingDishPhotoStore:
             conn.execute(SCHEMA)
             self._migrate(conn)
 
-    def _connect(self) -> sqlite3.Connection:
-        return sqlite3.connect(self.db_path)
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
+        """One transaction per `with` block, and the connection actually
+        CLOSED afterwards -- sqlite3.Connection's own context manager only
+        commits/rolls back, so the bare `with sqlite3.connect(...)` this
+        replaces leaked a file handle on every call until GC got to it."""
+        conn = sqlite3.connect(self.db_path, timeout=10)
+        try:
+            with conn:
+                yield conn
+        finally:
+            conn.close()
 
     def _migrate(self, conn: sqlite3.Connection) -> None:
         existing = {row[1] for row in conn.execute("PRAGMA table_info(pending_dish_photos)").fetchall()}
@@ -86,6 +98,19 @@ class PendingDishPhotoStore:
     def delete(self, pending_id: int) -> None:
         with self._connect() as conn:
             conn.execute("DELETE FROM pending_dish_photos WHERE id = ?", (pending_id,))
+
+    def pop_submitted_before(self, cutoff: datetime) -> list[dict]:
+        """Deletes every submission older than `cutoff` that nobody ever
+        decided on, and returns them so the caller can delete their files
+        too -- otherwise an ignored Telegram ping leaves both the row and
+        the file behind forever."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, slug, category, name, photo_path, submitted_at, email FROM pending_dish_photos WHERE submitted_at < ?",
+                (cutoff.isoformat(),),
+            ).fetchall()
+            conn.execute("DELETE FROM pending_dish_photos WHERE submitted_at < ?", (cutoff.isoformat(),))
+        return [self._row_to_dict(row) for row in rows]
 
     def pop_other_pending_for_dish(self, slug: str, category: str, name: str, keep_id: int) -> list[dict]:
         """Part 86: once ONE submission for this exact dish has just been

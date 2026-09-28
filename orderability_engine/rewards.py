@@ -19,6 +19,8 @@ ever pays out once, while a DIFFERENT order/delivery/photo pays again."""
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -66,43 +68,59 @@ class RewardStore:
         with self._connect() as conn:
             conn.executescript(SCHEMA)
 
-    def _connect(self) -> sqlite3.Connection:
-        return sqlite3.connect(self.db_path)
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
+        """One transaction per `with` block, and the connection actually
+        CLOSED afterwards -- sqlite3.Connection's own context manager only
+        commits/rolls back, so the bare `with sqlite3.connect(...)` this
+        replaces leaked a file handle on every call until GC got to it."""
+        conn = sqlite3.connect(self.db_path, timeout=10)
+        try:
+            with conn:
+                yield conn
+        finally:
+            conn.close()
 
     def get_points(self, email: str) -> int:
         with self._connect() as conn:
             row = conn.execute("SELECT points FROM rewards WHERE email = ?", (email,)).fetchone()
         return row[0] if row else 0
 
+    @staticmethod
+    def _add_points(conn: sqlite3.Connection, email: str, delta: int) -> int:
+        conn.execute(
+            """
+            INSERT INTO rewards (email, points, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(email) DO UPDATE SET points = points + excluded.points, updated_at = excluded.updated_at
+            """,
+            (email, delta, datetime.now(timezone.utc).isoformat()),
+        )
+        return conn.execute("SELECT points FROM rewards WHERE email = ?", (email,)).fetchone()[0]
+
     def add_points(self, email: str, delta: int) -> int:
         """Adds `delta` (may be negative) to email's balance, creating
         the row at 0 first if this is their first-ever change. Returns
-        the new total. Internal building block for award_once() below --
-        app.py should never call this directly (see module docstring)."""
+        the new total. Test/maintenance helper -- app.py should never
+        call this directly (see module docstring), only award_once()."""
         with self._connect() as conn:
-            conn.execute(
-                """
-                INSERT INTO rewards (email, points, updated_at)
-                VALUES (?, ?, ?)
-                ON CONFLICT(email) DO UPDATE SET points = points + excluded.points, updated_at = excluded.updated_at
-                """,
-                (email, delta, datetime.now(timezone.utc).isoformat()),
-            )
-            row = conn.execute("SELECT points FROM rewards WHERE email = ?", (email,)).fetchone()
-        return row[0]
+            return self._add_points(conn, email, delta)
 
     def award_once(self, email: str, action: str, points: int) -> bool:
         """Credits `points` to `email` for `action`, but only the FIRST
         time this exact (email, action) pair is ever seen -- a second
         call with the same pair is a silent no-op (returns False), so
         callers never need their own "did I already pay this out"
-        bookkeeping. Returns True iff this call actually just paid it."""
+        bookkeeping. Returns True iff this call actually just paid it.
+        The dedup row and the balance change commit in ONE transaction,
+        so a crash between them can never record an award that was
+        never paid (or pay one that was never recorded)."""
         with self._connect() as conn:
             cur = conn.execute(
                 "INSERT OR IGNORE INTO reward_awards (email, action, points, awarded_at) VALUES (?, ?, ?, ?)",
                 (email, action, points, datetime.now(timezone.utc).isoformat()),
             )
-            newly_awarded = cur.rowcount > 0
-        if newly_awarded:
-            self.add_points(email, points)
-        return newly_awarded
+            if cur.rowcount == 0:
+                return False
+            self._add_points(conn, email, points)
+            return True

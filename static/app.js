@@ -4727,6 +4727,9 @@ async function submitOrder(email, phone) {
         items: state.selection.map((s) => ({ id: s.menuItemId, quantity: s.quantity })),
         delivery_location: combinedDeliveryLocation() || null,
         customer_email: email,
+        // Luni balances are read by University email, and customer_email
+        // above is usually the Communication Email -- see api_create_order.
+        reward_email: state.registeredEmail || null,
         customer_phone: phone || null,
         customer_note: state.orderComment.trim() || null,
         // Part 72: shown alongside the courier's own language on each

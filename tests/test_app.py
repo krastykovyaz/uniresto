@@ -457,7 +457,7 @@ def test_admin_dish_photo_review_page_for_unknown_id_is_friendly_not_404(client,
 def test_admin_approve_dish_photo_publishes_it(client, monkeypatch):
     monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
     upload = _upload_dish_photo(client, category="Végétarien", name="Salad'bar").get_json()
-    resp = client.get(f"/admin/dish-photos/{upload['id']}/approve?token=correct-token")
+    resp = client.post(f"/admin/dish-photos/{upload['id']}/approve?token=correct-token")
     assert resp.status_code == 200
     assert b"approved" in resp.data.lower()
 
@@ -477,8 +477,8 @@ def test_admin_approve_dish_photo_requires_token(client):
 def test_admin_approve_dish_photo_twice_is_a_friendly_no_op_the_second_time(client, monkeypatch):
     monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
     upload = _upload_dish_photo(client).get_json()
-    client.get(f"/admin/dish-photos/{upload['id']}/approve?token=correct-token")
-    resp = client.get(f"/admin/dish-photos/{upload['id']}/approve?token=correct-token")
+    client.post(f"/admin/dish-photos/{upload['id']}/approve?token=correct-token")
+    resp = client.post(f"/admin/dish-photos/{upload['id']}/approve?token=correct-token")
     assert resp.status_code == 200
     assert b"isn&#39;t valid anymore" in resp.data or b"isn't valid anymore" in resp.data
 
@@ -486,7 +486,7 @@ def test_admin_approve_dish_photo_twice_is_a_friendly_no_op_the_second_time(clie
 def test_admin_reject_dish_photo_discards_it(client, monkeypatch):
     monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
     upload = _upload_dish_photo(client, category="Végétarien", name="Salad'bar").get_json()
-    resp = client.get(f"/admin/dish-photos/{upload['id']}/reject?token=correct-token")
+    resp = client.post(f"/admin/dish-photos/{upload['id']}/reject?token=correct-token")
     assert resp.status_code == 200
     assert b"rejected" in resp.data.lower()
 
@@ -571,11 +571,11 @@ def test_admin_replace_dish_photo_unknown_id_is_friendly_not_404(client, monkeyp
 def test_approving_a_resubmission_deletes_the_dishs_previous_live_photo(client, monkeypatch):
     monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
     first = _upload_dish_photo(client, category="Végétarien", name="Salad'bar", data=_PNG_BYTES).get_json()
-    client.get(f"/admin/dish-photos/{first['id']}/approve?token=correct-token")
+    client.post(f"/admin/dish-photos/{first['id']}/approve?token=correct-token")
 
     other_png = _image_bytes((0x11,) * 3)
     second = _upload_dish_photo(client, category="Végétarien", name="Salad'bar", data=other_png).get_json()
-    client.get(f"/admin/dish-photos/{second['id']}/approve?token=correct-token")
+    client.post(f"/admin/dish-photos/{second['id']}/approve?token=correct-token")
 
     listed = client.get("/api/restaurants/altius/dish-photos").get_json()
     assert listed["Végétarien"]["Salad'bar"] == second["photo_path"]
@@ -587,7 +587,7 @@ def test_approving_a_resubmission_deletes_the_dishs_previous_live_photo(client, 
 def test_replacing_deletes_the_dishs_previous_live_photo(client, monkeypatch):
     monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
     first = _upload_dish_photo(client, category="Végétarien", name="Salad'bar", data=_PNG_BYTES).get_json()
-    client.get(f"/admin/dish-photos/{first['id']}/approve?token=correct-token")
+    client.post(f"/admin/dish-photos/{first['id']}/approve?token=correct-token")
 
     pending = _upload_dish_photo(client, category="Végétarien", name="Salad'bar").get_json()
     other_png = _image_bytes((0x22,) * 3)
@@ -607,7 +607,7 @@ def test_approving_discards_other_pending_submissions_for_the_same_dish(client, 
     other_png = _image_bytes((0x33,) * 3)
     other = _upload_dish_photo(client, category="Végétarien", name="Salad'bar", data=other_png).get_json()
 
-    client.get(f"/admin/dish-photos/{keeper['id']}/approve?token=correct-token")
+    client.post(f"/admin/dish-photos/{keeper['id']}/approve?token=correct-token")
 
     # The other, never explicitly decided, submission is discarded too --
     # both its pending row and its file.
@@ -624,7 +624,7 @@ def test_rejecting_does_not_touch_a_different_pending_submission_for_the_same_di
     other_png = _image_bytes((0x44,) * 3)
     second = _upload_dish_photo(client, category="Végétarien", name="Salad'bar", data=other_png).get_json()
 
-    client.get(f"/admin/dish-photos/{first['id']}/reject?token=correct-token")
+    client.post(f"/admin/dish-photos/{first['id']}/reject?token=correct-token")
 
     # Rejecting one submission is NOT a decision about the dish itself --
     # the other one is still legitimately awaiting its own review.
@@ -833,7 +833,7 @@ def test_toggling_delivered_and_back_does_not_repay(client):
 def test_approving_a_dish_photo_awards_1_luni_to_the_uploader(client, monkeypatch):
     monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
     upload = _upload_dish_photo(client, email="student@uni.lu").get_json()
-    client.get(f"/admin/dish-photos/{upload['id']}/approve?token=correct-token")
+    client.post(f"/admin/dish-photos/{upload['id']}/approve?token=correct-token")
     assert client.get("/api/rewards?email=student@uni.lu").get_json()["points"] == 1
 
 
@@ -855,7 +855,7 @@ def test_replacing_a_dish_photo_still_awards_the_original_uploader(client, monke
 def test_rejecting_a_dish_photo_awards_nothing(client, monkeypatch):
     monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
     upload = _upload_dish_photo(client, email="student@uni.lu").get_json()
-    client.get(f"/admin/dish-photos/{upload['id']}/reject?token=correct-token")
+    client.post(f"/admin/dish-photos/{upload['id']}/reject?token=correct-token")
     assert client.get("/api/rewards?email=student@uni.lu").get_json()["points"] == 0
 
 
@@ -863,8 +863,8 @@ def test_approving_two_different_dish_photos_from_the_same_uploader_pays_twice(c
     monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
     first = _upload_dish_photo(client, email="student@uni.lu", name="Salad'bar").get_json()
     second = _upload_dish_photo(client, email="student@uni.lu", name="Buddha bowl").get_json()
-    client.get(f"/admin/dish-photos/{first['id']}/approve?token=correct-token")
-    client.get(f"/admin/dish-photos/{second['id']}/approve?token=correct-token")
+    client.post(f"/admin/dish-photos/{first['id']}/approve?token=correct-token")
+    client.post(f"/admin/dish-photos/{second['id']}/approve?token=correct-token")
     assert client.get("/api/rewards?email=student@uni.lu").get_json()["points"] == 2
 
 
@@ -2391,7 +2391,7 @@ def test_order_confirm_with_valid_token_succeeds(client, monkeypatch):
     confirm_url = mock_send.call_args[0][3]
     path = confirm_url.split("://", 1)[1].split("/", 1)[1]  # strip scheme+host, keep "/o/<id>/confirm?token=..."
 
-    resp = client.get(f"/{path}")
+    resp = client.post(f"/{path}")
     assert resp.status_code == 200
     assert b"confirmed" in resp.data.lower()
     order = client.get(f"/api/orders/{order_id}").get_json()
@@ -2413,7 +2413,7 @@ def test_order_cancel_with_valid_token_succeeds(client, monkeypatch):
     cancel_url = mock_send.call_args[0][4]
     path = cancel_url.split("://", 1)[1].split("/", 1)[1]
 
-    resp = client.get(f"/{path}")
+    resp = client.post(f"/{path}")
     assert resp.status_code == 200
     assert b"cancelled" in resp.data.lower()
     order = client.get(f"/api/orders/{order_id}").get_json()
@@ -2428,8 +2428,8 @@ def test_order_confirm_link_cannot_be_replayed(client, monkeypatch):
     confirm_url = mock_send.call_args[0][3]
     path = confirm_url.split("://", 1)[1].split("/", 1)[1]
 
-    first = client.get(f"/{path}")
-    second = client.get(f"/{path}")
+    first = client.post(f"/{path}")
+    second = client.post(f"/{path}")
     assert b"Order confirmed" in first.data
     assert b"Order confirmed" not in second.data
 
@@ -2500,3 +2500,186 @@ def test_admin_page_renders(client):
     assert resp.status_code == 200
     assert b"Orderability debug" in resp.data
     assert b"AVAILABLE" in resp.data
+
+
+# ---------------------------------------------------------------------------
+# Audit fixes: Medium / Low
+# ---------------------------------------------------------------------------
+
+
+def _create_order_with_reward_email(client, customer_email, reward_email):
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified(customer_email)
+    payload = {
+        "restaurant": "altius",
+        "date": "2026-09-24",
+        "items": [{"id": SALAD_BAR_ID, "quantity": 1}],
+        "delivery_location": "Building A — Room 1.01",
+        "customer_email": customer_email,
+        "reward_email": reward_email,
+    }
+    with patch("app.send_admin_notification", return_value=(True, None)):
+        return client.post("/api/orders", json=payload).get_json()["id"]
+
+
+def test_order_luni_goes_to_the_university_email_not_the_communication_email(client):
+    order_id = _create_order_with_reward_email(client, "me@gmail.com", "student@uni.lu")
+    _hand_off(client, order_id)
+    _mark_delivered(client, order_id)
+    assert _points(client, "student@uni.lu") == 1
+    assert client.application.config["REWARD_STORE"].get_points("me@gmail.com") == 0
+
+
+def test_an_unverified_reward_email_is_ignored(client):
+    order_id = _create_order_with_reward_email(client, "me@gmail.com", "stranger@uni.lu")
+    _hand_off(client, order_id)
+    _mark_delivered(client, order_id)
+    assert _points(client, "stranger@uni.lu") == 0
+    assert client.application.config["REWARD_STORE"].get_points("me@gmail.com") == 1
+
+
+def test_courier_delivering_to_their_own_reward_email_earns_nothing(client):
+    order_id = _create_order_with_reward_email(client, "me@gmail.com", "courier@uni.lu")
+    _hand_off(client, order_id, courier_email="courier@uni.lu")
+    _mark_delivered(client, order_id)
+    assert _points(client, "courier@uni.lu") == 0
+
+
+def test_reward_email_is_never_exposed_publicly(client):
+    order_id = _create_order_with_reward_email(client, "me@gmail.com", "student@uni.lu")
+    assert "reward_email" not in client.get(f"/api/orders/{order_id}").get_json()
+    listed = next(o for o in client.get("/api/delivery/orders").get_json() if o["id"] == order_id)
+    assert "reward_email" not in listed
+
+
+def test_send_code_is_rate_limited_per_ip_across_addresses(client):
+    with patch("app.send_verification_code", return_value=(True, None)):
+        codes = [
+            client.post("/api/email/send-code", json={"email": f"s{i}@uni.lu"}).status_code for i in range(20)
+        ]
+        # The three send-code routes share one budget.
+        blocked = client.post("/api/orders/email/send-code", json={"email": "someone@gmail.com"})
+    assert codes == [200] * 20
+    assert blocked.status_code == 429
+
+
+def test_quick_courier_registration_requires_a_verified_email(client):
+    resp = client.post("/api/delivery/register/quick", json={"email": "never-verified@uni.lu"})
+    assert resp.status_code == 403
+    assert client.application.config["DELIVERY_SUBSCRIBER_STORE"].list_subscribers() == []
+    assert client.post("/api/delivery/register/quick", json={"email": "student@uni.lu"}).status_code == 200
+
+
+def test_rewards_claim_is_rate_limited(client):
+    codes = [
+        client.post("/api/rewards/claim", json={"email": "student@uni.lu", "action": "phone_number_added"}).status_code
+        for _ in range(31)
+    ]
+    assert codes == [200] * 30 + [429]
+
+
+def _price_order(client, order_id):
+    with patch("app.send_order_needs_confirmation", return_value=(True, None)) as mock_send:
+        client.post(f"/admin/orders/{order_id}/set-price?token=correct-token", data={"real_price": "8.50"})
+    confirm_url, cancel_url = mock_send.call_args[0][3], mock_send.call_args[0][4]
+    strip = lambda url: "/" + url.split("://", 1)[1].split("/", 1)[1]  # noqa: E731
+    return strip(confirm_url), strip(cancel_url)
+
+
+@pytest.mark.parametrize("which", ["confirm", "cancel"])
+def test_opening_an_email_link_only_shows_a_button(client, monkeypatch, which):
+    # A mail scanner opening the link must not decide the order.
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    order_id = _create_basic_order(client)
+    confirm_path, cancel_path = _price_order(client, order_id)
+    resp = client.get(confirm_path if which == "confirm" else cancel_path)
+    assert resp.status_code == 200
+    assert b'method="post"' in resp.data
+    assert client.get(f"/api/orders/{order_id}").get_json()["status"] == "awaiting_confirmation"
+
+
+def test_email_link_page_for_a_used_link_says_so_up_front(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    order_id = _create_basic_order(client)
+    confirm_path, cancel_path = _price_order(client, order_id)
+    client.post(confirm_path)
+    resp = client.get(cancel_path)
+    assert b"link isn" in resp.data
+    assert b'method="post"' not in resp.data
+
+
+def test_opening_an_approve_link_does_not_publish(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    upload = _upload_dish_photo(client).get_json()
+    resp = client.get(f"/admin/dish-photos/{upload['id']}/approve?token=correct-token")
+    assert resp.status_code == 200
+    assert b'method="post"' in resp.data
+    assert client.get("/api/restaurants/altius/dish-photos").get_json() == {}
+
+
+def test_approve_post_without_token_is_404(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    upload = _upload_dish_photo(client).get_json()
+    assert client.post(f"/admin/dish-photos/{upload['id']}/approve").status_code == 404
+    assert client.get("/api/restaurants/altius/dish-photos").get_json() == {}
+
+
+def test_delivery_list_never_includes_the_customer_note(client):
+    order_id = _create_basic_order(client, customer_note="call me on +352 000 000")
+    listed = next(o for o in client.get("/api/delivery/orders").get_json() if o["id"] == order_id)
+    assert "customer_note" not in listed
+
+
+def test_delivery_list_keeps_the_full_location_until_delivered_then_only_the_building(client):
+    order_id = _create_basic_order(client, delivery_location="Building G — 2211 room")
+    listed = lambda: next(o for o in client.get("/api/delivery/orders").get_json() if o["id"] == order_id)  # noqa: E731
+    assert listed()["delivery_location"] == "Building G — 2211 room"
+    _mark_delivered(client, order_id)
+    assert listed()["delivery_location"] == "Building G"
+
+
+def test_delivery_list_drops_orders_older_than_two_weeks(client):
+    order_id = _create_basic_order(client)
+    store = client.application.config["ORDER_STORE"]
+    old = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=15)).isoformat()
+    with store._lock:
+        store._conn.execute("UPDATE orders SET created_at = ? WHERE id = ?", (old, order_id))
+        store._conn.commit()
+    assert order_id not in [o["id"] for o in client.get("/api/delivery/orders").get_json()]
+
+
+def test_upload_dish_photo_rejects_an_overlong_name(client):
+    resp = _upload_dish_photo(client, name="x" * 201)
+    assert resp.status_code == 400
+
+
+def test_stale_pending_photos_expire_with_their_files(client):
+    stale = _upload_dish_photo(client, name="Old dish").get_json()
+    pending_store = client.application.config["PENDING_DISH_PHOTO_STORE"]
+    old = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=31)).isoformat()
+    with pending_store._connect() as conn:
+        conn.execute("UPDATE pending_dish_photos SET submitted_at = ? WHERE id = ?", (old, stale["id"]))
+    fresh = _upload_dish_photo(client, name="New dish").get_json()
+    assert pending_store.get(stale["id"]) is None
+    assert client.get(stale["photo_path"]).status_code == 404
+    assert pending_store.get(fresh["id"]) is not None
+
+
+def test_security_headers_on_every_response(client):
+    resp = client.get("/")
+    assert resp.headers["X-Content-Type-Options"] == "nosniff"
+    assert resp.headers["X-Frame-Options"] == "DENY"
+    assert "frame-ancestors 'none'" in resp.headers["Content-Security-Policy"]
+    assert resp.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
+
+
+def test_admin_and_email_link_pages_never_leak_their_token(client):
+    resp = client.get("/o/1/confirm?token=nonsense")
+    assert resp.headers["Referrer-Policy"] == "no-referrer"
+    assert resp.headers["Cache-Control"] == "no-store"
+
+
+def test_award_once_records_and_pays_together(tmp_path):
+    rewards = RewardStore(tmp_path / "r.db")
+    assert rewards.award_once("a@uni.lu", "x:1", 2) is True
+    assert rewards.award_once("a@uni.lu", "x:1", 2) is False
+    assert rewards.get_points("a@uni.lu") == 2

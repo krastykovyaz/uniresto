@@ -206,7 +206,7 @@ test("customer-email checkout strings exist for every configured language", () =
 });
 
 test("customer-email strings spot-check in a few languages", () => {
-  assert.equal(t("en", "customerEmail"), "Email (optional, for a confirmation)");
+  assert.equal(t("en", "customerEmail"), "Email (required, for a confirmation)");
   assert.equal(t("en", "confirmationEmailSent"), "Confirmation email sent");
   assert.equal(t("lb", "customerEmailPlaceholder"), "du@uni.lu");
   assert.equal(t("ar", "confirmationEmailFailed"), "تعذر إرسال بريد التأكيد");

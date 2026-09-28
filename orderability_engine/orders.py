@@ -146,6 +146,11 @@ _MIGRATIONS = [
     ("courier_lang", "ALTER TABLE orders ADD COLUMN courier_lang TEXT"),
     ("picked_up_at", "ALTER TABLE orders ADD COLUMN picked_up_at TEXT"),
     ("accepted_emailed_at", "ALTER TABLE orders ADD COLUMN accepted_emailed_at TEXT"),
+    # The customer's verified University email, when it differs from
+    # customer_email (which defaults to their Communication Email, often
+    # a personal address) -- the only address Profile's Luni balance
+    # reads, so the order's Luni has to land here to be visible at all.
+    ("reward_email", "ALTER TABLE orders ADD COLUMN reward_email TEXT"),
 ]
 
 
@@ -305,16 +310,17 @@ class OrderStore:
         customer_note: str | None = None,
         customer_lang: str | None = None,
         customer_phone: str | None = None,
+        reward_email: str | None = None,
     ) -> int:
         """items: recalculate_order()'s "items" list (server-priced/weighed)."""
         now = datetime.now(timezone.utc).isoformat()
         with self._lock, self._transaction() as conn:
             cur = conn.execute(
                 """
-                INSERT INTO orders (restaurant_code, restaurant_name, order_date, delivery_location, customer_email, customer_note, customer_lang, customer_phone, status, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+                INSERT INTO orders (restaurant_code, restaurant_name, order_date, delivery_location, customer_email, customer_note, customer_lang, customer_phone, reward_email, status, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
                 """,
-                (restaurant_code, restaurant_name, order_date.isoformat(), delivery_location, customer_email, customer_note, customer_lang, customer_phone, now),
+                (restaurant_code, restaurant_name, order_date.isoformat(), delivery_location, customer_email, customer_note, customer_lang, customer_phone, reward_email, now),
             )
             order_id = cur.lastrowid
             conn.executemany(
@@ -345,7 +351,7 @@ class OrderStore:
             row = self._conn.execute(
                 "SELECT id, restaurant_code, restaurant_name, order_date, delivery_location, customer_email, "
                 "status, real_price, created_at, customer_note, customer_lang, delivered_at, claimed_at, customer_phone, "
-                "courier_email, courier_lang, picked_up_at FROM orders WHERE id = ?",
+                "courier_email, courier_lang, picked_up_at, reward_email FROM orders WHERE id = ?",
                 (order_id,),
             ).fetchone()
             if row is None:
@@ -400,6 +406,7 @@ class OrderStore:
             "courier_email": row[14],
             "courier_lang": row[15],
             "picked_up_at": row[16],
+            "reward_email": row[17],
             "items": line_items,
             "totals": aggregate_totals(line_items),
         }
@@ -577,6 +584,17 @@ class OrderStore:
             if cur.rowcount == 0:
                 return None
         return token
+
+    def is_awaiting_confirmation(self, order_id: int, token: str) -> bool:
+        """Read-only twin of confirm_order()/cancel_order()'s own match --
+        lets the email link's GET page say "not valid anymore" up front
+        without consuming anything."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT 1 FROM orders WHERE id = ? AND status = 'awaiting_confirmation' AND confirmation_token = ?",
+                (order_id, token),
+            ).fetchone()
+        return row is not None
 
     def confirm_order(self, order_id: int, token: str) -> bool:
         """One-time use: the token only matches while status is still

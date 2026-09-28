@@ -3,6 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex">
     <title>UniResto</title>
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='favicon-32.png') }}">
     <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='favicon-16.png') }}">
@@ -15,6 +16,9 @@
         .icon { font-size: 40px; margin-bottom: 12px; }
         h1 { font-size: 18px; margin: 0 0 8px; }
         p { color: var(--muted); font-size: 14px; line-height: 1.5; margin: 0; }
+        form { margin-top: 20px; }
+        button { font: inherit; font-weight: 600; font-size: 15px; border: 0; border-radius: 10px; padding: 12px 22px; background: var(--green); color: #fff; cursor: pointer; }
+        button.danger { background: #b02a37; }
     </style>
 </head>
 <body>
@@ -24,6 +28,17 @@
             <div class="icon">{{ icon }}</div>
             <h1>{{ title }}</h1>
             <p>{{ message }}</p>
+            {% if form_action %}
+            {# A button, not the link itself: email scanners and link
+               previews fetch every URL they see, and a GET must never be
+               what confirms, cancels or publishes anything. #}
+            <form method="post" action="{{ form_action }}">
+                {% for key, value in (form_fields or {}).items() %}
+                <input type="hidden" name="{{ key }}" value="{{ value }}">
+                {% endfor %}
+                <button type="submit"{% if form_danger %} class="danger"{% endif %}>{{ form_button }}</button>
+            </form>
+            {% endif %}
         </div>
     </div>
 </body>
