@@ -121,7 +121,7 @@ def _html_shell(preheader: str, body_html: str, config: dict) -> str:
         </td></tr>
         <tr><td style="padding:16px 28px 24px;color:#6b7280;font-size:12px;line-height:1.5;border-top:1px solid #eef0f2;">
           This is an automated message from UniResto, a student project for University of Luxembourg Campus Kirchberg.
-          No payment is taken and no order is placed with Restopolis or delivered.
+          No payment is taken.
         </td></tr>
       </table>
     </td></tr>
