@@ -69,6 +69,9 @@ def _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, 
     # the verification requirement (or a different address) mark/omit it
     # explicitly themselves.
     verified_email_store.mark_verified("student@uni.lu")
+    # Part 88: "courier@uni.lu" is this whole file's canonical placeholder
+    # courier email, same reasoning as student@uni.lu above.
+    verified_email_store.mark_verified("courier@uni.lu")
     dish_photo_store = DishPhotoStore(tmp_path / "orders.db")
     pending_dish_photo_store = PendingDishPhotoStore(tmp_path / "orders.db")
     reward_store = RewardStore(tmp_path / "orders.db")
@@ -1286,6 +1289,26 @@ def _claim(client, order_id, courier_email="courier@uni.lu", lang=None):
     return client.post(f"/api/orders/{order_id}/claim", json=body)
 
 
+# Part 88: every courier action below needs a verified University email --
+# "courier@uni.lu" is this whole file's canonical placeholder courier
+# address (pre-verified once in _make_client(), same reasoning as
+# "student@uni.lu" for customer_email -- see that fixture's own comment).
+def _pickup(client, order_id, courier_email="courier@uni.lu"):
+    return client.post(f"/api/orders/{order_id}/picked-up", json={"courier_email": courier_email})
+
+
+def _unclaim(client, order_id, courier_email="courier@uni.lu"):
+    return client.post(f"/api/orders/{order_id}/unclaim", json={"courier_email": courier_email})
+
+
+def _mark_delivered(client, order_id, courier_email="courier@uni.lu"):
+    return client.post(f"/api/orders/{order_id}/mark-delivered", json={"courier_email": courier_email})
+
+
+def _mark_not_delivered(client, order_id, courier_email="courier@uni.lu"):
+    return client.post(f"/api/orders/{order_id}/mark-not-delivered", json={"courier_email": courier_email})
+
+
 def test_claim_order_notifies_admin(client):
     order_id = _create_basic_order(client)
     with patch("app.send_order_claimed_notification", return_value=(True, None)) as mock_notify, patch(
@@ -1313,6 +1336,39 @@ def test_claim_order_with_malformed_courier_email_is_400(client):
     order_id = _create_basic_order(client)
     resp = client.post(f"/api/orders/{order_id}/claim", json={"courier_email": "not-an-email"})
     assert resp.status_code == 400
+
+
+def test_claim_order_rejects_a_non_university_courier_email(client):
+    # Part 88: well-formed, but not @uni.lu/@student.uni.lu -- the OLD
+    # (pre-Part-88) check here was just _is_valid_email_format, which
+    # would have allowed this.
+    order_id = _create_basic_order(client)
+    resp = _claim(client, order_id, courier_email="courier@gmail.com")
+    assert resp.status_code == 400
+
+
+def test_claim_order_rejects_an_unverified_university_courier_email(client):
+    # A real uni.lu address, but never verified (only "courier@uni.lu" is
+    # pre-verified in this file's fixture -- see _make_client()).
+    order_id = _create_basic_order(client)
+    resp = _claim(client, order_id, courier_email="someone-else@uni.lu")
+    assert resp.status_code == 403
+    assert resp.get_json()["error"] == "email_not_verified"
+
+
+@pytest.mark.parametrize("action", ["picked-up", "unclaim", "mark-delivered", "mark-not-delivered"])
+def test_courier_actions_require_courier_email(client, action):
+    order_id = _create_basic_order(client)
+    resp = client.post(f"/api/orders/{order_id}/{action}", json={})
+    assert resp.status_code == 400
+
+
+@pytest.mark.parametrize("action", ["picked-up", "unclaim", "mark-delivered", "mark-not-delivered"])
+def test_courier_actions_reject_an_unverified_courier_email(client, action):
+    order_id = _create_basic_order(client)
+    resp = client.post(f"/api/orders/{order_id}/{action}", json={"courier_email": "someone-else@uni.lu"})
+    assert resp.status_code == 403
+    assert resp.get_json()["error"] == "email_not_verified"
 
 
 def test_claim_order_emails_the_courier_the_order_description(client):
@@ -1375,7 +1431,7 @@ def test_claim_order_refuses_a_cancelled_order_without_notifying(client):
 
 def test_claim_order_refuses_an_already_delivered_order_without_notifying(client):
     order_id = _create_basic_order(client, customer_email="student@uni.lu")
-    client.post(f"/api/orders/{order_id}/mark-delivered")
+    _mark_delivered(client, order_id)
     with patch("app.send_order_claimed_notification") as mock_notify, patch(
         "app.send_order_accepted"
     ) as mock_email:
@@ -1392,7 +1448,7 @@ def test_unclaim_releases_the_order_and_pings_the_admin(client):
     ):
         _claim(client, order_id)
     with patch("app.send_order_released_notification", return_value=(True, None)) as mock_released:
-        resp = client.post(f"/api/orders/{order_id}/unclaim")
+        resp = _unclaim(client, order_id)
     assert resp.status_code == 200
     mock_released.assert_called_once()
     listed = next(o for o in client.get("/api/delivery/orders").get_json() if o["id"] == order_id)
@@ -1402,7 +1458,7 @@ def test_unclaim_releases_the_order_and_pings_the_admin(client):
 def test_unclaim_an_unclaimed_order_is_a_409_without_pinging(client):
     order_id = _create_basic_order(client)
     with patch("app.send_order_released_notification") as mock_released:
-        resp = client.post(f"/api/orders/{order_id}/unclaim")
+        resp = _unclaim(client, order_id)
     assert resp.status_code == 409
     mock_released.assert_not_called()
 
@@ -1415,9 +1471,9 @@ def test_unclaim_after_pickup_is_a_409(client):
         "app.send_delivery_notification", return_value=(True, None)
     ):
         _claim(client, order_id)
-    client.post(f"/api/orders/{order_id}/picked-up")
+    _pickup(client, order_id)
     with patch("app.send_order_released_notification") as mock_released:
-        resp = client.post(f"/api/orders/{order_id}/unclaim")
+        resp = _unclaim(client, order_id)
     assert resp.status_code == 409
     mock_released.assert_not_called()
 
@@ -1430,7 +1486,7 @@ def test_reclaiming_after_a_release_never_emails_the_customer_twice(client):
         "app.send_order_accepted", return_value=(True, None)
     ) as mock_email:
         _claim(client, order_id)
-        client.post(f"/api/orders/{order_id}/unclaim")
+        _unclaim(client, order_id)
         _claim(client, order_id)
     # The admin hears about both claims (it was dropped in between)...
     assert mock_claimed.call_count == 2
@@ -1445,7 +1501,7 @@ def test_mark_picked_up_emails_the_customer_on_its_way(client):
     ), patch("app.send_order_accepted", return_value=(True, None)):
         _claim(client, order_id)
     with patch("app.send_order_out_for_delivery", return_value=(True, None)) as mock_email:
-        resp = client.post(f"/api/orders/{order_id}/picked-up")
+        resp = _pickup(client, order_id)
     assert resp.status_code == 200
     assert resp.get_json() == {"picked_up": True}
     mock_email.assert_called_once()
@@ -1457,7 +1513,7 @@ def test_mark_picked_up_emails_the_customer_on_its_way(client):
 def test_mark_picked_up_before_claiming_is_409(client):
     order_id = _create_basic_order(client)
     with patch("app.send_order_out_for_delivery") as mock_email:
-        resp = client.post(f"/api/orders/{order_id}/picked-up")
+        resp = _pickup(client, order_id)
     assert resp.status_code == 409
     mock_email.assert_not_called()
 
@@ -1469,8 +1525,8 @@ def test_mark_picked_up_twice_does_not_reemail(client):
     ), patch("app.send_order_accepted", return_value=(True, None)):
         _claim(client, order_id)
     with patch("app.send_order_out_for_delivery", return_value=(True, None)) as mock_email:
-        client.post(f"/api/orders/{order_id}/picked-up")
-        resp = client.post(f"/api/orders/{order_id}/picked-up")
+        _pickup(client, order_id)
+        resp = _pickup(client, order_id)
     assert resp.status_code == 409
     mock_email.assert_called_once()
 
@@ -1553,7 +1609,7 @@ def test_claim_order_unknown_order_404s(client):
 
 def test_mark_order_delivered(client):
     order_id = _create_basic_order(client)
-    resp = client.post(f"/api/orders/{order_id}/mark-delivered")
+    resp = _mark_delivered(client, order_id)
     assert resp.status_code == 200
     assert resp.get_json()["delivered"] is True
     listed = next(o for o in client.get("/api/delivery/orders").get_json() if o["id"] == order_id)
@@ -1561,14 +1617,14 @@ def test_mark_order_delivered(client):
 
 
 def test_mark_order_delivered_unknown_order_404s(client):
-    resp = client.post("/api/orders/999999/mark-delivered")
+    resp = _mark_delivered(client, 999999)
     assert resp.status_code == 404
 
 
 def test_mark_order_not_delivered_undoes_it(client):
     order_id = _create_basic_order(client)
-    client.post(f"/api/orders/{order_id}/mark-delivered")
-    resp = client.post(f"/api/orders/{order_id}/mark-not-delivered")
+    _mark_delivered(client, order_id)
+    resp = _mark_not_delivered(client, order_id)
     assert resp.status_code == 200
     assert resp.get_json()["delivered"] is False
     listed = next(o for o in client.get("/api/delivery/orders").get_json() if o["id"] == order_id)

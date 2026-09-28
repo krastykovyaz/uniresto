@@ -350,6 +350,38 @@ def create_app(
             return None
         return jsonify({"error": "rate_limited", "retry_after_seconds": retry_after}), 429
 
+    def _verified_courier_email_or_error():
+        """Part 88: every courier-facing action (claim/pickup/release/
+        mark-delivered/mark-not-delivered) now requires a verified
+        University email, the SAME ALLOWED_EMAIL_DOMAINS/VerifiedEmailStore
+        gate dish-photo uploads already use (Part 85) -- real
+        accountability for who's actually handling a student's food,
+        not just whatever address someone types into a one-off prompt
+        (the old openCourierClaimEmailSheet flow this replaces accepted
+        any domain, unverified). Reads `courier_email` from the JSON
+        body every one of these routes now sends. Returns (email, None)
+        on success, or (None, response) for the caller to return as-is."""
+        body = request.get_json(force=True, silent=True) or {}
+        email = (body.get("courier_email") or "").strip()
+        if not email:
+            return None, (jsonify({"error": "courier_email_required", "message": "'courier_email' is required"}), 400)
+        if not _is_allowed_customer_email(email):
+            return None, (
+                jsonify(
+                    {
+                        "error": "courier_email_required",
+                        "message": f"'courier_email' must be a valid address ending in {' or '.join(ALLOWED_EMAIL_DOMAINS)}",
+                    }
+                ),
+                400,
+            )
+        if not verified_emails().is_verified(email):
+            return None, (
+                jsonify({"error": "email_not_verified", "message": "Your University email must be verified before acting as a courier"}),
+                403,
+            )
+        return email, None
+
     def get_restaurant_or_404(slug: str):
         restaurant = by_slug.get(slug)
         if restaurant is None:
@@ -973,16 +1005,14 @@ def create_app(
 
     @app.post("/api/orders/<int:order_id>/claim")
     def api_claim_order(order_id):
-        """Courier-facing (Part 75, courier_email required Part 81), same
-        no-account/no-gate reasoning as /api/delivery/orders -- anyone
-        looking at the Delivery screen can claim an order, same trust
-        level as everyone already seeing every order on it; claiming
-        itself still needs no registration. `courier_email` IS required
-        though (unlike the optional customer_phone) -- the one and only
-        way this specific claimant gets the order's own description
-        (dish names, in their own language) is this email, and a claim
-        with no way to reach the claimant back is exactly the gap that
-        left a real courier stuck not knowing what they'd taken on.
+        """Courier-facing (Part 75), gated by a verified University email
+        (Part 88, courier_email required Part 81 -- see
+        _verified_courier_email_or_error's own docstring for why this
+        replaced the old any-domain/unverified prompt). `courier_email`
+        is still the one and only way this specific claimant gets the
+        order's own description (dish names, in their own language) back,
+        and a claim with no way to reach the claimant is exactly the gap
+        that left a real courier stuck not knowing what they'd taken on.
         Only the courier who actually WINS the claim (see
         OrderStore.mark_claimed()'s own docstring on why a second tap
         never re-fires this) triggers the admin Telegram ping, the
@@ -992,13 +1022,10 @@ def create_app(
         send must never fail the claim itself."""
         if (limited := rate_limited_response("courier_action")) is not None:
             return limited
-        body = request.get_json(force=True, silent=True) or {}
-        courier_email = (body.get("courier_email") or "").strip()
-        courier_lang = _normalize_lang_arg(body.get("lang"))
-        if not courier_email:
-            abort(400, description="'courier_email' is required")
-        if not _is_valid_email_format(courier_email):
-            abort(400, description="'courier_email' must be a valid email address")
+        courier_email, error = _verified_courier_email_or_error()
+        if error:
+            return error
+        courier_lang = _normalize_lang_arg((request.get_json(force=True, silent=True) or {}).get("lang"))
         order = store().get_order(order_id)
         if order is None:
             abort(404, description=f"No order #{order_id}")
@@ -1024,15 +1051,20 @@ def create_app(
     def api_mark_picked_up(order_id):
         """Part 81: a courier confirms they've physically grabbed the food
         from the canteen counter -- a separate, later fact than claiming
-        the job (see OrderStore.mark_picked_up()'s own docstring). Same
-        no-account/ungated reasoning as claim/unclaim/mark-delivered
-        above: whoever is looking at this order on the Delivery screen
-        can confirm it, no re-verification against courier_email needed.
+        the job (see OrderStore.mark_picked_up()'s own docstring). Gated
+        by a verified University email (Part 88) same as claim above --
+        no re-verification against the ORIGINAL claimant's own
+        courier_email though: this app has no accounts, so "some other
+        verified student" is the same trust level the Delivery screen
+        already gives everyone claiming/releasing/marking-delivered.
         Only the tap that actually wins (claimed but not yet picked up)
         emails the customer "on its way" -- best-effort, same as every
         other notification here."""
         if (limited := rate_limited_response("courier_action")) is not None:
             return limited
+        _courier_email, error = _verified_courier_email_or_error()
+        if error:
+            return error
         order = store().get_order(order_id)
         if order is None:
             abort(404, description=f"No order #{order_id}")
@@ -1048,12 +1080,16 @@ def create_app(
         """Part 76: "I can't deliver this after all" -- the courier who
         took it gives it back, so it shows "Take this delivery" again for
         everyone else (only possible before pickup -- see
-        OrderStore.mark_unclaimed()'s own docstring). Pings the admin
-        (who was told it was claimed); the customer is NOT emailed --
-        they were told it was accepted once, and the next courier to
-        take it is what actually matters to them."""
+        OrderStore.mark_unclaimed()'s own docstring). Gated by a verified
+        University email (Part 88), same reasoning as picked-up above.
+        Pings the admin (who was told it was claimed); the customer is
+        NOT emailed -- they were told it was accepted once, and the next
+        courier to take it is what actually matters to them."""
         if (limited := rate_limited_response("courier_action")) is not None:
             return limited
+        _courier_email, error = _verified_courier_email_or_error()
+        if error:
+            return error
         order = store().get_order(order_id)
         if order is None:
             abort(404, description=f"No order #{order_id}")
@@ -1064,12 +1100,15 @@ def create_app(
 
     @app.post("/api/orders/<int:order_id>/mark-delivered")
     def api_mark_order_delivered(order_id):
-        """Courier-facing (Part 73), same no-account/no-gate reasoning as
-        /api/delivery/orders above -- anyone looking at the Delivery
-        screen can mark an order delivered, same trust level as everyone
-        already seeing every order on it."""
+        """Courier-facing (Part 73), gated by a verified University email
+        (Part 88) same as every other courier action above -- same trust
+        level otherwise: any verified student can confirm it, same as
+        everyone already seeing every order on the Delivery screen."""
         if (limited := rate_limited_response("courier_action")) is not None:
             return limited
+        _courier_email, error = _verified_courier_email_or_error()
+        if error:
+            return error
         if not store().mark_delivered(order_id):
             abort(404, description=f"No order #{order_id}")
         return jsonify({"delivered": True})
@@ -1077,9 +1116,12 @@ def create_app(
     @app.post("/api/orders/<int:order_id>/mark-not-delivered")
     def api_mark_order_not_delivered(order_id):
         """Undoes the above -- a courier tapping the wrong order, or too
-        early, must be able to reverse it."""
+        early, must be able to reverse it. Same Part 88 gate."""
         if (limited := rate_limited_response("courier_action")) is not None:
             return limited
+        _courier_email, error = _verified_courier_email_or_error()
+        if error:
+            return error
         if not store().mark_not_delivered(order_id):
             abort(404, description=f"No order #{order_id}")
         return jsonify({"delivered": False})

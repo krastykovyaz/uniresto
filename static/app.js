@@ -1202,79 +1202,6 @@ function openCommunicationEmailSheet(trigger) {
   input.focus();
 }
 
-// Part 81: claiming ("Take this delivery") now requires an email, same
-// reasoning checkout's own customer_email has -- the ONE way this
-// specific claimant gets the order description (dish names, in their
-// own language) back, and a claim with no way to reach the claimant is
-// exactly the gap that left a real courier stuck not knowing what
-// they'd taken on. Reuses/saves state.communicationEmail (the same
-// general "where should we reach you" field checkout's own email
-// pre-fills from) rather than inventing a separate courier-only stored
-// value -- one person's email is one person's email, regardless of
-// which side of the app they're using it from. Required (no "remove"
-// option, unlike openCommunicationEmailSheet above): the claim cannot
-// proceed without one, so `onConfirm` only fires once a valid address
-// is actually saved.
-function openCourierClaimEmailSheet(trigger, onConfirm) {
-  const overlay = el(`<div class="sheet-overlay"></div>`);
-  const sheet = el(`
-    <div class="lang-sheet" role="dialog" aria-modal="true" aria-label="${escapeHtml(tr("courierClaimEmailTitle"))}">
-      <div class="sheet-grabber" aria-hidden="true"></div>
-      <div class="lang-sheet-header">
-        <p class="screen-title">${escapeHtml(tr("courierClaimEmailTitle"))}</p>
-        <button type="button" class="filter-close" aria-label="${escapeHtml(tr("back"))}">${icon("close", 20)}</button>
-      </div>
-      <p class="email-sheet-hint">${escapeHtml(tr("courierClaimEmailHint"))}</p>
-      <div class="field-block">
-        <input type="email" inputmode="email" class="courier-email-sheet-input" placeholder="${escapeHtml(tr("customerEmailPlaceholder"))}" value="${escapeHtml(state.communicationEmail || state.registeredEmail || "")}">
-      </div>
-      <button type="button" class="primary-button courier-email-sheet-save">${escapeHtml(tr("save"))}</button>
-    </div>
-  `);
-  const input = sheet.querySelector(".courier-email-sheet-input");
-
-  function close() {
-    document.removeEventListener("keydown", onKey);
-    overlay.remove();
-  }
-  function onKey(e) {
-    if (e.key === "Escape") {
-      close();
-      trigger?.focus();
-    }
-  }
-  sheet.querySelector(".courier-email-sheet-save").addEventListener("click", () => {
-    const value = input.value.trim();
-    if (!value) {
-      showToast(tr("emailRequired"));
-      return;
-    }
-    if (!isValidEmailFormat(value)) {
-      showToast(tr("invalidEmailFormat"));
-      return;
-    }
-    state.communicationEmail = value;
-    saveCommunicationEmail(value);
-    close();
-    onConfirm(value);
-  });
-  overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) {
-      close();
-      trigger?.focus();
-    }
-  });
-  sheet.querySelector(".filter-close").addEventListener("click", () => {
-    close();
-    trigger?.focus();
-  });
-  document.addEventListener("keydown", onKey);
-
-  overlay.append(sheet);
-  deviceScreen.append(overlay);
-  input.focus();
-}
-
 // Part 83: a real order now needs a PROVEN customer_email, not just a
 // well-formed one -- closes the gap that let orders through with
 // obviously fake addresses like "example@example.com". Auto-sends the
@@ -1876,6 +1803,21 @@ function fmtDateTime(isoString) {
   return new Intl.DateTimeFormat(currentLocale(), { dateStyle: "medium", timeStyle: "short" }).format(new Date(isoString));
 }
 
+// Part 88: every courier action (claim/pickup/release/mark-delivered/
+// mark-not-delivered) needs a verified University email -- the SAME
+// identity dish-photo uploads require (Part 85), replacing the old
+// openCourierClaimEmailSheet prompt that accepted any address,
+// unverified. Checked here, client-side, before ever calling the API,
+// so someone without one is sent straight to Profile instead of a
+// request just getting refused; returns the email to send as
+// `courier_email`, or null (having already redirected) if there isn't one.
+function verifiedCourierEmailOrRedirect() {
+  if (state.registeredEmail) return state.registeredEmail;
+  showToast(tr("courierNeedsUniversityEmail"));
+  goTo("profile");
+  return null;
+}
+
 // One order's card, shared by every section -- only the action row at
 // the bottom differs: Pending/Expired offer "Mark as delivered" (the
 // courier's own fact, independent of `status` -- see orders.py's
@@ -1909,9 +1851,11 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
   `);
   if (sectionKey === "pending" || sectionKey === "expired") {
     const actions = el(`<div class="delivery-order-actions"></div>`);
-    // "Take this delivery" (Part 75, courier_email required Part 81) --
-    // a courier signaling they're the one bringing it, which pings the
-    // admin (Telegram), emails THIS courier the order description (dish
+    // "Take this delivery" (Part 75, courier_email required Part 81,
+    // verified University email required Part 88 -- see
+    // verifiedCourierEmailOrRedirect()'s own comment) -- a courier
+    // signaling they're the one bringing it, which pings the admin
+    // (Telegram), emails THIS courier the order description (dish
     // names, in their own language), and -- if given -- emails the
     // customer "order accepted", all the FIRST time ANY courier taps it
     // (see OrderStore.mark_claimed()'s own docstring). Hidden once
@@ -1919,7 +1863,9 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
     // already shows it was taken.
     if (!order.claimed_at) {
       const claimBtn = el(`<button type="button" class="secondary-button delivery-claim-btn">${escapeHtml(tr("deliveryClaimJob"))}</button>`);
-      const doClaim = async (courierEmail) => {
+      claimBtn.addEventListener("click", async () => {
+        const courierEmail = verifiedCourierEmailOrRedirect();
+        if (!courierEmail) return;
         claimBtn.disabled = true;
         try {
           const result = await api(`/api/orders/${order.id}/claim`, {
@@ -1933,14 +1879,6 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
           showToast(tr("deliveryActionFailed"));
           claimBtn.disabled = false;
         }
-      };
-      claimBtn.addEventListener("click", () => {
-        const knownEmail = (state.communicationEmail || state.registeredEmail || "").trim();
-        if (knownEmail) {
-          doClaim(knownEmail);
-        } else {
-          openCourierClaimEmailSheet(claimBtn, doClaim);
-        }
       });
       actions.append(claimBtn);
     } else if (!order.picked_up_at) {
@@ -1950,9 +1888,11 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
       // OrderStore.mark_unclaimed()'s own docstring).
       const pickupBtn = el(`<button type="button" class="secondary-button delivery-pickup-btn">${escapeHtml(tr("deliveryConfirmPickup"))}</button>`);
       pickupBtn.addEventListener("click", async () => {
+        const courierEmail = verifiedCourierEmailOrRedirect();
+        if (!courierEmail) return;
         pickupBtn.disabled = true;
         try {
-          await api(`/api/orders/${order.id}/picked-up`, { method: "POST" });
+          await api(`/api/orders/${order.id}/picked-up`, { method: "POST", body: JSON.stringify({ courier_email: courierEmail }) });
           order.picked_up_at = new Date().toISOString();
           showToast(tr("deliveryPickedUpToast"));
           onChanged();
@@ -1964,13 +1904,16 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
       actions.append(pickupBtn);
 
       // Part 76: whoever took it can give it back -- no accounts, so the
-      // app can't tell WHO claimed it; anyone on this screen could, same
-      // trust level as claiming itself. Pings the admin server-side.
+      // app can't tell WHO claimed it; any OTHER verified student could,
+      // same trust level as claiming itself (Part 88). Pings the admin
+      // server-side.
       const releaseBtn = el(`<button type="button" class="secondary-button delivery-release-btn">${escapeHtml(tr("deliveryReleaseClaim"))}</button>`);
       releaseBtn.addEventListener("click", async () => {
+        const courierEmail = verifiedCourierEmailOrRedirect();
+        if (!courierEmail) return;
         releaseBtn.disabled = true;
         try {
-          await api(`/api/orders/${order.id}/unclaim`, { method: "POST" });
+          await api(`/api/orders/${order.id}/unclaim`, { method: "POST", body: JSON.stringify({ courier_email: courierEmail }) });
           order.claimed_at = null;
           showToast(tr("deliveryReleasedToast"));
           onChanged();
@@ -1983,9 +1926,11 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
     }
     const btn = el(`<button type="button" class="secondary-button delivery-mark-delivered">${escapeHtml(tr("deliveryMarkDelivered"))}</button>`);
     btn.addEventListener("click", async () => {
+      const courierEmail = verifiedCourierEmailOrRedirect();
+      if (!courierEmail) return;
       btn.disabled = true;
       try {
-        await api(`/api/orders/${order.id}/mark-delivered`, { method: "POST" });
+        await api(`/api/orders/${order.id}/mark-delivered`, { method: "POST", body: JSON.stringify({ courier_email: courierEmail }) });
         order.delivered_at = new Date().toISOString();
         showToast(tr("deliveryMarkDeliveredToast"));
         onChanged();
@@ -1999,9 +1944,11 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
   } else if (sectionKey === "delivered") {
     const btn = el(`<button type="button" class="secondary-button delivery-mark-delivered">${escapeHtml(tr("deliveryMarkNotDelivered"))}</button>`);
     btn.addEventListener("click", async () => {
+      const courierEmail = verifiedCourierEmailOrRedirect();
+      if (!courierEmail) return;
       btn.disabled = true;
       try {
-        await api(`/api/orders/${order.id}/mark-not-delivered`, { method: "POST" });
+        await api(`/api/orders/${order.id}/mark-not-delivered`, { method: "POST", body: JSON.stringify({ courier_email: courierEmail }) });
         order.delivered_at = null;
         showToast(tr("deliveryMarkNotDeliveredToast"));
         onChanged();
