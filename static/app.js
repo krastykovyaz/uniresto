@@ -2765,14 +2765,16 @@ function renderProfile() {
   // Fetched fresh every time Profile is opened (registeredEmail-gated --
   // an unverified visitor has never had anything to award, so it's just
   // the default 0 already showing above; no request needed for them).
-  // Re-renders only if still on Profile once the fetch resolves, so a
-  // quick navigate-away in the meantime doesn't stomp on whatever screen
-  // replaced it.
+  // Patches the row's own count text in place rather than calling
+  // renderProfile() again -- that would rebuild this exact row and its
+  // "if (state.registeredEmail)" fetch too, firing a new request on every
+  // resolution forever (a real bug an earlier version of this had).
   if (state.registeredEmail) {
     api(`/api/rewards?email=${encodeURIComponent(state.registeredEmail)}`)
       .then((result) => {
         state.rewardPoints = result.points;
-        if (state.screen === "profile") renderProfile();
+        const countEl = rewardRow.querySelector(".profile-row-count");
+        if (countEl) countEl.textContent = tr("luniPoints", { n: state.rewardPoints });
       })
       .catch(() => {});
   }
