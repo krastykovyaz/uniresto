@@ -604,6 +604,149 @@ def test_rewards_are_scoped_per_email(client):
 
 
 # ---------------------------------------------------------------------------
+# API: earning Luni (Part 90)
+# ---------------------------------------------------------------------------
+
+
+def test_verifying_university_email_awards_3_luni(client):
+    store = client.application.config["EMAIL_VERIFICATION_STORE"]
+    store.issue("newstudent@uni.lu", "123456")
+    resp = client.post("/api/email/verify-code", json={"email": "newstudent@uni.lu", "code": "123456"})
+    assert resp.get_json()["verified"] is True
+    assert client.get("/api/rewards?email=newstudent@uni.lu").get_json() == {"points": 3}
+
+
+def test_reverifying_the_same_university_email_does_not_repay(client):
+    store = client.application.config["EMAIL_VERIFICATION_STORE"]
+    store.issue("newstudent@uni.lu", "111111")
+    client.post("/api/email/verify-code", json={"email": "newstudent@uni.lu", "code": "111111"})
+    store.issue("newstudent@uni.lu", "222222")
+    client.post("/api/email/verify-code", json={"email": "newstudent@uni.lu", "code": "222222"})
+    assert client.get("/api/rewards?email=newstudent@uni.lu").get_json() == {"points": 3}
+
+
+def test_verifying_via_checkout_flow_does_not_award_the_registration_bonus(client):
+    # Part 90's "registration" bonus is specifically Profile's own
+    # University Email flow (/api/email/verify-code) -- verifying the
+    # SAME shared VerifiedEmailStore fact via checkout's own flow
+    # (Part 83) still unlocks ordering, but isn't "registering".
+    store = client.application.config["CHECKOUT_VERIFICATION_STORE"]
+    store.issue("checkout-only@uni.lu", "123456")
+    client.post("/api/orders/email/verify-code", json={"email": "checkout-only@uni.lu", "code": "123456"})
+    assert client.get("/api/rewards?email=checkout-only@uni.lu").get_json() == {"points": 0}
+
+
+def test_rewards_claim_awards_for_communication_email(client):
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("student@uni.lu")
+    resp = client.post("/api/rewards/claim", json={"email": "student@uni.lu", "action": "communication_email_added"})
+    body = resp.get_json()
+    assert body["awarded"] is True
+    assert body["points"] == 1
+
+
+def test_rewards_claim_for_communication_email_only_pays_once(client):
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("student@uni.lu")
+    client.post("/api/rewards/claim", json={"email": "student@uni.lu", "action": "communication_email_added"})
+    resp = client.post("/api/rewards/claim", json={"email": "student@uni.lu", "action": "communication_email_added"})
+    assert resp.get_json() == {"awarded": False, "points": 1}
+
+
+def test_rewards_claim_awards_for_phone_number(client):
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("student@uni.lu")
+    resp = client.post("/api/rewards/claim", json={"email": "student@uni.lu", "action": "phone_number_added"})
+    assert resp.get_json() == {"awarded": True, "points": 1}
+
+
+def test_rewards_claim_communication_email_and_phone_both_pay(client):
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("student@uni.lu")
+    client.post("/api/rewards/claim", json={"email": "student@uni.lu", "action": "communication_email_added"})
+    client.post("/api/rewards/claim", json={"email": "student@uni.lu", "action": "phone_number_added"})
+    assert client.get("/api/rewards?email=student@uni.lu").get_json() == {"points": 2}
+
+
+def test_rewards_claim_rejects_an_unknown_action(client):
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("student@uni.lu")
+    resp = client.post("/api/rewards/claim", json={"email": "student@uni.lu", "action": "free_points_please"})
+    assert resp.status_code == 400
+
+
+def test_rewards_claim_rejects_an_unverified_email(client):
+    resp = client.post("/api/rewards/claim", json={"email": "someone-else@uni.lu", "action": "phone_number_added"})
+    assert resp.status_code == 403
+    assert resp.get_json()["error"] == "email_not_verified"
+
+
+def test_rewards_claim_rejects_a_non_university_email(client):
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("student@gmail.com")
+    resp = client.post("/api/rewards/claim", json={"email": "student@gmail.com", "action": "phone_number_added"})
+    assert resp.status_code == 400
+
+
+def test_placing_an_order_awards_1_luni_to_the_customer_email(client):
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    assert client.get("/api/rewards?email=student@uni.lu").get_json()["points"] == 1
+    assert order_id
+
+
+def test_placing_two_orders_awards_luni_for_each(client):
+    _create_basic_order(client, customer_email="student@uni.lu")
+    _create_basic_order(client, customer_email="student@uni.lu")
+    assert client.get("/api/rewards?email=student@uni.lu").get_json()["points"] == 2
+
+
+def test_completing_a_delivery_awards_1_luni_to_the_courier(client):
+    order_id = _create_basic_order(client)
+    _mark_delivered(client, order_id, courier_email="courier@uni.lu")
+    assert client.get("/api/rewards?email=courier@uni.lu").get_json()["points"] == 1
+
+
+def test_toggling_delivered_and_back_does_not_repay(client):
+    order_id = _create_basic_order(client)
+    _mark_delivered(client, order_id, courier_email="courier@uni.lu")
+    _mark_not_delivered(client, order_id, courier_email="courier@uni.lu")
+    _mark_delivered(client, order_id, courier_email="courier@uni.lu")
+    assert client.get("/api/rewards?email=courier@uni.lu").get_json()["points"] == 1
+
+
+def test_approving_a_dish_photo_awards_1_luni_to_the_uploader(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    upload = _upload_dish_photo(client, email="student@uni.lu").get_json()
+    client.get(f"/admin/dish-photos/{upload['id']}/approve?token=correct-token")
+    assert client.get("/api/rewards?email=student@uni.lu").get_json()["points"] == 1
+
+
+def test_replacing_a_dish_photo_still_awards_the_original_uploader(client, monkeypatch):
+    # Part 90: the admin's own replacement photo goes live, but the
+    # Luni credit is still the ORIGINAL submitter's -- their submission
+    # is what prompted a real photo to end up on this dish either way.
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    upload = _upload_dish_photo(client, email="student@uni.lu").get_json()
+    other_png = b"\x89PNG\r\n\x1a\n" + b"\x55" * 32
+    client.post(
+        f"/admin/dish-photos/{upload['id']}/replace?token=correct-token",
+        data={"photo": (io.BytesIO(other_png), "admin-choice.png")},
+        content_type="multipart/form-data",
+    )
+    assert client.get("/api/rewards?email=student@uni.lu").get_json()["points"] == 1
+
+
+def test_rejecting_a_dish_photo_awards_nothing(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    upload = _upload_dish_photo(client, email="student@uni.lu").get_json()
+    client.get(f"/admin/dish-photos/{upload['id']}/reject?token=correct-token")
+    assert client.get("/api/rewards?email=student@uni.lu").get_json()["points"] == 0
+
+
+def test_approving_two_different_dish_photos_from_the_same_uploader_pays_twice(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    first = _upload_dish_photo(client, email="student@uni.lu", name="Salad'bar").get_json()
+    second = _upload_dish_photo(client, email="student@uni.lu", name="Buddha bowl").get_json()
+    client.get(f"/admin/dish-photos/{first['id']}/approve?token=correct-token")
+    client.get(f"/admin/dish-photos/{second['id']}/approve?token=correct-token")
+    assert client.get("/api/rewards?email=student@uni.lu").get_json()["points"] == 2
+
+
+# ---------------------------------------------------------------------------
 # API: order quote / create -- server-side recalculation (Task 3 §27/§28)
 # ---------------------------------------------------------------------------
 

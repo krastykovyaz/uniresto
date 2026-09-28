@@ -1064,6 +1064,31 @@ function openEmailSheet(trigger) {
 // loadRegisteredPhone()'s docstring for why). Same shell/behavior as
 // openEmailSheet()'s "enter" step: saving an empty field clears the
 // registration, matching the email sheet's own "empty save = remove" idiom.
+// Part 90: fires whichever one-time Luni action just happened
+// (Communication email / phone number added -- see the two commit()
+// functions below that call this). Best-effort and silent: never blocks
+// the actual save even if this fails (no verified University email yet,
+// a network hiccup, ...), and the server's own award_once() is what
+// actually prevents double-paying if this somehow fires twice for the
+// same action (see api_rewards_claim/RewardStore.award_once).
+// Returns a promise the caller should await BEFORE re-rendering anything
+// that shows state.rewardPoints (e.g. Profile's own Reward row) -- fired
+// off without awaiting it here once raced the very re-render meant to
+// show its result: renderProfile()'s own GET /api/rewards could reach
+// the server before this POST's write had actually committed, so the
+// balance briefly rendered one point stale. Updates state.rewardPoints
+// itself from the response, since that's the authoritative post-award
+// total already, without needing a second round trip.
+async function claimRewardOnce(action) {
+  if (!state.registeredEmail) return;
+  try {
+    const result = await api("/api/rewards/claim", { method: "POST", body: JSON.stringify({ email: state.registeredEmail, action }) });
+    state.rewardPoints = result.points;
+  } catch {
+    /* best-effort -- never blocks the actual save this followed */
+  }
+}
+
 function openPhoneSheet(trigger) {
   const overlay = el(`<div class="sheet-overlay"></div>`);
   const sheet = el(`
@@ -1093,10 +1118,14 @@ function openPhoneSheet(trigger) {
       trigger?.focus();
     }
   }
-  function commit(phone) {
+  async function commit(phone) {
     state.registeredPhone = phone;
-    if (phone) saveRegisteredPhone(phone);
-    else clearRegisteredPhone();
+    if (phone) {
+      saveRegisteredPhone(phone);
+      await claimRewardOnce("phone_number_added");
+    } else {
+      clearRegisteredPhone();
+    }
     close();
     document.querySelector(".profile-row-phone")?.focus();
     renderProfile();
@@ -1166,11 +1195,15 @@ function openCommunicationEmailSheet(trigger) {
       trigger?.focus();
     }
   }
-  function commit(email) {
+  async function commit(email) {
     state.communicationEmail = email;
     state.customerEmail = email || state.registeredEmail || "";
-    if (email) saveCommunicationEmail(email);
-    else clearCommunicationEmail();
+    if (email) {
+      saveCommunicationEmail(email);
+      await claimRewardOnce("communication_email_added");
+    } else {
+      clearCommunicationEmail();
+    }
     close();
     trigger?.focus();
     // Re-renders whichever screen is actually current (Profile, but also
@@ -2692,6 +2725,57 @@ function renderOrderHistory() {
 // what's genuinely real and useful: shortcuts to the two other
 // localStorage-backed personal lists, the language picker, and an
 // honest one-paragraph explanation of what this app actually is.
+// Part 90: read-only -- just explains the fixed reward schedule
+// (REWARD_POINTS in rewards.py is the one real source of truth for the
+// point values themselves; this sheet is purely informational, nothing
+// here can be edited or claimed directly). Opened from Profile's own
+// "Reward" row.
+function openRewardRulesSheet(trigger) {
+  const overlay = el(`<div class="sheet-overlay"></div>`);
+  const sheet = el(`
+    <div class="lang-sheet" role="dialog" aria-modal="true" aria-label="${escapeHtml(tr("rewardRulesTitle"))}">
+      <div class="sheet-grabber" aria-hidden="true"></div>
+      <div class="lang-sheet-header">
+        <p class="screen-title">${escapeHtml(tr("rewardRulesTitle"))}</p>
+        <button type="button" class="filter-close" aria-label="${escapeHtml(tr("back"))}">${icon("close", 20)}</button>
+      </div>
+      <ul class="reward-rules-list">
+        <li><span>${escapeHtml(tr("rewardRuleUniversityEmail"))}</span><strong>+3</strong></li>
+        <li><span>${escapeHtml(tr("rewardRuleCommunicationEmail"))}</span><strong>+1</strong></li>
+        <li><span>${escapeHtml(tr("rewardRulePhone"))}</span><strong>+1</strong></li>
+        <li><span>${escapeHtml(tr("rewardRuleOrder"))}</span><strong>+1</strong></li>
+        <li><span>${escapeHtml(tr("rewardRuleDelivery"))}</span><strong>+1</strong></li>
+        <li><span>${escapeHtml(tr("rewardRulePhoto"))}</span><strong>+1</strong></li>
+      </ul>
+    </div>
+  `);
+
+  function close() {
+    document.removeEventListener("keydown", onKey);
+    overlay.remove();
+  }
+  function onKey(e) {
+    if (e.key === "Escape") {
+      close();
+      trigger?.focus();
+    }
+  }
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) {
+      close();
+      trigger?.focus();
+    }
+  });
+  sheet.querySelector(".filter-close").addEventListener("click", () => {
+    close();
+    trigger?.focus();
+  });
+  document.addEventListener("keydown", onKey);
+
+  overlay.append(sheet);
+  deviceScreen.append(overlay);
+}
+
 function renderProfile() {
   app.innerHTML = "";
   app.append(header({ title: tr("profile"), back: () => goTo("restaurants") }));
@@ -2726,19 +2810,23 @@ function renderProfile() {
   });
   rows.append(historyRow);
 
-  // Read-only (Part 87) -- a plain row, not a <button>, since there's no
-  // sub-screen to open yet: nothing in this codebase awards Luni yet
-  // (see rewards.py's own docstring), so this is just the balance
-  // itself. Always shows an honest number, never a placeholder/spinner:
-  // 0 (state.rewardPoints' own default) is a real, correct starting
-  // balance for anyone who hasn't earned any yet.
+  // Part 90: a real <button>, like every other row here, opening a
+  // read-only sheet explaining how Luni are actually earned (see
+  // openRewardRulesSheet() below) -- also carries a `title` attribute so
+  // hovering it on a desktop browser shows the same explanation as a
+  // native tooltip, without needing a click at all. Always shows an
+  // honest number, never a placeholder/spinner: 0 (state.rewardPoints'
+  // own default) is a real, correct starting balance for anyone who
+  // hasn't earned any yet.
   const rewardRow = el(`
-    <div class="profile-row profile-row-reward">
+    <button type="button" class="profile-row profile-row-reward" title="${escapeHtml(tr("rewardRulesSummary"))}" aria-haspopup="dialog">
       <span class="profile-row-icon">${icon("sparkle", 20)}</span>
       <span class="profile-row-label">${escapeHtml(tr("reward"))}</span>
       <span class="profile-row-count">${escapeHtml(tr("luniPoints", { n: state.rewardPoints }))}</span>
-    </div>
+      <span class="profile-row-chevron">${icon("chevron", 16)}</span>
+    </button>
   `);
+  rewardRow.addEventListener("click", () => openRewardRulesSheet(rewardRow));
   rows.append(rewardRow);
   // Fetched fresh every time Profile is opened (registeredEmail-gated --
   // an unverified visitor has never had anything to award, so it's just

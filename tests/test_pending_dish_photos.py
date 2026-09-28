@@ -17,6 +17,18 @@ def test_create_then_get_returns_the_full_row(tmp_path):
     assert entry["submitted_at"]
 
 
+def test_create_stores_the_submitters_email(tmp_path):
+    store = PendingDishPhotoStore(tmp_path / "orders.db")
+    pending_id = store.create("altius", "Végétarien", "Salad'bar", "/static/dish_photos/a.jpg", email="student@uni.lu")
+    assert store.get(pending_id)["email"] == "student@uni.lu"
+
+
+def test_create_without_an_email_defaults_to_none(tmp_path):
+    store = PendingDishPhotoStore(tmp_path / "orders.db")
+    pending_id = store.create("altius", "Végétarien", "Salad'bar", "/static/dish_photos/a.jpg")
+    assert store.get(pending_id)["email"] is None
+
+
 def test_create_returns_a_unique_id_each_time(tmp_path):
     store = PendingDishPhotoStore(tmp_path / "orders.db")
     first = store.create("altius", "Végétarien", "A", "/static/dish_photos/a.jpg")

@@ -43,7 +43,16 @@ from orderability_engine.orders import MAX_QUANTITY, OrderStore, OrderValidation
 from orderability_engine.page_views import MAX_SOURCE_LENGTH, PageViewStore
 from orderability_engine.pending_dish_photos import PendingDishPhotoStore
 from orderability_engine.rate_limits import RateLimitStore
-from orderability_engine.rewards import RewardStore
+from orderability_engine.rewards import (
+    COMMUNICATION_EMAIL_ADDED,
+    DELIVERY_COMPLETED,
+    DISH_PHOTO_APPROVED,
+    ORDER_PLACED,
+    PHONE_NUMBER_ADDED,
+    REWARD_POINTS,
+    UNIVERSITY_EMAIL_VERIFIED,
+    RewardStore,
+)
 from orderability_engine.service import OrderabilityService
 from orderability_engine.smart_lunch import TIER_ORDER, find_smart_lunch
 from orderability_engine.verified_emails import VerifiedEmailStore
@@ -577,7 +586,7 @@ def create_app(
         (photo_dir / filename).write_bytes(data)
         photo_path = f"/static/dish_photos/{filename}"
 
-        pending_id = pending_dish_photos().create(slug, category, name, photo_path)
+        pending_id = pending_dish_photos().create(slug, category, name, photo_path, email=email)
         photo_url = f"{request.host_url.rstrip('/')}{photo_path}"
         review_url, approve_url, reject_url = _admin_dish_photo_urls(pending_id)
         send_dish_photo_review(restaurant.name, category, name, photo_url, review_url, approve_url, reject_url)
@@ -607,6 +616,35 @@ def create_app(
         if not email or not _is_allowed_customer_email(email):
             abort(400, description=f"'email' must be a valid address ending in {' or '.join(ALLOWED_EMAIL_DOMAINS)}")
         return jsonify({"points": rewards().get_points(email)})
+
+    # Part 90: Communication email and phone number are BOTH still purely
+    # client-side/localStorage fields (see saveCommunicationEmail()/
+    # saveRegisteredPhone() in app.js) -- there was never a backend call
+    # for "I just saved one" to hang a Luni award off of, unlike every
+    # other rule (which already piggybacks on a real, existing server
+    # action: verify-code, order creation, mark-delivered, dish-photo
+    # approval). A tiny, tightly-scoped allowlist rather than one generic
+    # "award me N points for action X" endpoint -- the server, not the
+    # client, still decides both which actions exist at all and how many
+    # points each is worth (REWARD_POINTS); the client only reports
+    # "this one just happened", and award_once()'s per-(email, action)
+    # uniqueness means the exact same request replayed any number of
+    # times still only ever pays out once.
+    _CLAIMABLE_REWARD_ACTIONS = {COMMUNICATION_EMAIL_ADDED, PHONE_NUMBER_ADDED}
+
+    @app.post("/api/rewards/claim")
+    def api_rewards_claim():
+        body = request.get_json(force=True, silent=True) or {}
+        email = (body.get("email") or "").strip()
+        action = body.get("action")
+        if not email or not _is_allowed_customer_email(email):
+            abort(400, description=f"'email' must be a valid address ending in {' or '.join(ALLOWED_EMAIL_DOMAINS)}")
+        if action not in _CLAIMABLE_REWARD_ACTIONS:
+            abort(400, description=f"'action' must be one of {sorted(_CLAIMABLE_REWARD_ACTIONS)}")
+        if not verified_emails().is_verified(email):
+            return jsonify({"error": "email_not_verified", "message": "Your University email must be verified first"}), 403
+        newly_awarded = rewards().award_once(email, action, REWARD_POINTS[action])
+        return jsonify({"awarded": newly_awarded, "points": rewards().get_points(email)})
 
     @app.post("/api/orderability/check")
     def api_orderability_check():
@@ -751,6 +789,13 @@ def create_app(
             customer_phone,
         )
         order = store().get_order(order_id)
+        # Part 90: "Make the order" -- credited to customer_email itself
+        # (already required and PROVEN via VerifiedEmailStore above, Part
+        # 83), not necessarily the same address as Profile's own
+        # University Email/state.registeredEmail. Keyed by this specific
+        # order_id so it can never double-pay if anything above is ever
+        # retried.
+        rewards().award_once(customer_email, f"{ORDER_PLACED}:{order_id}", REWARD_POINTS[ORDER_PLACED])
 
         # Best-effort, never fails the order itself: a flaky mail API
         # or unset RESEND_API_KEY must never turn a successful order into
@@ -854,6 +899,11 @@ def create_app(
         verified, reason = email_verification().verify(email, code)
         if verified:
             verified_emails().mark_verified(email)
+            # Part 90: "Registration via uni.lu email" -- specifically THIS
+            # flow (Profile's own University Email field), not the
+            # checkout/courier ones below that share the same
+            # VerifiedEmailStore fact but aren't "registering" anything.
+            rewards().award_once(email, UNIVERSITY_EMAIL_VERIFIED, REWARD_POINTS[UNIVERSITY_EMAIL_VERIFIED])
         return jsonify({"verified": verified, "reason": reason})
 
     @app.post("/api/orders/email/send-code")
@@ -1111,11 +1161,16 @@ def create_app(
         everyone already seeing every order on the Delivery screen."""
         if (limited := rate_limited_response("courier_action")) is not None:
             return limited
-        _courier_email, error = _verified_courier_email_or_error()
+        courier_email, error = _verified_courier_email_or_error()
         if error:
             return error
         if not store().mark_delivered(order_id):
             abort(404, description=f"No order #{order_id}")
+        # Part 90: "Make a delivery" -- keyed by this specific order_id so
+        # a later mark-not-delivered/mark-delivered toggle on the SAME
+        # order can never pay out a second time (see award_once's own
+        # docstring).
+        rewards().award_once(courier_email, f"{DELIVERY_COMPLETED}:{order_id}", REWARD_POINTS[DELIVERY_COMPLETED])
         return jsonify({"delivered": True})
 
     @app.post("/api/orders/<int:order_id>/mark-not-delivered")
@@ -1367,6 +1422,18 @@ def create_app(
         for other in others:
             _delete_dish_photo_file(other["photo_path"])
 
+    def _award_dish_photo_luni(entry: dict) -> None:
+        """Part 90: +1 Luni to whoever SUBMITTED this photo (entry["email"],
+        set at upload time -- see api_upload_dish_photo), the moment it
+        actually goes live -- whether that's a plain approve of their own
+        photo, or the admin replacing it with their own and publishing
+        that instead (still the original submitter's credit: their
+        submission is what prompted a real photo to end up on this dish
+        either way). None for a pre-Part-90 row this old migration never
+        backfilled an email onto -- never crashes, just nothing to credit."""
+        if entry.get("email"):
+            rewards().award_once(entry["email"], f"{DISH_PHOTO_APPROVED}:{entry['id']}", REWARD_POINTS[DISH_PHOTO_APPROVED])
+
     @app.get("/admin/dish-photos/<int:pending_id>/approve")
     def admin_approve_dish_photo(pending_id):
         """Part 84: the "✅ Approve" Telegram button (plain URL, same
@@ -1391,6 +1458,7 @@ def create_app(
         if previous_photo_path and previous_photo_path != entry["photo_path"]:
             _delete_dish_photo_file(previous_photo_path)
         _discard_other_pending_submissions(entry)
+        _award_dish_photo_luni(entry)
         pending_dish_photos().delete(pending_id)
         return render_template(
             "order_action.html",
@@ -1479,6 +1547,7 @@ def create_app(
 
         _delete_dish_photo_file(entry["photo_path"])
         _discard_other_pending_submissions(entry)
+        _award_dish_photo_luni(entry)
         pending_dish_photos().delete(pending_id)
         return render_template(
             "order_action.html",

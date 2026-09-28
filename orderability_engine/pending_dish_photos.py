@@ -26,28 +26,52 @@ CREATE TABLE IF NOT EXISTS pending_dish_photos (
 );
 """
 
+# `email` (Part 90): added after this table already existed on the live
+# server (Part 84) -- CREATE TABLE IF NOT EXISTS is a no-op against it,
+# so this needs an explicit migration, same reasoning/pattern as
+# orders.py's own _MIGRATIONS. Records who submitted the photo, so
+# approving/replacing it (see app.py's admin_approve_dish_photo/
+# admin_replace_dish_photo) knows whose Luni balance to credit.
+_MIGRATIONS = [
+    ("email", "ALTER TABLE pending_dish_photos ADD COLUMN email TEXT"),
+]
+
 
 class PendingDishPhotoStore:
     def __init__(self, db_path: str | Path = "orders.db"):
         self.db_path = str(db_path)
         with self._connect() as conn:
             conn.execute(SCHEMA)
+            self._migrate(conn)
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.db_path)
 
-    def create(self, slug: str, category: str, name: str, photo_path: str) -> int:
+    def _migrate(self, conn: sqlite3.Connection) -> None:
+        existing = {row[1] for row in conn.execute("PRAGMA table_info(pending_dish_photos)").fetchall()}
+        for column_name, statement in _MIGRATIONS:
+            if column_name not in existing:
+                try:
+                    conn.execute(statement)
+                except sqlite3.OperationalError as exc:
+                    # Both gunicorn workers can race to add this at boot --
+                    # see orders.py's own _migrate() for the identical
+                    # reasoning; already-added is exactly the state we want.
+                    if "duplicate column name" not in str(exc):
+                        raise
+
+    def create(self, slug: str, category: str, name: str, photo_path: str, email: str | None = None) -> int:
         with self._connect() as conn:
             cur = conn.execute(
-                "INSERT INTO pending_dish_photos (slug, category, name, photo_path, submitted_at) VALUES (?, ?, ?, ?, ?)",
-                (slug, category, name, photo_path, datetime.now(timezone.utc).isoformat()),
+                "INSERT INTO pending_dish_photos (slug, category, name, photo_path, submitted_at, email) VALUES (?, ?, ?, ?, ?, ?)",
+                (slug, category, name, photo_path, datetime.now(timezone.utc).isoformat(), email),
             )
             return cur.lastrowid
 
     def get(self, pending_id: int) -> dict | None:
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT id, slug, category, name, photo_path, submitted_at FROM pending_dish_photos WHERE id = ?",
+                "SELECT id, slug, category, name, photo_path, submitted_at, email FROM pending_dish_photos WHERE id = ?",
                 (pending_id,),
             ).fetchone()
         return self._row_to_dict(row) if row else None
@@ -55,7 +79,7 @@ class PendingDishPhotoStore:
     def all_pending(self) -> list[dict]:
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT id, slug, category, name, photo_path, submitted_at FROM pending_dish_photos ORDER BY submitted_at ASC"
+                "SELECT id, slug, category, name, photo_path, submitted_at, email FROM pending_dish_photos ORDER BY submitted_at ASC"
             ).fetchall()
         return [self._row_to_dict(row) for row in rows]
 
@@ -74,7 +98,7 @@ class PendingDishPhotoStore:
         their now-unreferenced files."""
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT id, slug, category, name, photo_path, submitted_at FROM pending_dish_photos "
+                "SELECT id, slug, category, name, photo_path, submitted_at, email FROM pending_dish_photos "
                 "WHERE slug = ? AND category = ? AND name = ? AND id != ?",
                 (slug, category, name, keep_id),
             ).fetchall()
@@ -93,4 +117,5 @@ class PendingDishPhotoStore:
             "name": row[3],
             "photo_path": row[4],
             "submitted_at": row[5],
+            "email": row[6],
         }
