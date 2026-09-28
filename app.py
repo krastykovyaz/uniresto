@@ -7,6 +7,7 @@ real Restopolis order placement, no delivery routing.
 from __future__ import annotations
 
 import hashlib
+import io
 import logging
 import os
 import re
@@ -17,6 +18,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from flask import Flask, abort, jsonify, redirect, render_template, request, send_from_directory, url_for
+from PIL import Image, ImageOps, UnidentifiedImageError
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from orderability_engine.cache import OrderabilityCache
@@ -391,6 +393,29 @@ def create_app(
             )
         return email, None
 
+    def _award_delivery_luni(order: dict) -> None:
+        """Both delivery-time rewards -- the courier's "make a delivery"
+        and the customer's "make an order" -- pay out only for a real
+        hand-off: claimed AND picked up (by whoever claimed it, so the
+        credit goes to order["courier_email"], never to whoever merely
+        tapped "Mark as delivered"), by a courier who isn't the customer
+        themselves. Anything else (an unclaimed order marked delivered,
+        someone delivering their own order) still records delivered_at,
+        just earns nothing. Keyed by order id, so toggling delivered/
+        not-delivered can never pay twice."""
+        courier = (order.get("courier_email") or "").strip()
+        customer = (order.get("customer_email") or "").strip()
+        if not (order.get("claimed_at") and order.get("picked_up_at") and courier):
+            return
+        # Case-insensitive only for the self-delivery check; the award keys
+        # keep each address exactly as stored, matching how /api/rewards
+        # and every other award look balances up.
+        if courier.lower() == customer.lower():
+            return
+        rewards().award_once(courier, f"{DELIVERY_COMPLETED}:{order['id']}", REWARD_POINTS[DELIVERY_COMPLETED])
+        if customer:
+            rewards().award_once(customer, f"{ORDER_PLACED}:{order['id']}", REWARD_POINTS[ORDER_PLACED])
+
     def get_restaurant_or_404(slug: str):
         restaurant = by_slug.get(slug)
         if restaurant is None:
@@ -528,6 +553,39 @@ def create_app(
             return ".webp"
         return None
 
+    # Phone photos carry EXIF -- GPS coordinates of wherever the student
+    # took the shot (often their room), device model, timestamps -- and
+    # every approved photo is published at a public URL. So nothing the
+    # client sent is ever written to disk as-is: it's decoded and
+    # re-encoded as a fresh JPEG, which keeps only the pixels. Sniffing
+    # above still runs first as the cheap gate; this is the real one.
+    MAX_DISH_PHOTO_PIXELS = 40_000_000  # decompression-bomb guard
+    MAX_DISH_PHOTO_SIDE = 1600
+
+    def _sanitize_dish_photo(data: bytes) -> bytes | None:
+        try:
+            with Image.open(io.BytesIO(data), formats=["JPEG", "PNG", "GIF", "WEBP"]) as img:
+                width, height = img.size
+                if width * height > MAX_DISH_PHOTO_PIXELS:
+                    return None
+                img.draft("RGB", (MAX_DISH_PHOTO_SIDE, MAX_DISH_PHOTO_SIDE))
+                # Bake EXIF orientation into the pixels before dropping
+                # the tag, or portrait phone shots would show up sideways.
+                img = ImageOps.exif_transpose(img)
+                if img.mode in ("RGBA", "LA", "P"):
+                    img = img.convert("RGBA")
+                    background = Image.new("RGB", img.size, (255, 255, 255))
+                    background.paste(img, mask=img.getchannel("A"))
+                    img = background
+                else:
+                    img = img.convert("RGB")
+                img.thumbnail((MAX_DISH_PHOTO_SIDE, MAX_DISH_PHOTO_SIDE))
+                out = io.BytesIO()
+                img.save(out, format="JPEG", quality=85, optimize=True)
+                return out.getvalue()
+        except (UnidentifiedImageError, Image.DecompressionBombError, OSError, ValueError, SyntaxError):
+            return None
+
     @app.post("/api/restaurants/<slug>/dish-photos")
     def api_upload_dish_photo(slug):
         """A student submits a real photo for a real menu item straight
@@ -570,8 +628,8 @@ def create_app(
         data = photo.read(MAX_DISH_PHOTO_BYTES + 1)
         if len(data) > MAX_DISH_PHOTO_BYTES:
             return jsonify({"error": "too_large", "message": "Photo must be smaller than 8 MB"}), 400
-        ext = _sniff_dish_photo_extension(data)
-        if ext is None:
+        clean = _sanitize_dish_photo(data) if _sniff_dish_photo_extension(data) else None
+        if clean is None:
             return jsonify({"error": "unsupported_type", "message": "Photo must be a JPEG, PNG, WEBP, or GIF image"}), 400
 
         # A RANDOM filename here, deliberately NOT the deterministic
@@ -580,10 +638,10 @@ def create_app(
         # dish may already have a live, approved photo at that exact
         # path, and a pending resubmission must never overwrite it before
         # the admin has actually approved the new one.
-        filename = f"pending-{uuid.uuid4().hex}{ext}"
+        filename = f"pending-{uuid.uuid4().hex}.jpg"
         photo_dir = app.config["DISH_PHOTO_DIR"]
         photo_dir.mkdir(parents=True, exist_ok=True)
-        (photo_dir / filename).write_bytes(data)
+        (photo_dir / filename).write_bytes(clean)
         photo_path = f"/static/dish_photos/{filename}"
 
         pending_id = pending_dish_photos().create(slug, category, name, photo_path, email=email)
@@ -789,13 +847,9 @@ def create_app(
             customer_phone,
         )
         order = store().get_order(order_id)
-        # Part 90: "Make the order" -- credited to customer_email itself
-        # (already required and PROVEN via VerifiedEmailStore above, Part
-        # 83), not necessarily the same address as Profile's own
-        # University Email/state.registeredEmail. Keyed by this specific
-        # order_id so it can never double-pay if anything above is ever
-        # retried.
-        rewards().award_once(customer_email, f"{ORDER_PLACED}:{order_id}", REWARD_POINTS[ORDER_PLACED])
+        # No Luni here: orders cost nothing and take one request, so paying
+        # on creation made them farmable. The "order" reward pays out in
+        # api_mark_order_delivered instead, once a real courier delivers it.
 
         # Best-effort, never fails the order itself: a flaky mail API
         # or unset RESEND_API_KEY must never turn a successful order into
@@ -854,6 +908,12 @@ def create_app(
         order = store().get_order(order_id)
         if order is None:
             abort(404, description=f"No order with id {order_id}")
+        # Unauthenticated, and order ids are sequential -- anyone could
+        # walk /api/orders/1..N. Order History never reads these fields
+        # (the customer already knows their own email/phone), so strip
+        # every contact detail, same treatment as api_delivery_orders.
+        for field in ("customer_email", "customer_phone", "courier_email", "courier_lang"):
+            order.pop(field, None)
         return jsonify(order)
 
     # ------------------------------------------------------ Email verification
@@ -1161,16 +1221,16 @@ def create_app(
         everyone already seeing every order on the Delivery screen."""
         if (limited := rate_limited_response("courier_action")) is not None:
             return limited
-        courier_email, error = _verified_courier_email_or_error()
+        _courier_email, error = _verified_courier_email_or_error()
         if error:
             return error
-        if not store().mark_delivered(order_id):
+        order = store().get_order(order_id)
+        if order is None:
             abort(404, description=f"No order #{order_id}")
-        # Part 90: "Make a delivery" -- keyed by this specific order_id so
-        # a later mark-not-delivered/mark-delivered toggle on the SAME
-        # order can never pay out a second time (see award_once's own
-        # docstring).
-        rewards().award_once(courier_email, f"{DELIVERY_COMPLETED}:{order_id}", REWARD_POINTS[DELIVERY_COMPLETED])
+        if order["status"] == "cancelled":
+            return jsonify({"error": "not_deliverable", "status": "cancelled"}), 409
+        store().mark_delivered(order_id)
+        _award_delivery_luni(order)
         return jsonify({"delivered": True})
 
     @app.post("/api/orders/<int:order_id>/mark-not-delivered")
@@ -1527,8 +1587,8 @@ def create_app(
                 title="That photo is too large",
                 message="Photos must be smaller than 8 MB.",
             )
-        ext = _sniff_dish_photo_extension(data)
-        if ext is None:
+        clean = _sanitize_dish_photo(data) if _sniff_dish_photo_extension(data) else None
+        if clean is None:
             return render_template(
                 "order_action.html",
                 icon="⚠️",
@@ -1538,8 +1598,8 @@ def create_app(
 
         photo_dir = app.config["DISH_PHOTO_DIR"]
         photo_dir.mkdir(parents=True, exist_ok=True)
-        filename = f"admin-{uuid.uuid4().hex}{ext}"
-        (photo_dir / filename).write_bytes(data)
+        filename = f"admin-{uuid.uuid4().hex}.jpg"
+        (photo_dir / filename).write_bytes(clean)
         new_photo_path = f"/static/dish_photos/{filename}"
         previous_photo_path = dish_photos().set_photo(entry["slug"], entry["category"], entry["name"], new_photo_path)
         if previous_photo_path and previous_photo_path != new_photo_path:

@@ -3,6 +3,7 @@ import io
 from unittest.mock import patch
 
 import pytest
+from PIL import Image
 
 from app import create_app
 from orderability_engine.cache import OrderabilityCache
@@ -213,12 +214,18 @@ def test_api_orderability_check_missing_fields_is_400(client):
 # API: crowd-sourced dish photos (Part 84)
 # ---------------------------------------------------------------------------
 
-# A real (if tiny) PNG: signature + IHDR/IEND-shaped bytes are irrelevant to
-# api_upload_dish_photo, which only sniffs the leading signature -- see
-# _sniff_dish_photo_extension in app.py. Reused across every "valid upload"
-# test below via a helper rather than inlined, so unsupported-type/
-# too-large tests read as obviously-deliberate deviations from it.
-_PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+def _image_bytes(color=(0, 0, 0), size=(8, 8), fmt="PNG", **save_kwargs):
+    out = io.BytesIO()
+    Image.new("RGB", size, color).save(out, format=fmt, **save_kwargs)
+    return out.getvalue()
+
+
+# A real, decodable PNG -- uploads are now re-encoded through Pillow (see
+# _sanitize_dish_photo in app.py), so a bare signature is no longer enough.
+# Reused across every "valid upload" test below via a helper rather than
+# inlined, so unsupported-type/too-large tests read as obviously-deliberate
+# deviations from it.
+_PNG_BYTES = _image_bytes()
 
 
 def test_dish_photos_starts_empty_for_a_restaurant(client):
@@ -245,7 +252,7 @@ def test_upload_dish_photo_is_pending_not_immediately_listed(client):
     body = resp.get_json()
     assert body["status"] == "pending"
     assert isinstance(body["id"], int)
-    assert body["photo_path"].startswith("/static/dish_photos/") and body["photo_path"].endswith(".png")
+    assert body["photo_path"].startswith("/static/dish_photos/") and body["photo_path"].endswith(".jpg")
 
     # Not live -- api_dish_photos (what every OTHER student's card reads)
     # must stay empty until an admin actually approves it.
@@ -257,7 +264,7 @@ def test_pending_dish_photo_is_served_back_from_static(client):
     photo_path = resp.get_json()["photo_path"]
     served = client.get(photo_path)
     assert served.status_code == 200
-    assert served.data == _PNG_BYTES
+    assert served.data.startswith(b"\xff\xd8")  # re-encoded to JPEG, never the raw upload
 
 
 def test_upload_dish_photo_missing_category_or_name_is_400(client):
@@ -302,6 +309,56 @@ def test_upload_dish_photo_rejects_an_oversized_file(client):
     )
     assert resp.status_code == 400
     assert resp.get_json()["error"] == "too_large"
+
+
+def test_upload_dish_photo_rejects_a_valid_signature_with_garbage_after_it(client):
+    resp = _upload_dish_photo(client, data=b"\x89PNG\r\n\x1a\n" + b"\x00" * 32)
+    assert resp.status_code == 400
+    assert resp.get_json()["error"] == "unsupported_type"
+
+
+def _jpeg_with_exif(size=(8, 4), orientation=None):
+    exif = Image.Exif()
+    exif[0x010F] = "SnoopPhone"  # Make
+    exif[0x8825] = {1: "N", 2: (49.0, 30.0, 17.0), 3: "E", 4: (5.0, 56.0, 51.0)}  # GPSInfo
+    if orientation:
+        exif[0x0112] = orientation
+    return _image_bytes((200, 30, 30), size=size, fmt="JPEG", exif=exif)
+
+
+def test_uploaded_dish_photo_has_exif_and_gps_stripped(client):
+    original = _jpeg_with_exif()
+    assert Image.open(io.BytesIO(original)).getexif().get_ifd(0x8825)  # sanity: GPS really is in there
+    photo_path = _upload_dish_photo(client, data=original, filename="dish.jpg").get_json()["photo_path"]
+    served = client.get(photo_path).data
+    assert b"SnoopPhone" not in served
+    assert len(Image.open(io.BytesIO(served)).getexif()) == 0
+
+
+def test_uploaded_dish_photo_bakes_in_exif_orientation(client):
+    # Orientation 6 = "rotate 90° clockwise to display": an 8x4 sensor
+    # image is really a 4x8 portrait shot, and must stay that way once
+    # the tag that said so is gone.
+    photo_path = _upload_dish_photo(client, data=_jpeg_with_exif(size=(8, 4), orientation=6), filename="dish.jpg").get_json()["photo_path"]
+    assert Image.open(io.BytesIO(client.get(photo_path).data)).size == (4, 8)
+
+
+def test_uploaded_dish_photo_is_downscaled(client):
+    big = _image_bytes(size=(3200, 1600))
+    photo_path = _upload_dish_photo(client, data=big).get_json()["photo_path"]
+    assert Image.open(io.BytesIO(client.get(photo_path).data)).size == (1600, 800)
+
+
+def test_admin_replacement_photo_has_exif_stripped(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    upload = _upload_dish_photo(client).get_json()
+    client.post(
+        f"/admin/dish-photos/{upload['id']}/replace?token=correct-token",
+        data={"photo": (io.BytesIO(_jpeg_with_exif()), "admin-choice.jpg")},
+        content_type="multipart/form-data",
+    )
+    new_photo_path = client.get("/api/restaurants/altius/dish-photos").get_json()["Végétarien"]["Salad'bar"]
+    assert b"SnoopPhone" not in client.get(new_photo_path).data
 
 
 def test_upload_dish_photo_unknown_restaurant_is_404(client):
@@ -447,7 +504,7 @@ def test_admin_reject_dish_photo_requires_token(client):
 def test_admin_replace_dish_photo_publishes_the_admins_own_upload(client, monkeypatch):
     monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
     upload = _upload_dish_photo(client, category="Végétarien", name="Salad'bar").get_json()
-    other_png = b"\x89PNG\r\n\x1a\n" + b"\x11" * 32
+    other_png = _image_bytes((0x11,) * 3)
     resp = client.post(
         f"/admin/dish-photos/{upload['id']}/replace?token=correct-token",
         data={"photo": (io.BytesIO(other_png), "admin-choice.png")},
@@ -459,7 +516,9 @@ def test_admin_replace_dish_photo_publishes_the_admins_own_upload(client, monkey
     listed = client.get("/api/restaurants/altius/dish-photos").get_json()
     new_photo_path = listed["Végétarien"]["Salad'bar"]
     assert new_photo_path != upload["photo_path"]
-    assert client.get(new_photo_path).data == other_png
+    served = Image.open(io.BytesIO(client.get(new_photo_path).data))
+    assert served.format == "JPEG"
+    assert all(abs(c - 0x11) <= 4 for c in served.getpixel((0, 0)))  # the admin's pixels, not the student's
     # The student's original submission is discarded, not published.
     assert client.get(upload["photo_path"]).status_code == 404
     # Consumed -- no longer sitting in the pending queue.
@@ -468,7 +527,7 @@ def test_admin_replace_dish_photo_publishes_the_admins_own_upload(client, monkey
 
 def test_admin_replace_dish_photo_requires_token(client):
     upload = _upload_dish_photo(client).get_json()
-    other_png = b"\x89PNG\r\n\x1a\n" + b"\x11" * 32
+    other_png = _image_bytes((0x11,) * 3)
     resp = client.post(
         f"/admin/dish-photos/{upload['id']}/replace",
         data={"photo": (io.BytesIO(other_png), "admin-choice.png")},
@@ -494,7 +553,7 @@ def test_admin_replace_dish_photo_rejects_a_non_image_file(client, monkeypatch):
 
 def test_admin_replace_dish_photo_unknown_id_is_friendly_not_404(client, monkeypatch):
     monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
-    other_png = b"\x89PNG\r\n\x1a\n" + b"\x11" * 32
+    other_png = _image_bytes((0x11,) * 3)
     resp = client.post(
         "/admin/dish-photos/999999/replace?token=correct-token",
         data={"photo": (io.BytesIO(other_png), "admin-choice.png")},
@@ -514,7 +573,7 @@ def test_approving_a_resubmission_deletes_the_dishs_previous_live_photo(client, 
     first = _upload_dish_photo(client, category="Végétarien", name="Salad'bar", data=_PNG_BYTES).get_json()
     client.get(f"/admin/dish-photos/{first['id']}/approve?token=correct-token")
 
-    other_png = b"\x89PNG\r\n\x1a\n" + b"\x11" * 32
+    other_png = _image_bytes((0x11,) * 3)
     second = _upload_dish_photo(client, category="Végétarien", name="Salad'bar", data=other_png).get_json()
     client.get(f"/admin/dish-photos/{second['id']}/approve?token=correct-token")
 
@@ -531,7 +590,7 @@ def test_replacing_deletes_the_dishs_previous_live_photo(client, monkeypatch):
     client.get(f"/admin/dish-photos/{first['id']}/approve?token=correct-token")
 
     pending = _upload_dish_photo(client, category="Végétarien", name="Salad'bar").get_json()
-    other_png = b"\x89PNG\r\n\x1a\n" + b"\x22" * 32
+    other_png = _image_bytes((0x22,) * 3)
     client.post(
         f"/admin/dish-photos/{pending['id']}/replace?token=correct-token",
         data={"photo": (io.BytesIO(other_png), "admin-choice.png")},
@@ -545,7 +604,7 @@ def test_replacing_deletes_the_dishs_previous_live_photo(client, monkeypatch):
 def test_approving_discards_other_pending_submissions_for_the_same_dish(client, monkeypatch):
     monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
     keeper = _upload_dish_photo(client, category="Végétarien", name="Salad'bar", data=_PNG_BYTES).get_json()
-    other_png = b"\x89PNG\r\n\x1a\n" + b"\x33" * 32
+    other_png = _image_bytes((0x33,) * 3)
     other = _upload_dish_photo(client, category="Végétarien", name="Salad'bar", data=other_png).get_json()
 
     client.get(f"/admin/dish-photos/{keeper['id']}/approve?token=correct-token")
@@ -562,7 +621,7 @@ def test_approving_discards_other_pending_submissions_for_the_same_dish(client, 
 def test_rejecting_does_not_touch_a_different_pending_submission_for_the_same_dish(client, monkeypatch):
     monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
     first = _upload_dish_photo(client, category="Végétarien", name="Salad'bar", data=_PNG_BYTES).get_json()
-    other_png = b"\x89PNG\r\n\x1a\n" + b"\x44" * 32
+    other_png = _image_bytes((0x44,) * 3)
     second = _upload_dish_photo(client, category="Végétarien", name="Salad'bar", data=other_png).get_json()
 
     client.get(f"/admin/dish-photos/{first['id']}/reject?token=correct-token")
@@ -682,30 +741,93 @@ def test_rewards_claim_rejects_a_non_university_email(client):
     assert resp.status_code == 400
 
 
-def test_placing_an_order_awards_1_luni_to_the_customer_email(client):
+def _hand_off(client, order_id, courier_email="courier@uni.lu"):
+    """Claim + pick up, with every outbound notification stubbed -- the
+    two steps a real courier takes before mark-delivered can pay Luni."""
+    with patch("app.send_order_claimed_notification", return_value=(True, None)), patch(
+        "app.send_delivery_notification", return_value=(True, None)
+    ), patch("app.send_order_accepted", return_value=(True, None)), patch(
+        "app.send_order_out_for_delivery", return_value=(True, None)
+    ):
+        _claim(client, order_id, courier_email=courier_email)
+        _pickup(client, order_id, courier_email=courier_email)
+
+
+def _points(client, email):
+    return client.get(f"/api/rewards?email={email}").get_json()["points"]
+
+
+def test_placing_an_order_alone_awards_nothing(client):
+    # Orders are free and take one request -- paying on creation made
+    # Luni farmable. The "order" reward pays out on delivery instead.
+    _create_basic_order(client, customer_email="student@uni.lu")
+    assert _points(client, "student@uni.lu") == 0
+
+
+def test_a_real_delivery_awards_1_luni_to_customer_and_courier(client):
     order_id = _create_basic_order(client, customer_email="student@uni.lu")
-    assert client.get("/api/rewards?email=student@uni.lu").get_json()["points"] == 1
-    assert order_id
+    _hand_off(client, order_id)
+    assert _mark_delivered(client, order_id).get_json() == {"delivered": True}
+    assert _points(client, "student@uni.lu") == 1
+    assert _points(client, "courier@uni.lu") == 1
 
 
-def test_placing_two_orders_awards_luni_for_each(client):
-    _create_basic_order(client, customer_email="student@uni.lu")
-    _create_basic_order(client, customer_email="student@uni.lu")
-    assert client.get("/api/rewards?email=student@uni.lu").get_json()["points"] == 2
+def test_two_delivered_orders_award_luni_for_each(client):
+    for _ in range(2):
+        order_id = _create_basic_order(client, customer_email="student@uni.lu")
+        _hand_off(client, order_id)
+        _mark_delivered(client, order_id)
+    assert _points(client, "student@uni.lu") == 2
+    assert _points(client, "courier@uni.lu") == 2
 
 
-def test_completing_a_delivery_awards_1_luni_to_the_courier(client):
-    order_id = _create_basic_order(client)
-    _mark_delivered(client, order_id, courier_email="courier@uni.lu")
-    assert client.get("/api/rewards?email=courier@uni.lu").get_json()["points"] == 1
+def test_marking_an_unclaimed_order_delivered_awards_nothing(client):
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    assert _mark_delivered(client, order_id).status_code == 200
+    assert _points(client, "student@uni.lu") == 0
+    assert _points(client, "courier@uni.lu") == 0
+
+
+def test_delivery_luni_goes_to_the_claiming_courier_not_the_caller(client):
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("other@uni.lu")
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    _hand_off(client, order_id, courier_email="courier@uni.lu")
+    _mark_delivered(client, order_id, courier_email="other@uni.lu")
+    assert _points(client, "courier@uni.lu") == 1
+    assert _points(client, "other@uni.lu") == 0
+
+
+def test_delivering_your_own_order_awards_nothing(client):
+    order_id = _create_basic_order(client, customer_email="courier@uni.lu")
+    _hand_off(client, order_id, courier_email="COURIER@uni.lu")
+    _mark_delivered(client, order_id)
+    assert _points(client, "courier@uni.lu") == 0
+    assert _points(client, "COURIER@uni.lu") == 0
+
+
+def test_mark_delivered_on_a_cancelled_order_is_409(client):
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    _hand_off(client, order_id)
+    store = client.application.config["ORDER_STORE"]
+    store.cancel_order(order_id, store.set_real_price(order_id, 6.70))
+    resp = _mark_delivered(client, order_id)
+    assert resp.status_code == 409
+    assert resp.get_json()["error"] == "not_deliverable"
+    assert _points(client, "courier@uni.lu") == 0
+
+
+def test_mark_delivered_on_a_missing_order_is_404(client):
+    assert _mark_delivered(client, 999999).status_code == 404
 
 
 def test_toggling_delivered_and_back_does_not_repay(client):
-    order_id = _create_basic_order(client)
-    _mark_delivered(client, order_id, courier_email="courier@uni.lu")
-    _mark_not_delivered(client, order_id, courier_email="courier@uni.lu")
-    _mark_delivered(client, order_id, courier_email="courier@uni.lu")
-    assert client.get("/api/rewards?email=courier@uni.lu").get_json()["points"] == 1
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    _hand_off(client, order_id)
+    _mark_delivered(client, order_id)
+    _mark_not_delivered(client, order_id)
+    _mark_delivered(client, order_id)
+    assert _points(client, "courier@uni.lu") == 1
+    assert _points(client, "student@uni.lu") == 1
 
 
 def test_approving_a_dish_photo_awards_1_luni_to_the_uploader(client, monkeypatch):
@@ -721,7 +843,7 @@ def test_replacing_a_dish_photo_still_awards_the_original_uploader(client, monke
     # is what prompted a real photo to end up on this dish either way.
     monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
     upload = _upload_dish_photo(client, email="student@uni.lu").get_json()
-    other_png = b"\x89PNG\r\n\x1a\n" + b"\x55" * 32
+    other_png = _image_bytes((0x55,) * 3)
     client.post(
         f"/admin/dish-photos/{upload['id']}/replace?token=correct-token",
         data={"photo": (io.BytesIO(other_png), "admin-choice.png")},
@@ -1140,6 +1262,16 @@ def test_get_order_by_id_returns_the_confirmed_order(client):
     assert body["id"] == order_id
     assert body["restaurant_code"] == "UDL-CKB-ALTIUS"
     assert body["items"][0]["quantity"] == 2
+
+
+def test_get_order_by_id_never_exposes_contact_details(client):
+    # Unauthenticated + sequential ids: anyone can walk /api/orders/1..N,
+    # so no customer or courier contact detail may ever come back here.
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    _claim(client, order_id, courier_email="courier@uni.lu")
+    body = client.get(f"/api/orders/{order_id}").get_json()
+    for field in ("customer_email", "customer_phone", "courier_email", "courier_lang"):
+        assert field not in body
 
 
 def test_get_order_unknown_id_is_404(client):
