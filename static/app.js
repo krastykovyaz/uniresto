@@ -3641,7 +3641,19 @@ function foodCard(item) {
           ${item.description ? `<p class="description">${escapeHtml(item.description)}</p>` : ""}
         </div>
         ${metaParts.length ? `<p class="meta-row">${metaParts.map((p) => escapeHtml(p)).join(" · ")}</p>` : ""}
-        ${item.allergens && item.allergens.length ? `<p class="allergen-line">${escapeHtml(tr("allergens"))} ${item.allergens.map((a) => escapeHtml(allergenLabel(a, state.lang))).join(" · ")}</p>` : ""}
+        ${
+          // Part 91: hidden on the card itself once there's a real photo --
+          // .food-grid's own CSS Grid row-stretch + .add-row's margin-top:
+          // auto (see app.css) already turns "one line of text less" into
+          // real blank space above the price row, no extra CSS needed. The
+          // real allergens are never actually gone: openDishDetailSheet()'s
+          // "More about this dish" section reads item.allergens directly,
+          // independent of this card's own template, so tapping the card
+          // still shows them exactly as before.
+          item.allergens && item.allergens.length && !hasPhoto
+            ? `<p class="allergen-line">${escapeHtml(tr("allergens"))} ${item.allergens.map((a) => escapeHtml(allergenLabel(a, state.lang))).join(" · ")}</p>`
+            : ""
+        }
         <div class="add-row">
           <span class="price ${priceIsUnspecified(item) ? "is-unspecified" : ""}">${escapeHtml(priceText(item))}</span>
           ${
