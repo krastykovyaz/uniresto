@@ -117,6 +117,12 @@ const state = {
   // so it always reflects exactly what's saved, regardless of any
   // per-order edit.
   registeredEmail: loadRegisteredEmail(),
+  // Luni reward points (Part 87) -- the real balance lives server-side,
+  // keyed by registeredEmail (see rewards.py); this is just the last
+  // value fetched, so Profile has something to show instantly (0, same
+  // as a real never-awarded balance) before that fetch resolves. See
+  // renderProfile()'s own fetch-then-rerender.
+  rewardPoints: 0,
   // Profile-registered phone number (Part 28) -- optional, no
   // verification (see loadRegisteredPhone()'s docstring).
   registeredPhone: loadRegisteredPhone(),
@@ -2741,6 +2747,35 @@ function renderProfile() {
   `);
   historyRow.addEventListener("click", () => openOrderHistory());
   rows.append(historyRow);
+
+  // Read-only (Part 87) -- a plain row, not a <button>, since there's no
+  // sub-screen to open yet: nothing in this codebase awards Luni yet
+  // (see rewards.py's own docstring), so this is just the balance
+  // itself. Always shows an honest number, never a placeholder/spinner:
+  // 0 (state.rewardPoints' own default) is a real, correct starting
+  // balance for anyone who hasn't earned any yet.
+  const rewardRow = el(`
+    <div class="profile-row profile-row-reward">
+      <span class="profile-row-icon">${icon("sparkle", 20)}</span>
+      <span class="profile-row-label">${escapeHtml(tr("reward"))}</span>
+      <span class="profile-row-count">${escapeHtml(tr("luniPoints", { n: state.rewardPoints }))}</span>
+    </div>
+  `);
+  rows.append(rewardRow);
+  // Fetched fresh every time Profile is opened (registeredEmail-gated --
+  // an unverified visitor has never had anything to award, so it's just
+  // the default 0 already showing above; no request needed for them).
+  // Re-renders only if still on Profile once the fetch resolves, so a
+  // quick navigate-away in the meantime doesn't stomp on whatever screen
+  // replaced it.
+  if (state.registeredEmail) {
+    api(`/api/rewards?email=${encodeURIComponent(state.registeredEmail)}`)
+      .then((result) => {
+        state.rewardPoints = result.points;
+        if (state.screen === "profile") renderProfile();
+      })
+      .catch(() => {});
+  }
 
   const current = langInfo(state.lang);
   const langRow = el(`

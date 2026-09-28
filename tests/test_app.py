@@ -11,6 +11,7 @@ from orderability_engine.daily_report import DailyReportStore
 from orderability_engine.delivery_subscribers import DeliverySubscriberStore
 from orderability_engine.dish_photos import DishPhotoStore
 from orderability_engine.pending_dish_photos import PendingDishPhotoStore
+from orderability_engine.rewards import RewardStore
 from orderability_engine.email_verification import EmailVerificationStore
 from orderability_engine.feedback import FeedbackStore
 from orderability_engine.models import TZINFO
@@ -70,6 +71,7 @@ def _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, 
     verified_email_store.mark_verified("student@uni.lu")
     dish_photo_store = DishPhotoStore(tmp_path / "orders.db")
     pending_dish_photo_store = PendingDishPhotoStore(tmp_path / "orders.db")
+    reward_store = RewardStore(tmp_path / "orders.db")
     delivery_subscriber_store = DeliverySubscriberStore(tmp_path / "orders.db")
     coming_soon_click_store = ComingSoonClickStore(tmp_path / "orders.db")
     feedback_store = FeedbackStore(tmp_path / "orders.db")
@@ -83,6 +85,7 @@ def _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, 
         dish_photo_store=dish_photo_store,
         dish_photo_dir=tmp_path / "dish_photos",
         pending_dish_photo_store=pending_dish_photo_store,
+        reward_store=reward_store,
         delivery_subscriber_store=delivery_subscriber_store,
         coming_soon_click_store=coming_soon_click_store,
         feedback_store=feedback_store,
@@ -565,6 +568,36 @@ def test_rejecting_does_not_touch_a_different_pending_submission_for_the_same_di
     # the other one is still legitimately awaiting its own review.
     assert client.get(second["photo_path"]).status_code == 200
     assert client.get("/admin/dish-photos?token=correct-token").data.count(b"Approve") == 1
+
+
+# ---------------------------------------------------------------------------
+# API: Luni reward points (Part 87)
+# ---------------------------------------------------------------------------
+
+
+def test_rewards_is_zero_for_an_email_never_awarded_anything(client):
+    resp = client.get("/api/rewards?email=student@uni.lu")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"points": 0}
+
+
+def test_rewards_reflects_a_real_balance(client):
+    client.application.config["REWARD_STORE"].add_points("student@uni.lu", 25)
+    resp = client.get("/api/rewards?email=student@uni.lu")
+    assert resp.get_json() == {"points": 25}
+
+
+def test_rewards_missing_email_is_400(client):
+    assert client.get("/api/rewards").status_code == 400
+
+
+def test_rewards_rejects_a_non_university_email(client):
+    assert client.get("/api/rewards?email=student@gmail.com").status_code == 400
+
+
+def test_rewards_are_scoped_per_email(client):
+    client.application.config["REWARD_STORE"].add_points("a@uni.lu", 10)
+    assert client.get("/api/rewards?email=b@uni.lu").get_json() == {"points": 0}
 
 
 # ---------------------------------------------------------------------------

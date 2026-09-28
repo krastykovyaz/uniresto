@@ -43,6 +43,7 @@ from orderability_engine.orders import MAX_QUANTITY, OrderStore, OrderValidation
 from orderability_engine.page_views import MAX_SOURCE_LENGTH, PageViewStore
 from orderability_engine.pending_dish_photos import PendingDishPhotoStore
 from orderability_engine.rate_limits import RateLimitStore
+from orderability_engine.rewards import RewardStore
 from orderability_engine.service import OrderabilityService
 from orderability_engine.smart_lunch import TIER_ORDER, find_smart_lunch
 from orderability_engine.verified_emails import VerifiedEmailStore
@@ -209,6 +210,7 @@ def create_app(
     dish_photo_store: DishPhotoStore | None = None,
     dish_photo_dir: str | Path | None = None,
     pending_dish_photo_store: PendingDishPhotoStore | None = None,
+    reward_store: RewardStore | None = None,
     delivery_subscriber_store: DeliverySubscriberStore | None = None,
     coming_soon_click_store: ComingSoonClickStore | None = None,
     feedback_store: FeedbackStore | None = None,
@@ -273,6 +275,9 @@ def create_app(
     # docstring for why this is a separate store from DISH_PHOTO_STORE
     # above, not just a status column on it.
     app.config["PENDING_DISH_PHOTO_STORE"] = pending_dish_photo_store or PendingDishPhotoStore("orders.db")
+    # Luni reward points (Part 87) -- see rewards.py's own docstring for
+    # why this is keyed by verified email rather than any account.
+    app.config["REWARD_STORE"] = reward_store or RewardStore("orders.db")
     app.config["DELIVERY_SUBSCRIBER_STORE"] = delivery_subscriber_store or DeliverySubscriberStore("orders.db")
     app.config["COMING_SOON_CLICK_STORE"] = coming_soon_click_store or ComingSoonClickStore("orders.db")
     app.config["FEEDBACK_STORE"] = feedback_store or FeedbackStore("orders.db")
@@ -304,6 +309,9 @@ def create_app(
 
     def pending_dish_photos() -> PendingDishPhotoStore:
         return app.config["PENDING_DISH_PHOTO_STORE"]
+
+    def rewards() -> RewardStore:
+        return app.config["REWARD_STORE"]
 
     def delivery_subscribers() -> DeliverySubscriberStore:
         return app.config["DELIVERY_SUBSCRIBER_STORE"]
@@ -553,6 +561,20 @@ def create_app(
     @app.get("/static/dish_photos/<path:filename>")
     def dish_photo_file(filename):
         return send_from_directory(app.config["DISH_PHOTO_DIR"], filename)
+
+    @app.get("/api/rewards")
+    def api_rewards():
+        """Part 87: Profile's "Reward" row reads its Luni balance from
+        here -- keyed by the verified University email already sitting
+        in state.registeredEmail client-side (see rewards.py's own
+        docstring). Always 0 for an unrecognized/never-awarded email,
+        same "just a fact to read" shape as api_dish_photos above --
+        nothing here changes state, so no verification is required to
+        merely check a balance."""
+        email = (request.args.get("email") or "").strip()
+        if not email or not _is_allowed_customer_email(email):
+            abort(400, description=f"'email' must be a valid address ending in {' or '.join(ALLOWED_EMAIL_DOMAINS)}")
+        return jsonify({"points": rewards().get_points(email)})
 
     @app.post("/api/orderability/check")
     def api_orderability_check():
