@@ -1,4 +1,5 @@
 import datetime
+import io
 from unittest.mock import patch
 
 import pytest
@@ -8,6 +9,8 @@ from orderability_engine.cache import OrderabilityCache
 from orderability_engine.coming_soon_clicks import ComingSoonClickStore
 from orderability_engine.daily_report import DailyReportStore
 from orderability_engine.delivery_subscribers import DeliverySubscriberStore
+from orderability_engine.dish_photos import DishPhotoStore
+from orderability_engine.pending_dish_photos import PendingDishPhotoStore
 from orderability_engine.email_verification import EmailVerificationStore
 from orderability_engine.feedback import FeedbackStore
 from orderability_engine.models import TZINFO
@@ -65,6 +68,8 @@ def _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, 
     # the verification requirement (or a different address) mark/omit it
     # explicitly themselves.
     verified_email_store.mark_verified("student@uni.lu")
+    dish_photo_store = DishPhotoStore(tmp_path / "orders.db")
+    pending_dish_photo_store = PendingDishPhotoStore(tmp_path / "orders.db")
     delivery_subscriber_store = DeliverySubscriberStore(tmp_path / "orders.db")
     coming_soon_click_store = ComingSoonClickStore(tmp_path / "orders.db")
     feedback_store = FeedbackStore(tmp_path / "orders.db")
@@ -75,6 +80,9 @@ def _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, 
         service=service,
         order_store=order_store,
         verified_email_store=verified_email_store,
+        dish_photo_store=dish_photo_store,
+        dish_photo_dir=tmp_path / "dish_photos",
+        pending_dish_photo_store=pending_dish_photo_store,
         delivery_subscriber_store=delivery_subscriber_store,
         coming_soon_click_store=coming_soon_click_store,
         feedback_store=feedback_store,
@@ -193,6 +201,195 @@ def test_api_orderability_check_post(client):
 
 def test_api_orderability_check_missing_fields_is_400(client):
     assert client.post("/api/orderability/check", json={"restaurant": "altius"}).status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# API: crowd-sourced dish photos (Part 84)
+# ---------------------------------------------------------------------------
+
+# A real (if tiny) PNG: signature + IHDR/IEND-shaped bytes are irrelevant to
+# api_upload_dish_photo, which only sniffs the leading signature -- see
+# _sniff_dish_photo_extension in app.py. Reused across every "valid upload"
+# test below via a helper rather than inlined, so unsupported-type/
+# too-large tests read as obviously-deliberate deviations from it.
+_PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+
+
+def test_dish_photos_starts_empty_for_a_restaurant(client):
+    resp = client.get("/api/restaurants/altius/dish-photos")
+    assert resp.status_code == 200
+    assert resp.get_json() == {}
+
+
+def test_dish_photos_unknown_restaurant_is_404(client):
+    assert client.get("/api/restaurants/does-not-exist/dish-photos").status_code == 404
+
+
+def _upload_dish_photo(client, category="Végétarien", name="Salad'bar", data=_PNG_BYTES, filename="dish.png"):
+    return client.post(
+        "/api/restaurants/altius/dish-photos",
+        data={"category": category, "name": name, "photo": (io.BytesIO(data), filename)},
+        content_type="multipart/form-data",
+    )
+
+
+def test_upload_dish_photo_is_pending_not_immediately_listed(client):
+    resp = _upload_dish_photo(client)
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert body["status"] == "pending"
+    assert isinstance(body["id"], int)
+    assert body["photo_path"].startswith("/static/dish_photos/") and body["photo_path"].endswith(".png")
+
+    # Not live -- api_dish_photos (what every OTHER student's card reads)
+    # must stay empty until an admin actually approves it.
+    assert client.get("/api/restaurants/altius/dish-photos").get_json() == {}
+
+
+def test_pending_dish_photo_is_served_back_from_static(client):
+    resp = _upload_dish_photo(client)
+    photo_path = resp.get_json()["photo_path"]
+    served = client.get(photo_path)
+    assert served.status_code == 200
+    assert served.data == _PNG_BYTES
+
+
+def test_upload_dish_photo_missing_category_or_name_is_400(client):
+    resp = client.post(
+        "/api/restaurants/altius/dish-photos",
+        data={"name": "Salad'bar", "photo": (io.BytesIO(_PNG_BYTES), "dish.png")},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 400
+
+
+def test_upload_dish_photo_missing_file_is_400(client):
+    resp = client.post(
+        "/api/restaurants/altius/dish-photos",
+        data={"category": "Végétarien", "name": "Salad'bar"},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 400
+
+
+def test_upload_dish_photo_rejects_a_non_image_file(client):
+    resp = client.post(
+        "/api/restaurants/altius/dish-photos",
+        data={"category": "Végétarien", "name": "Salad'bar", "photo": (io.BytesIO(b"<script>alert(1)</script>"), "evil.svg")},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 400
+    assert resp.get_json()["error"] == "unsupported_type"
+
+
+def test_upload_dish_photo_rejects_an_oversized_file(client):
+    huge = b"\x89PNG\r\n\x1a\n" + b"\x00" * (8 * 1024 * 1024 + 1)
+    resp = client.post(
+        "/api/restaurants/altius/dish-photos",
+        data={"category": "Végétarien", "name": "Salad'bar", "photo": (io.BytesIO(huge), "big.png")},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 400
+    assert resp.get_json()["error"] == "too_large"
+
+
+def test_upload_dish_photo_unknown_restaurant_is_404(client):
+    resp = client.post(
+        "/api/restaurants/does-not-exist/dish-photos",
+        data={"category": "Végétarien", "name": "Salad'bar", "photo": (io.BytesIO(_PNG_BYTES), "dish.png")},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 404
+
+
+def test_upload_dish_photo_is_scoped_per_restaurant(client):
+    client.post(
+        "/api/restaurants/altius/dish-photos",
+        data={"category": "Végétarien", "name": "Salad'bar", "photo": (io.BytesIO(_PNG_BYTES), "dish.png")},
+        content_type="multipart/form-data",
+    )
+    # brasserie-johns -- the other real restaurant in restaurants.yaml
+    # (see UDL-CKB-BRASSERIE-JOHNS), never uploaded to in this test.
+    assert client.get("/api/restaurants/brasserie-johns/dish-photos").get_json() == {}
+
+
+# ---------------------------------------------------------------------------
+# Admin: dish photo review queue (Part 84)
+# ---------------------------------------------------------------------------
+
+
+def test_admin_dish_photos_requires_token(client):
+    assert client.get("/admin/dish-photos").status_code == 404
+
+
+def test_admin_dish_photos_lists_pending_submissions(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    _upload_dish_photo(client, name="Salad'bar")
+    resp = client.get("/admin/dish-photos?token=correct-token")
+    assert resp.status_code == 200
+    assert b"Salad&#39;bar" in resp.data or b"Salad'bar" in resp.data
+
+
+def test_admin_dish_photo_review_page_shows_the_pending_entry(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    pending_id = _upload_dish_photo(client).get_json()["id"]
+    resp = client.get(f"/admin/dish-photos/{pending_id}?token=correct-token")
+    assert resp.status_code == 200
+    assert b"Salad" in resp.data
+
+
+def test_admin_dish_photo_review_page_for_unknown_id_is_friendly_not_404(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    resp = client.get("/admin/dish-photos/999999?token=correct-token")
+    assert resp.status_code == 200
+    assert b"already approved or rejected" in resp.data
+
+
+def test_admin_approve_dish_photo_publishes_it(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    upload = _upload_dish_photo(client, category="Végétarien", name="Salad'bar").get_json()
+    resp = client.get(f"/admin/dish-photos/{upload['id']}/approve?token=correct-token")
+    assert resp.status_code == 200
+    assert b"approved" in resp.data.lower()
+
+    listed = client.get("/api/restaurants/altius/dish-photos").get_json()
+    assert listed == {"Végétarien": {"Salad'bar": upload["photo_path"]}}
+    # Consumed -- no longer sitting in the pending queue.
+    assert client.get("/admin/dish-photos?token=correct-token").data.count(b"Approve") == 0
+
+
+def test_admin_approve_dish_photo_requires_token(client):
+    upload = _upload_dish_photo(client).get_json()
+    assert client.get(f"/admin/dish-photos/{upload['id']}/approve").status_code == 404
+    # Never approved without the token -- still not live.
+    assert client.get("/api/restaurants/altius/dish-photos").get_json() == {}
+
+
+def test_admin_approve_dish_photo_twice_is_a_friendly_no_op_the_second_time(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    upload = _upload_dish_photo(client).get_json()
+    client.get(f"/admin/dish-photos/{upload['id']}/approve?token=correct-token")
+    resp = client.get(f"/admin/dish-photos/{upload['id']}/approve?token=correct-token")
+    assert resp.status_code == 200
+    assert b"isn&#39;t valid anymore" in resp.data or b"isn't valid anymore" in resp.data
+
+
+def test_admin_reject_dish_photo_discards_it(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    upload = _upload_dish_photo(client, category="Végétarien", name="Salad'bar").get_json()
+    resp = client.get(f"/admin/dish-photos/{upload['id']}/reject?token=correct-token")
+    assert resp.status_code == 200
+    assert b"rejected" in resp.data.lower()
+
+    # Discarded, not published -- and the file itself is gone too.
+    assert client.get("/api/restaurants/altius/dish-photos").get_json() == {}
+    assert client.get(upload["photo_path"]).status_code == 404
+
+
+def test_admin_reject_dish_photo_requires_token(client):
+    upload = _upload_dish_photo(client).get_json()
+    assert client.get(f"/admin/dish-photos/{upload['id']}/reject").status_code == 404
+    assert client.get(upload["photo_path"]).status_code == 200  # file untouched
 
 
 # ---------------------------------------------------------------------------

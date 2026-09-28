@@ -626,10 +626,10 @@ svg { display: block; }
   justify-content: center;
 }
 .food-card-photo .food-card-illus { width: 52px; height: 52px; opacity: 0.35; }
-/* Preview-only call-to-action (crowdsourcing real dish photos from
-   students, to eventually replace the abstract illustration above) --
-   not yet wired to anything, just a visible prompt over the existing
-   placeholder. */
+/* Call-to-action crowdsourcing real dish photos from students -- tapping
+   it uploads straight to api_upload_dish_photo (see foodCard() in
+   app.js), replacing the abstract illustration above for everyone who
+   views this same dish from then on. */
 .food-card-photo-note {
   position: absolute;
   inset: 0;
@@ -652,13 +652,29 @@ svg { display: block; }
   height: 100%;
   object-fit: cover;
 }
-/* Once a preview photo is picked, the abstract illustration/note
-   underneath it are pointless dead weight (see food-card-photo-note's
-   own comment) -- hidden, not removed, so replaceWith(foodCard(item))
-   on next re-render cleanly resets back to the placeholder state. */
+/* Once a real photo is showing (either already-stored, or just picked
+   and mid-upload), the abstract illustration/note underneath it are
+   pointless dead weight -- hidden, not removed, so replaceWith(foodCard(item))
+   on next re-render can cleanly fall back to the placeholder state if the
+   upload ends up failing. */
 .food-card-photo.has-custom-photo .food-card-illus,
 .food-card-photo.has-custom-photo .food-card-photo-note {
   display: none;
+}
+/* A just-submitted photo (Part 84) sitting with the admin for approval --
+   see foodCard()'s photoInput "change" handler in app.js. Only ever set
+   locally, on the browser tab that just submitted it; nobody else sees
+   this badge or the preview underneath it until it's approved. */
+.food-card-photo.is-pending-review::after {
+  content: "⏳ Pending review";
+  position: absolute;
+  inset: auto 0 0 0;
+  padding: 4px 8px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-align: center;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
 }
 
 .food-card .card-body {
@@ -754,6 +770,15 @@ svg { display: block; }
   justify-content: center;
   color: var(--color-primary);
   background: var(--color-surface);
+  /* Resets the default <button> chrome for the hasPhoto variant (see
+     foodCard() in app.js) -- a plain <div> (the no-photo variant) never
+     had any of this to begin with, so these are no-ops for it. */
+  -webkit-appearance: none;
+  appearance: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  cursor: pointer;
 }
 .food-card.is-selected .select-check { background: var(--color-primary); color: var(--color-primary-contrast); border-color: var(--color-primary); }
 
@@ -1679,4 +1704,66 @@ svg { display: block; }
 @keyframes sheet-rise { from { transform: translateY(100%); } }
 @media (prefers-reduced-motion: reduce) {
   .sheet-overlay, .lang-sheet { animation: none; }
+}
+
+/* ---------------------------------------------------- Dish detail sheet */
+/* Read-only product-detail view opened from a food card's own photo tile
+   once it already has a real photo (see openDishDetailSheet() in app.js).
+   Same .sheet-overlay backdrop/rise animation as every other sheet. */
+
+.dish-detail-sheet {
+  width: 100%;
+  max-width: 560px;
+  max-height: 92%;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+  animation: sheet-rise 0.24s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+.dish-detail-scroll { min-height: 0; overflow-y: auto; }
+.dish-detail-photo { position: relative; width: 100%; height: 240px; flex: 0 0 auto; background: var(--color-surface); }
+.dish-detail-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.dish-detail-photo-actions { position: absolute; top: var(--space-3); right: var(--space-3); display: flex; gap: var(--space-2); }
+[dir="rtl"] .dish-detail-photo-actions { right: auto; left: var(--space-3); }
+.dish-detail-action {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--color-text);
+  backdrop-filter: blur(4px);
+}
+.dish-detail-action.is-favorite { color: var(--color-primary); }
+.dish-detail-body { padding: var(--space-4) var(--space-5); }
+.dish-detail-name { margin: 0 0 var(--space-3); font-size: 1.3rem; font-weight: 700; }
+.dish-detail-bullets { margin: 0 0 var(--space-4); padding: 0; list-style: none; }
+.dish-detail-bullets li { position: relative; padding-inline-start: var(--space-4); color: var(--color-text-muted); font-size: 0.92rem; line-height: 1.7; }
+.dish-detail-bullets li::before { content: "•"; position: absolute; inset-inline-start: 0; color: var(--color-text-muted); }
+.dish-detail-nutrition { margin: 0 0 var(--space-4); padding: var(--space-3) 0; border-top: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); }
+.dish-detail-section-title { margin: 0 0 var(--space-1); font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; color: var(--color-text-muted); }
+.dish-detail-calories { margin: 0; font-size: 1rem; font-weight: 600; }
+.dish-detail-more { margin: 0 0 var(--space-4); }
+.dish-detail-more summary { font-weight: 600; cursor: pointer; padding: var(--space-2) 0; min-height: var(--touch-target); display: flex; align-items: center; }
+.dish-detail-description, .dish-detail-allergens { margin: var(--space-2) 0 0; font-size: 0.9rem; color: var(--color-text-muted); }
+.dish-detail-footer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5) calc(var(--space-3) + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--color-border);
+  background: var(--color-bg);
+}
+.dish-detail-footer .price { font-size: 1.1rem; font-weight: 700; }
+.dish-detail-footer .dish-detail-add { width: auto; margin: 0; padding: 0 var(--space-5); flex: 0 0 auto; }
+@media (prefers-reduced-motion: reduce) {
+  .dish-detail-sheet { animation: none; }
 }

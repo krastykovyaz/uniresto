@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Admin: dish photos{% endblock %}
+{% block content %}
+<h1>Admin &mdash; Dish photos (Part 84)</h1>
+<p class="muted">
+    Photos students submit from a food card's own upload tile land here first -- each one also pings
+    Telegram (photo attached) the moment it comes in. Nothing here is visible to students until approved.
+</p>
+
+{% if not entries %}
+<p class="muted">Nothing pending.</p>
+{% else %}
+{% for entry in entries %}
+<div class="card" style="display: flex; gap: 1rem; align-items: flex-start;">
+    <img src="{{ entry.photo_path }}" alt="" style="width: 120px; height: 120px; object-fit: cover; border-radius: 8px; flex: 0 0 auto;">
+    <div>
+        <strong>{{ entry.name }}</strong>
+        <div class="muted">{{ entry.slug }} &middot; {{ entry.category }} &middot; submitted {{ entry.submitted_at }}</div>
+        <div style="margin-top: 0.5rem; display: flex; gap: 0.75rem;">
+            <a class="button" href="/admin/dish-photos/{{ entry.id }}/approve?token={{ token }}">Approve</a>
+            <a class="button" href="/admin/dish-photos/{{ entry.id }}/reject?token={{ token }}">Reject</a>
+            <a href="/admin/dish-photos/{{ entry.id }}?token={{ token }}">View full card</a>
+        </div>
+    </div>
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}

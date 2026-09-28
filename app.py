@@ -6,20 +6,24 @@ real Restopolis order placement, no delivery routing.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import re
 import secrets
+import uuid
 from datetime import date, datetime, timedelta
+from pathlib import Path
 
 from dotenv import load_dotenv
-from flask import Flask, abort, jsonify, redirect, render_template, request, url_for
+from flask import Flask, abort, jsonify, redirect, render_template, request, send_from_directory, url_for
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from orderability_engine.cache import OrderabilityCache
 from orderability_engine.coming_soon_clicks import ComingSoonClickStore
 from orderability_engine.daily_report import DailyReportStore, start_daily_report_scheduler
 from orderability_engine.delivery_subscribers import DeliverySubscriberStore
+from orderability_engine.dish_photos import DishPhotoStore
 from orderability_engine.email_verification import EmailVerificationStore
 from orderability_engine.feedback import FeedbackStore
 from orderability_engine.mailer import (
@@ -37,12 +41,14 @@ from orderability_engine.delivery_rules import is_delivery_expired
 from orderability_engine.models import STATUS_VALUES, TZINFO
 from orderability_engine.orders import MAX_QUANTITY, OrderStore, OrderValidationError, recalculate_order
 from orderability_engine.page_views import MAX_SOURCE_LENGTH, PageViewStore
+from orderability_engine.pending_dish_photos import PendingDishPhotoStore
 from orderability_engine.rate_limits import RateLimitStore
 from orderability_engine.service import OrderabilityService
 from orderability_engine.smart_lunch import TIER_ORDER, find_smart_lunch
 from orderability_engine.verified_emails import VerifiedEmailStore
 from orderability_engine.telegram_notify import (
     send_admin_notification,
+    send_dish_photo_review,
     send_feedback_notification,
     send_order_claimed_notification,
     send_order_released_notification,
@@ -182,6 +188,17 @@ def _admin_orders_url() -> str | None:
     return f"{request.host_url}admin/orders?token={admin_token}" if admin_token else None
 
 
+def _admin_dish_photo_urls(pending_id: int) -> tuple[str | None, str | None, str | None]:
+    """(review_url, approve_url, reject_url) for a pending dish photo's
+    Telegram ping -- all None together when ADMIN_TOKEN isn't set, same
+    reasoning as _admin_orders_url() above."""
+    admin_token = os.environ.get("ADMIN_TOKEN")
+    if not admin_token:
+        return None, None, None
+    base = f"{request.host_url}admin/dish-photos/{pending_id}"
+    return f"{base}?token={admin_token}", f"{base}/approve?token={admin_token}", f"{base}/reject?token={admin_token}"
+
+
 def create_app(
     service: OrderabilityService | None = None,
     order_store: OrderStore | None = None,
@@ -189,6 +206,9 @@ def create_app(
     delivery_verification_store: EmailVerificationStore | None = None,
     checkout_verification_store: EmailVerificationStore | None = None,
     verified_email_store: VerifiedEmailStore | None = None,
+    dish_photo_store: DishPhotoStore | None = None,
+    dish_photo_dir: str | Path | None = None,
+    pending_dish_photo_store: PendingDishPhotoStore | None = None,
     delivery_subscriber_store: DeliverySubscriberStore | None = None,
     coming_soon_click_store: ComingSoonClickStore | None = None,
     feedback_store: FeedbackStore | None = None,
@@ -240,6 +260,19 @@ def create_app(
         "checkout_email_verification.db"
     )
     app.config["VERIFIED_EMAIL_STORE"] = verified_email_store or VerifiedEmailStore("orders.db")
+    # Crowd-sourced dish photos (see dish_photos.py's own docstring) --
+    # same orders.db file as every other *_store above, same reasoning.
+    app.config["DISH_PHOTO_STORE"] = dish_photo_store or DishPhotoStore("orders.db")
+    # Where uploaded files actually land -- defaults to static/dish_photos
+    # (served straight back out by Flask's own static handler) but
+    # overridable so tests never write real files into this repo's own
+    # static/ folder (see tests/test_app.py's _make_client()).
+    app.config["DISH_PHOTO_DIR"] = Path(dish_photo_dir) if dish_photo_dir else Path(app.static_folder) / "dish_photos"
+    # A photo waits here (Part 84) until the admin approves/rejects it via
+    # Telegram or /admin/dish-photos -- see pending_dish_photos.py's own
+    # docstring for why this is a separate store from DISH_PHOTO_STORE
+    # above, not just a status column on it.
+    app.config["PENDING_DISH_PHOTO_STORE"] = pending_dish_photo_store or PendingDishPhotoStore("orders.db")
     app.config["DELIVERY_SUBSCRIBER_STORE"] = delivery_subscriber_store or DeliverySubscriberStore("orders.db")
     app.config["COMING_SOON_CLICK_STORE"] = coming_soon_click_store or ComingSoonClickStore("orders.db")
     app.config["FEEDBACK_STORE"] = feedback_store or FeedbackStore("orders.db")
@@ -266,6 +299,12 @@ def create_app(
     def verified_emails() -> VerifiedEmailStore:
         return app.config["VERIFIED_EMAIL_STORE"]
 
+    def dish_photos() -> DishPhotoStore:
+        return app.config["DISH_PHOTO_STORE"]
+
+    def pending_dish_photos() -> PendingDishPhotoStore:
+        return app.config["PENDING_DISH_PHOTO_STORE"]
+
     def delivery_subscribers() -> DeliverySubscriberStore:
         return app.config["DELIVERY_SUBSCRIBER_STORE"]
 
@@ -288,6 +327,7 @@ def create_app(
         "courier_action": (30, 600),  # claim/release/(un)deliver: Telegram + customer email
         "track": (60, 3600),          # per event -- the evening report's page views
         "delivery_view": (60, 3600),  # counting only; the list itself is never blocked
+        "dish_photo": (20, 3600),     # each one: a file write to static/dish_photos
     }
 
     def within_rate_limit(bucket: str, suffix: str = "") -> tuple[bool, int]:
@@ -412,6 +452,91 @@ def create_app(
                 "items": flat_items,
             }
         )
+
+    @app.get("/api/restaurants/<slug>/dish-photos")
+    def api_dish_photos(slug):
+        get_restaurant_or_404(slug)
+        return jsonify(dish_photos().photos_for_restaurant(slug))
+
+    # Raster-only, sniffed from the file's own bytes rather than trusted
+    # from the client-sent MIME type or filename (both spoofable) -- this
+    # is the app's first arbitrary-upload endpoint, and the result is
+    # served straight back out of static/, so only formats with no
+    # embedded-script risk (unlike SVG) are ever written to disk.
+    _DISH_PHOTO_SIGNATURES = {
+        b"\xff\xd8\xff": ".jpg",
+        b"\x89PNG\r\n\x1a\n": ".png",
+        b"GIF87a": ".gif",
+        b"GIF89a": ".gif",
+    }
+    MAX_DISH_PHOTO_BYTES = 8 * 1024 * 1024
+
+    def _sniff_dish_photo_extension(data: bytes) -> str | None:
+        for signature, ext in _DISH_PHOTO_SIGNATURES.items():
+            if data.startswith(signature):
+                return ext
+        if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+            return ".webp"
+        return None
+
+    @app.post("/api/restaurants/<slug>/dish-photos")
+    def api_upload_dish_photo(slug):
+        """A student submits a real photo for a real menu item straight
+        from the food card's own upload tile (see static/app.js's
+        food-card-photo-input) -- no account, but NOT immediately live
+        either (Part 84): it's staged in PENDING_DISH_PHOTO_STORE and
+        pinged to the admin over Telegram (photo attached, plus Approve/
+        Reject/"View full card" buttons -- see
+        telegram_notify.send_dish_photo_review) rather than published
+        straight into DISH_PHOTO_STORE the way the very first version of
+        this endpoint did. Only /admin/dish-photos/<id>/approve actually
+        calls dish_photos().set_photo()."""
+        restaurant = get_restaurant_or_404(slug)
+        limited = rate_limited_response("dish_photo")
+        if limited:
+            return limited
+        category = (request.form.get("category") or "").strip()
+        name = (request.form.get("name") or "").strip()
+        if not category or not name:
+            abort(400, description="Form must include 'category' and 'name'")
+        photo = request.files.get("photo")
+        if photo is None or not photo.filename:
+            abort(400, description="Form must include a 'photo' file")
+        data = photo.read(MAX_DISH_PHOTO_BYTES + 1)
+        if len(data) > MAX_DISH_PHOTO_BYTES:
+            return jsonify({"error": "too_large", "message": "Photo must be smaller than 8 MB"}), 400
+        ext = _sniff_dish_photo_extension(data)
+        if ext is None:
+            return jsonify({"error": "unsupported_type", "message": "Photo must be a JPEG, PNG, WEBP, or GIF image"}), 400
+
+        # A RANDOM filename here, deliberately NOT the deterministic
+        # sha1(slug|category|name) scheme DISH_PHOTO_STORE's own approved
+        # files use (see api_upload_dish_photo's git history) -- this
+        # dish may already have a live, approved photo at that exact
+        # path, and a pending resubmission must never overwrite it before
+        # the admin has actually approved the new one.
+        filename = f"pending-{uuid.uuid4().hex}{ext}"
+        photo_dir = app.config["DISH_PHOTO_DIR"]
+        photo_dir.mkdir(parents=True, exist_ok=True)
+        (photo_dir / filename).write_bytes(data)
+        photo_path = f"/static/dish_photos/{filename}"
+
+        pending_id = pending_dish_photos().create(slug, category, name, photo_path)
+        photo_url = f"{request.host_url.rstrip('/')}{photo_path}"
+        review_url, approve_url, reject_url = _admin_dish_photo_urls(pending_id)
+        send_dish_photo_review(restaurant.name, category, name, photo_url, review_url, approve_url, reject_url)
+        return jsonify({"status": "pending", "id": pending_id, "photo_path": photo_path})
+
+    # An explicit route (not just Flask's own /static/<path:filename>
+    # handler) so uploaded photos are always served from DISH_PHOTO_DIR --
+    # which tests point at tmp_path, separate from this repo's real
+    # static/ folder (see api_upload_dish_photo above and DISH_PHOTO_DIR's
+    # own comment). Registered with a longer static prefix than the
+    # generic static route, so Werkzeug's routing prefers this one for
+    # anything under /static/dish_photos/.
+    @app.get("/static/dish_photos/<path:filename>")
+    def dish_photo_file(filename):
+        return send_from_directory(app.config["DISH_PHOTO_DIR"], filename)
 
     @app.post("/api/orderability/check")
     def api_orderability_check():
@@ -1115,6 +1240,88 @@ def create_app(
         if not _is_admin_authorized():
             abort(404)
         return render_template("admin_feedback.html", entries=feedback().list_recent(), token=request.args.get("token"))
+
+    @app.get("/admin/dish-photos")
+    def admin_dish_photos():
+        """Part 84: every pending student-submitted dish photo, oldest
+        first -- the same queue send_dish_photo_review's Telegram ping is
+        drawn from, for browsing/deciding from a browser instead."""
+        if not _is_admin_authorized():
+            abort(404)
+        return render_template("admin_dish_photos.html", entries=pending_dish_photos().all_pending(), token=request.args.get("token"))
+
+    @app.get("/admin/dish-photos/<int:pending_id>")
+    def admin_dish_photo_review(pending_id):
+        """Part 84: "View full card" from the Telegram ping -- a bigger
+        look at the exact same photo/dish before deciding. Already-
+        decided (or never-existed) ids get a friendly explanation, same
+        as /o/<id>/confirm|cancel's own "not valid anymore" page, rather
+        than a bare 404."""
+        if not _is_admin_authorized():
+            abort(404)
+        entry = pending_dish_photos().get(pending_id)
+        if entry is None:
+            return render_template(
+                "order_action.html",
+                icon="✅",
+                title="Nothing left to review here",
+                message="This photo was already approved or rejected (or never existed).",
+            )
+        return render_template("dish_photo_review.html", entry=entry, token=request.args.get("token"))
+
+    @app.get("/admin/dish-photos/<int:pending_id>/approve")
+    def admin_approve_dish_photo(pending_id):
+        """Part 84: the "✅ Approve" Telegram button (plain URL, same
+        no-webhook reasoning as admin_mark_order_reviewing below) --
+        publishes the pending photo into DISH_PHOTO_STORE (now live for
+        every student browsing this dish) and removes it from the
+        pending queue. The pending file itself is left exactly where it
+        is; only which store's row points at it changes."""
+        if not _is_admin_authorized():
+            abort(404)
+        entry = pending_dish_photos().get(pending_id)
+        if entry is None:
+            return render_template(
+                "order_action.html",
+                icon="⚠️",
+                title="This link isn't valid anymore",
+                message="This photo was already approved or rejected.",
+            )
+        dish_photos().set_photo(entry["slug"], entry["category"], entry["name"], entry["photo_path"])
+        pending_dish_photos().delete(pending_id)
+        return render_template(
+            "order_action.html",
+            icon="✅",
+            title="Photo approved",
+            message=f"{entry['name']} now shows this photo for every student.",
+        )
+
+    @app.get("/admin/dish-photos/<int:pending_id>/reject")
+    def admin_reject_dish_photo(pending_id):
+        """Part 84: the "❌ Reject" Telegram button -- discards the
+        submission (file and pending row both). Never published, and
+        since this app has no accounts there's no submitter to notify;
+        the dish's card simply goes back to showing the plain "Add dish
+        pic here!" placeholder until someone submits another photo."""
+        if not _is_admin_authorized():
+            abort(404)
+        entry = pending_dish_photos().get(pending_id)
+        if entry is None:
+            return render_template(
+                "order_action.html",
+                icon="⚠️",
+                title="This link isn't valid anymore",
+                message="This photo was already approved or rejected.",
+            )
+        photo_file = app.config["DISH_PHOTO_DIR"] / Path(entry["photo_path"]).name
+        photo_file.unlink(missing_ok=True)
+        pending_dish_photos().delete(pending_id)
+        return render_template(
+            "order_action.html",
+            icon="❌",
+            title="Photo rejected",
+            message=f"{entry['name']} is back to showing the placeholder until a new photo comes in.",
+        )
 
     @app.get("/admin/orders/<int:order_id>/mark-reviewing")
     def admin_mark_order_reviewing(order_id):

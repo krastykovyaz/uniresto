@@ -85,6 +85,7 @@ const state = {
   dateInfo: null, // the selected date's OrderabilityResult api_dict
   menu: null, // { items, service_time, max_quantity, restaurant }
   menuError: null, // { status, reason } when menu fetch was refused
+  dishPhotos: {}, // { category: { name: photo_path } } for state.slug, see getDishPhotos()
   filters: defaultFilters(),
   filterSheetOpen: false,
   searchQuery: "",
@@ -716,6 +717,7 @@ const ICON_PATHS = {
   phone: '<path d="M6.6 10.8c1.4 2.8 3.8 5.2 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.3 21 3 13.7 3 4.9c0-.6.4-1 1-1h3.4c.6 0 1 .4 1 1 0 1.2.2 2.4.6 3.6.1.4 0 .8-.2 1L6.6 10.8z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" fill="none"/>',
   delivery: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" fill="none"/><path d="M4.5 7.5L12 12l7.5-4.5M12 12v9" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none"/>',
   message: '<path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9l-4 4v-4H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" fill="none"/>',
+  share: '<path d="M12 15V4M8 8l4-4 4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M5 13v6a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
 };
 
 function icon(name, size = 24) {
@@ -2217,6 +2219,28 @@ function menuCacheKey(slug, date) {
   return `${slug}::${date}`;
 }
 
+// ------------------------------------------------------ Dish photo cache
+//
+// Crowd-sourced photos (see app.py's api_dish_photos/api_upload_dish_photo
+// and orderability_engine/dish_photos.py) are per-RESTAURANT, not
+// per-(slug, date) like the menu itself -- the same real dish keeps
+// whatever photo was submitted for it regardless of which day it's
+// showing on. In-memory only, same one-session-only caveat as menuCache
+// above; a fresh submit (see foodCard()'s photoInput handler) updates
+// state.dishPhotos directly rather than waiting for a refetch.
+const dishPhotosCache = new Map(); // slug -> resolved { category: { name: photo_path } }
+
+async function getDishPhotos(slug) {
+  if (dishPhotosCache.has(slug)) return dishPhotosCache.get(slug);
+  try {
+    const photos = (await api(`/api/restaurants/${slug}/dish-photos`)) || {};
+    dishPhotosCache.set(slug, photos);
+    return photos;
+  } catch {
+    return {};
+  }
+}
+
 function prefetchMenu(slug, date) {
   const key = menuCacheKey(slug, date);
   if (menuCache.has(key) || menuFetchesInFlight.has(key)) return;
@@ -2355,7 +2379,9 @@ async function selectDate(dateInfo) {
   // straight here without ever visiting the date picker at all).
   if (!menuCache.has(menuCacheKey(state.slug, state.targetDate))) goTo("menu-loading");
   try {
+    const dishPhotosPromise = getDishPhotos(state.slug);
     state.menu = await getMenu(state.slug, state.targetDate);
+    state.dishPhotos = await dishPhotosPromise;
     // Part 74: one real "viewed a menu" per day someone actually opens --
     // counted here, not at the API, because renderDates()'s background
     // prefetch hits that same endpoint for every orderable day shown.
@@ -3473,12 +3499,24 @@ function foodCard(item) {
   // our_delivery just computed against the earlier time.
   const earlyCutoffPassed =
     item.requires_early_order && state.dateInfo && state.dateInfo.early_cutoff && state.dateInfo.early_cutoff.available === false;
+  // A photo a student already submitted for this exact (slug, category,
+  // name) dish (see api_upload_dish_photo) -- shown from the very first
+  // render, unlike the pre-upload local preview below which only exists
+  // for the moment between picking a file and the upload resolving.
+  const storedPhotoPath = state.dishPhotos && state.dishPhotos[item.category] && state.dishPhotos[item.category][item.name];
+  // Once a dish has a real photo, the card's OWN tap target changes: the
+  // body/photo now opens the read-only detail sheet, and the "+" becomes
+  // the only way to actually add it to the order (a real <button>, not
+  // just a decorative icon riding the whole card's click). A card with no
+  // photo is untouched -- the whole card stays the add/remove toggle it's
+  // always been, and "+" stays purely decorative there.
+  const hasPhoto = Boolean(storedPhotoPath);
   const card = el(`
     <article class="food-card ${isSelected ? "is-selected" : ""} ${earlyCutoffPassed ? "is-early-cutoff-passed" : ""}" data-item-id="${item.id}">
-      <div class="food-card-photo icon-avatar ${categoryIconClass(item)}">
+      <div class="food-card-photo icon-avatar ${categoryIconClass(item)} ${storedPhotoPath ? "has-custom-photo" : ""}">
         ${dishIllustrationSvg()}
         <p class="food-card-photo-note">📸 Add dish pic here!</p>
-        <img class="food-card-custom-photo" alt="" hidden>
+        <img class="food-card-custom-photo" alt="" ${storedPhotoPath ? `src="${escapeHtml(storedPhotoPath)}"` : "hidden"}>
         <input type="file" accept="image/*" class="food-card-photo-input" hidden>
         <button type="button" class="heart-btn ${isFav ? "is-favorite" : ""}" aria-label="${escapeHtml(tr(isFav ? "removeFavorite" : "addFavorite", { name: dishNameLabel(item.name, state.lang) }))}" aria-pressed="${isFav}">${icon(isFav ? "heartFilled" : "heart", 18)}</button>
         ${
@@ -3503,7 +3541,11 @@ function foodCard(item) {
         ${item.allergens && item.allergens.length ? `<p class="allergen-line">${escapeHtml(tr("allergens"))} ${item.allergens.map((a) => escapeHtml(allergenLabel(a, state.lang))).join(" · ")}</p>` : ""}
         <div class="add-row">
           <span class="price ${priceIsUnspecified(item) ? "is-unspecified" : ""}">${escapeHtml(priceText(item))}</span>
-          <div class="select-check" aria-hidden="true">${icon(isSelected ? "check" : "plus", 14)}</div>
+          ${
+            hasPhoto
+              ? `<button type="button" class="select-check" aria-label="${escapeHtml(tr(isSelected ? "deselectItem" : "selectItem", { name: dishNameLabel(item.name, state.lang) }))}" aria-pressed="${isSelected}">${icon(isSelected ? "check" : "plus", 14)}</button>`
+              : `<div class="select-check" aria-hidden="true">${icon(isSelected ? "check" : "plus", 14)}</div>`
+          }
         </div>
       </div>
     </article>
@@ -3538,28 +3580,69 @@ function foodCard(item) {
     card.replaceWith(foodCard(item));
   });
 
-  // Preview-only (see food-card-photo-note's own comment): tapping the
-  // photo tile opens the device's native picker -- plain accept="image/*"
-  // with no `capture` attribute is what actually offers BOTH "Photo
-  // Library" and "Take Photo" on iOS/Android, unlike capture="environment"
-  // which would force the camera and hide the library option entirely.
-  // Client-side preview only (object URL) -- never uploaded/persisted
-  // anywhere, and lost the moment this card next re-renders (e.g. the
-  // heart-button handler above replaces the whole card).
+  // A tile with a real photo already on it opens the (read-only) detail
+  // sheet instead of the picker -- see openDishDetailSheet() below. Only
+  // the still-empty placeholder ("Add dish pic here!") is a shortcut
+  // straight to the picker; replacing an existing photo isn't wired up
+  // yet (would need its own affordance, e.g. an edit icon on the detail
+  // sheet -- out of scope here).
+  //
+  // Tapping the EMPTY placeholder opens the device's native picker --
+  // plain accept="image/*" with no `capture` attribute is what actually
+  // offers BOTH "Photo Library" and "Take Photo" on iOS/Android, unlike
+  // capture="environment" which would force the camera and hide the
+  // library option entirely. Shows the picked file immediately (an
+  // object URL) for instant feedback, then uploads it in the background
+  // via api_upload_dish_photo; on success the real /static/dish_photos/
+  // URL replaces the local preview and state.dishPhotos is updated
+  // in-place so every OTHER already-rendered card for this same dish
+  // (e.g. the same item reached via a different search/filter state)
+  // picks it up next render too. On failure the tile reverts to the
+  // placeholder and a toast explains why -- never leaves a broken image
+  // silently in place.
   const photoTile = card.querySelector(".food-card-photo");
   const photoInput = card.querySelector(".food-card-photo-input");
   const photoImg = card.querySelector(".food-card-custom-photo");
   photoTile.addEventListener("click", (e) => {
     e.stopPropagation();
-    photoInput.click();
+    if (photoTile.classList.contains("has-custom-photo")) {
+      openDishDetailSheet(item, photoTile, earlyCutoffPassed);
+    } else {
+      photoInput.click();
+    }
   });
   photoInput.addEventListener("click", (e) => e.stopPropagation());
-  photoInput.addEventListener("change", () => {
+  photoInput.addEventListener("change", async () => {
     const file = photoInput.files[0];
     if (!file) return;
-    photoImg.src = URL.createObjectURL(file);
+    const previewUrl = URL.createObjectURL(file);
+    photoImg.src = previewUrl;
     photoImg.hidden = false;
     photoTile.classList.add("has-custom-photo");
+    try {
+      const form = new FormData();
+      form.append("category", item.category);
+      form.append("name", item.name);
+      form.append("photo", file);
+      const res = await fetch(`/api/restaurants/${state.slug}/dish-photos`, { method: "POST", body: form });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((body && (body.message || body.error)) || `Upload failed (${res.status})`);
+      // Part 84: NOT live yet -- an admin still has to approve it over
+      // Telegram or /admin/dish-photos (see api_upload_dish_photo), so
+      // state.dishPhotos and the hasPhoto-only click routing below stay
+      // untouched. This blob preview is just local feedback for the
+      // person who submitted it, marked with a "pending review" badge
+      // (see .is-pending-review in app.css); it quietly reverts to the
+      // plain placeholder on the next real render (e.g. a reload) until
+      // the admin actually approves it.
+      photoTile.classList.add("is-pending-review");
+      showToast(tr("dishPhotoPendingReview"));
+    } catch {
+      photoTile.classList.remove("has-custom-photo");
+      photoImg.hidden = true;
+      URL.revokeObjectURL(previewUrl);
+      showToast(tr("dishPhotoUploadFailed"));
+    }
   });
 
   function selectOrExplain() {
@@ -3570,20 +3653,216 @@ function foodCard(item) {
     toggleSelection(item.id);
   }
 
-  card.addEventListener("click", selectOrExplain);
-  card.setAttribute("role", "button");
-  card.setAttribute("tabindex", "0");
-  card.setAttribute("aria-pressed", String(isSelected));
-  card.setAttribute("aria-disabled", String(earlyCutoffPassed));
-  card.setAttribute("aria-label", tr(isSelected ? "deselectItem" : "selectItem", { name: dishNameLabel(item.name, state.lang) }));
-  card.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
+  if (hasPhoto) {
+    // The "+"/checkmark is now the only add/remove control -- a real
+    // button (see its markup above), not the decorative div a photo-less
+    // card still uses. stopPropagation so it never also re-opens the
+    // detail sheet via the root card handler below.
+    card.querySelector(".select-check").addEventListener("click", (e) => {
+      e.stopPropagation();
       selectOrExplain();
+    });
+    function openDetail() {
+      openDishDetailSheet(item, photoTile, earlyCutoffPassed);
     }
-  });
+    card.addEventListener("click", openDetail);
+    card.setAttribute("role", "button");
+    card.setAttribute("tabindex", "0");
+    card.setAttribute("aria-label", tr("viewDishDetails", { name: dishNameLabel(item.name, state.lang) }));
+    card.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        openDetail();
+      }
+    });
+  } else {
+    card.addEventListener("click", selectOrExplain);
+    card.setAttribute("role", "button");
+    card.setAttribute("tabindex", "0");
+    card.setAttribute("aria-pressed", String(isSelected));
+    card.setAttribute("aria-disabled", String(earlyCutoffPassed));
+    card.setAttribute("aria-label", tr(isSelected ? "deselectItem" : "selectItem", { name: dishNameLabel(item.name, state.lang) }));
+    card.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        selectOrExplain();
+      }
+    });
+  }
 
   return card;
+}
+
+// Read-only product-detail view for a dish that already has a real photo
+// (see foodCard()'s photoTile click handler above -- an empty placeholder
+// opens the upload picker instead of this). Reuses the exact same
+// data/logic the card itself uses for price/weight/calories/allergens/
+// favorite/quantity -- this is a bigger presentation of the same real
+// facts, never a second source of truth for any of them. Deliberately
+// has NO protein/fat/carbs breakdown: orderability_engine/nutrition.py
+// only ever produces a total-dish calorie estimate, never a macro
+// breakdown, and this view follows that module's own "never invent a
+// number with no basis" rule just as strictly as the card does.
+function openDishDetailSheet(item, trigger, earlyCutoffPassed = false) {
+  // Reassigned after toggleSelection()/changeQuantity() below -- both
+  // call refreshMenuScreen(), which replaceWith()s every .food-card
+  // (including this one), detaching the original `trigger` node. Kept
+  // current so Escape/backdrop-close can still hand focus back to a
+  // real, attached element instead of a silently-detached one.
+  let activeTrigger = trigger;
+  const photoPath =
+    (state.dishPhotos && state.dishPhotos[item.category] && state.dishPhotos[item.category][item.name]) ||
+    trigger.querySelector(".food-card-custom-photo")?.src ||
+    "";
+  const name = dishNameLabel(item.name, state.lang);
+
+  const bullets = [];
+  if (item.vegan) bullets.push(tr("vegan"));
+  else if (item.vegetarian) bullets.push(tr("vegetarian"));
+  const weight = weightText(item);
+  if (weight) bullets.push(weight);
+  if (item.requires_early_order) bullets.push(tr("earlyOrderBadge"));
+
+  const calories = caloriesText(item);
+  const hasMoreInfo = Boolean(item.description) || Boolean(item.allergens && item.allergens.length);
+
+  const overlay = el(`<div class="sheet-overlay"></div>`);
+  const sheet = el(`
+    <div class="dish-detail-sheet" role="dialog" aria-modal="true" aria-label="${escapeHtml(name)}">
+      <div class="sheet-grabber" aria-hidden="true"></div>
+      <div class="dish-detail-scroll">
+        <div class="dish-detail-photo">
+          <img src="${escapeHtml(photoPath)}" alt="">
+          <div class="dish-detail-photo-actions">
+            ${typeof navigator.share === "function" ? `<button type="button" class="dish-detail-action dish-detail-share" aria-label="${escapeHtml(tr("shareDish", { name }))}">${icon("share", 18)}</button>` : ""}
+            <button type="button" class="dish-detail-action dish-detail-heart" aria-label="${escapeHtml(tr(isFavorite(state.slug, item.category, item.name) ? "removeFavorite" : "addFavorite", { name }))}" aria-pressed="${isFavorite(state.slug, item.category, item.name)}">${icon(isFavorite(state.slug, item.category, item.name) ? "heartFilled" : "heart", 18)}</button>
+            <button type="button" class="dish-detail-action dish-detail-close" aria-label="${escapeHtml(tr("back"))}">${icon("close", 18)}</button>
+          </div>
+        </div>
+        <div class="dish-detail-body">
+          <h2 class="dish-detail-name">${escapeHtml(name)}</h2>
+          ${
+            bullets.length
+              ? `<ul class="dish-detail-bullets">${bullets.map((b) => `<li>${escapeHtml(b)}</li>`).join("")}</ul>`
+              : ""
+          }
+          ${
+            calories
+              ? `<div class="dish-detail-nutrition">
+                  <p class="dish-detail-section-title">${escapeHtml(tr("nutritionEstimated"))}</p>
+                  <p class="dish-detail-calories">${escapeHtml(calories)}</p>
+                </div>`
+              : ""
+          }
+          ${
+            hasMoreInfo
+              ? `<details class="dish-detail-more">
+                  <summary>${escapeHtml(tr("moreAboutDish"))}</summary>
+                  ${item.description ? `<p class="dish-detail-description">${escapeHtml(item.description)}</p>` : ""}
+                  ${
+                    item.allergens && item.allergens.length
+                      ? `<p class="dish-detail-allergens">${escapeHtml(tr("allergens"))} ${item.allergens.map((a) => escapeHtml(allergenLabel(a, state.lang))).join(" · ")}</p>`
+                      : ""
+                  }
+                </details>`
+              : ""
+          }
+        </div>
+      </div>
+      <div class="dish-detail-footer"></div>
+    </div>
+  `);
+
+  function renderFooter() {
+    const sel = selectionFor(item.id);
+    const footer = sheet.querySelector(".dish-detail-footer");
+    footer.innerHTML = "";
+    footer.append(el(`<span class="price ${priceIsUnspecified(item) ? "is-unspecified" : ""}">${escapeHtml(priceText(item))}</span>`));
+    if (sel) {
+      const stepper = el(`
+        <div class="quantity-stepper">
+          <button type="button" aria-label="${escapeHtml(tr("decreaseQuantityOf", { name }))}">−</button>
+          <span class="quantity-value">${sel.quantity}</span>
+          <button type="button" aria-label="${escapeHtml(tr("increaseQuantityOf", { name }))}">+</button>
+        </div>
+      `);
+      const [decBtn, , incBtn] = stepper.querySelectorAll("button, span");
+      decBtn.addEventListener("click", () => {
+        changeQuantity(item.id, -1);
+        activeTrigger = document.querySelector(`.food-card[data-item-id="${item.id}"] .food-card-photo`) || activeTrigger;
+        renderFooter();
+      });
+      incBtn.addEventListener("click", () => {
+        changeQuantity(item.id, +1);
+        activeTrigger = document.querySelector(`.food-card[data-item-id="${item.id}"] .food-card-photo`) || activeTrigger;
+        renderFooter();
+      });
+      footer.append(stepper);
+    } else {
+      const addBtn = el(`<button type="button" class="primary-button dish-detail-add">${escapeHtml(tr("orderNow"))}</button>`);
+      addBtn.addEventListener("click", () => {
+        // Same guard as the plain card's own selectOrExplain() -- the
+        // sheet must never be a way to route around the early-cutoff
+        // restriction that the card itself already enforces.
+        if (earlyCutoffPassed) {
+          showToast(tr("earlyOrderPassedToast"));
+          return;
+        }
+        toggleSelection(item.id);
+        activeTrigger = document.querySelector(`.food-card[data-item-id="${item.id}"] .food-card-photo`) || activeTrigger;
+        renderFooter();
+      });
+      footer.append(addBtn);
+    }
+  }
+  renderFooter();
+
+  function close() {
+    document.removeEventListener("keydown", onKey);
+    overlay.remove();
+  }
+  function onKey(e) {
+    if (e.key === "Escape") {
+      close();
+      activeTrigger?.focus();
+    }
+  }
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) {
+      close();
+      activeTrigger?.focus();
+    }
+  });
+  sheet.querySelector(".dish-detail-close").addEventListener("click", () => {
+    close();
+    activeTrigger?.focus();
+  });
+  sheet.querySelector(".dish-detail-share")?.addEventListener("click", () => {
+    navigator.share({ title: name, text: name, url: location.href }).catch(() => {});
+  });
+  sheet.querySelector(".dish-detail-heart").addEventListener("click", () => {
+    toggleFavorite(state.slug, state.restaurantName, item.category, item.name);
+    const heartBtn = sheet.querySelector(".dish-detail-heart");
+    const nowFav = isFavorite(state.slug, item.category, item.name);
+    heartBtn.setAttribute("aria-pressed", String(nowFav));
+    heartBtn.setAttribute("aria-label", tr(nowFav ? "removeFavorite" : "addFavorite", { name }));
+    heartBtn.innerHTML = icon(nowFav ? "heartFilled" : "heart", 18);
+    // Mirrors the update onto the card behind this sheet too, in place
+    // (not card.replaceWith(foodCard(item)) -- that would detach
+    // activeTrigger, the photo tile this sheet's own Escape/backdrop-close
+    // still needs to hand focus back to).
+    const cardHeartBtn = activeTrigger.closest(".food-card")?.querySelector(".heart-btn");
+    if (cardHeartBtn) {
+      cardHeartBtn.classList.toggle("is-favorite", nowFav);
+      cardHeartBtn.setAttribute("aria-pressed", String(nowFav));
+      cardHeartBtn.setAttribute("aria-label", tr(nowFav ? "removeFavorite" : "addFavorite", { name }));
+      cardHeartBtn.innerHTML = icon(nowFav ? "heartFilled" : "heart", 18);
+    }
+  });
+  document.addEventListener("keydown", onKey);
+
+  overlay.append(sheet);
+  deviceScreen.append(overlay);
 }
 
 function toggleSelection(itemId) {

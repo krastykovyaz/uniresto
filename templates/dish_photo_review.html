@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Admin: review dish photo{% endblock %}
+{% block content %}
+<h1>Admin &mdash; Review dish photo</h1>
+<div class="card">
+    <img src="{{ entry.photo_path }}" alt="" style="width: 100%; max-width: 480px; display: block; border-radius: 8px; margin-bottom: 1rem;">
+    <p><strong>{{ entry.name }}</strong></p>
+    <p class="muted">{{ entry.slug }} &middot; {{ entry.category }} &middot; submitted {{ entry.submitted_at }}</p>
+    <div style="margin-top: 1rem; display: flex; gap: 0.75rem;">
+        <a class="button" href="/admin/dish-photos/{{ entry.id }}/approve?token={{ token }}">✅ Approve</a>
+        <a class="button" href="/admin/dish-photos/{{ entry.id }}/reject?token={{ token }}">❌ Reject</a>
+    </div>
+</div>
+<p><a href="/admin/dish-photos?token={{ token }}">&larr; Back to all pending photos</a></p>
+{% endblock %}

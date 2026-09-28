@@ -7,6 +7,7 @@ from orderability_engine.telegram_notify import (
     is_configured,
     send_admin_notification,
     send_daily_report,
+    send_dish_photo_review,
     send_feedback_notification,
     send_order_claimed_notification,
     send_order_released_notification,
@@ -348,3 +349,64 @@ def test_order_released_says_nobody_is_on_it(monkeypatch):
     text = mock_post.call_args.kwargs["json"]["text"]
     assert "released" in text
     assert f"#{_order()['id']}" in text
+
+
+# ---------------------------------------------------------------------------
+# send_dish_photo_review (Part 84)
+# ---------------------------------------------------------------------------
+
+
+def test_dish_photo_review_returns_not_sent_when_unconfigured():
+    sent, error = send_dish_photo_review("Altius", "Végétarien", "Salad'bar", "https://x/photo.jpg", None, None, None)
+    assert sent is False
+    assert "not configured" in error
+
+
+def test_dish_photo_review_hits_sendphoto_not_sendmessage(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "999")
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"ok": True}
+    with patch("orderability_engine.telegram_notify.requests.post", return_value=mock_resp) as mock_post:
+        sent, error = send_dish_photo_review(
+            "Altius", "Végétarien", "Salad'bar", "https://x/photo.jpg", None, None, None
+        )
+    assert sent is True
+    assert error is None
+    url = mock_post.call_args.args[0]
+    assert url.endswith("/sendPhoto")
+    payload = mock_post.call_args.kwargs["json"]
+    assert payload["photo"] == "https://x/photo.jpg"
+    assert "Salad'bar" in payload["caption"]
+    assert "Altius" in payload["caption"]
+    assert "Végétarien" in payload["caption"]
+
+
+def test_dish_photo_review_includes_approve_and_reject_buttons(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "999")
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"ok": True}
+    approve_url = "https://x/admin/dish-photos/1/approve?token=y"
+    reject_url = "https://x/admin/dish-photos/1/reject?token=y"
+    review_url = "https://x/admin/dish-photos/1?token=y"
+    with patch("orderability_engine.telegram_notify.requests.post", return_value=mock_resp) as mock_post:
+        send_dish_photo_review(
+            "Altius", "Végétarien", "Salad'bar", "https://x/photo.jpg", review_url, approve_url, reject_url
+        )
+    buttons = [b for row in mock_post.call_args.kwargs["json"]["reply_markup"]["inline_keyboard"] for b in row]
+    urls = {b["url"] for b in buttons}
+    assert urls == {approve_url, reject_url, review_url}
+    # Plain URL buttons, never callback_query -- same no-webhook reasoning
+    # as every other admin button in this module.
+    assert all("callback_data" not in b for b in buttons)
+
+
+def test_dish_photo_review_no_buttons_when_no_admin_token(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "999")
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"ok": True}
+    with patch("orderability_engine.telegram_notify.requests.post", return_value=mock_resp) as mock_post:
+        send_dish_photo_review("Altius", "Végétarien", "Salad'bar", "https://x/photo.jpg", None, None, None)
+    assert "reply_markup" not in mock_post.call_args.kwargs["json"]

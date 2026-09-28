@@ -209,6 +209,75 @@ def send_order_released_notification(order: dict, admin_url: str | None = None) 
     return _send_message("\n".join(lines), buttons=None, log_context=f"order #{order.get('id')} released")
 
 
+def send_dish_photo_review(
+    restaurant_name: str,
+    category: str,
+    dish_name: str,
+    photo_url: str,
+    review_url: str | None,
+    approve_url: str | None,
+    reject_url: str | None,
+) -> tuple[bool, str | None]:
+    """Part 84: pings the admin the moment a student submits a photo for a
+    real dish (see app.py's api_upload_dish_photo) -- sent as an actual
+    photo (sendPhoto, not sendMessage+a link) so the admin can judge it at
+    a glance without leaving Telegram. `photo_url` must be a real,
+    publicly-fetchable URL (Telegram's servers fetch it themselves; a
+    localhost URL in dev will silently fail to send, same as any other
+    best-effort notification here -- see _send_photo's own docstring).
+
+    `approve_url`/`reject_url` (Part 84) are plain URL buttons, same
+    no-webhook reasoning as mark_reviewing_url in
+    send_admin_notification's own docstring above -- tapping one hits a
+    GET route straight away, no callback_query/polling needed on our
+    side. `review_url` is a third button linking to the single-item
+    /admin/dish-photos/<id> page (a bigger view of the same photo, for
+    when the admin wants to look before deciding) -- all three are None
+    together whenever ADMIN_TOKEN isn't set (see app.py), in which case
+    the photo still sends, just with no way to act on it from here."""
+    lines = [
+        "New dish photo -- needs review",
+        "",
+        f"Restaurant: {restaurant_name}",
+        f"Category: {category}",
+        f"Dish: {dish_name}",
+    ]
+    buttons = []
+    if approve_url and reject_url:
+        buttons.append([{"text": "✅ Approve", "url": approve_url}, {"text": "❌ Reject", "url": reject_url}])
+    if review_url:
+        buttons.append([{"text": "View full card", "url": review_url}])
+    return _send_photo(photo_url, "\n".join(lines), buttons, log_context=f"dish photo for {dish_name!r}")
+
+
+def _send_photo(photo_url: str, caption: str, buttons: list | None, log_context: str) -> tuple[bool, str | None]:
+    """Same best-effort contract as _send_message above, but Telegram's
+    sendPhoto endpoint -- takes a `photo` URL (Telegram's own servers
+    fetch it; nothing is uploaded from here) instead of a `text` body."""
+    config = _bot_config()
+    if config is None:
+        return False, "Telegram not configured (TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID unset)"
+
+    payload = {"chat_id": config["chat_id"], "photo": photo_url, "caption": caption}
+    if buttons:
+        payload["reply_markup"] = {"inline_keyboard": buttons}
+    try:
+        resp = requests.post(
+            f"{TELEGRAM_API_BASE}/bot{config['token']}/sendPhoto",
+            json=payload,
+            timeout=10,
+        )
+        body = resp.json()
+        if not body.get("ok"):
+            error = body.get("description") or f"HTTP {resp.status_code}"
+            logger.warning("[TELEGRAM] failed to send photo for %s: %s", log_context, error)
+            return False, error
+        return True, None
+    except Exception as exc:  # noqa: BLE001 -- any network/API failure must degrade gracefully, not crash the request
+        logger.warning("[TELEGRAM] failed to send photo for %s: %s", log_context, exc)
+        return False, str(exc)
+
+
 def send_daily_report(counts: dict, report_date) -> tuple[bool, str | None]:
     """Best-effort send, same contract as every other function here --
     the evening admin report (Part 74; see daily_report.py). `counts` is
