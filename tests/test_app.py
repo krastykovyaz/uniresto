@@ -786,10 +786,19 @@ def test_delivery_orders_includes_cancelled_as_closed(client):
     assert order["status"] == "cancelled"
 
 
+def _claim(client, order_id, courier_email="courier@uni.lu", lang=None):
+    body = {"courier_email": courier_email}
+    if lang:
+        body["lang"] = lang
+    return client.post(f"/api/orders/{order_id}/claim", json=body)
+
+
 def test_claim_order_notifies_admin(client):
     order_id = _create_basic_order(client)
-    with patch("app.send_order_claimed_notification", return_value=(True, None)) as mock_notify:
-        resp = client.post(f"/api/orders/{order_id}/claim")
+    with patch("app.send_order_claimed_notification", return_value=(True, None)) as mock_notify, patch(
+        "app.send_delivery_notification", return_value=(True, None)
+    ):
+        resp = _claim(client, order_id)
     assert resp.status_code == 200
     body = resp.get_json()
     assert body["claimed"] is True
@@ -801,30 +810,56 @@ def test_claim_order_notifies_admin(client):
     assert listed["claimed_at"] is not None
 
 
-def test_claim_order_emails_the_customer_when_an_email_was_given(client):
+def test_claim_order_without_courier_email_is_400(client):
+    order_id = _create_basic_order(client)
+    resp = client.post(f"/api/orders/{order_id}/claim", json={})
+    assert resp.status_code == 400
+
+
+def test_claim_order_with_malformed_courier_email_is_400(client):
+    order_id = _create_basic_order(client)
+    resp = client.post(f"/api/orders/{order_id}/claim", json={"courier_email": "not-an-email"})
+    assert resp.status_code == 400
+
+
+def test_claim_order_emails_the_courier_the_order_description(client):
+    order_id = _create_basic_order(client)
+    with patch("app.send_order_claimed_notification", return_value=(True, None)), patch(
+        "app.send_delivery_notification", return_value=(True, None)
+    ) as mock_email:
+        _claim(client, order_id, courier_email="courier@uni.lu", lang="fr")
+    mock_email.assert_called_once()
+    assert mock_email.call_args[0][0] == "courier@uni.lu"
+    assert mock_email.call_args[0][1]["id"] == order_id
+    assert mock_email.call_args.kwargs["courier_lang"] == "fr"
+
+
+def test_claim_order_emails_the_customer_accepted_when_an_email_was_given(client):
     order_id = _create_basic_order(client, customer_email="student@uni.lu")
     with patch("app.send_order_claimed_notification", return_value=(True, None)), patch(
-        "app.send_order_out_for_delivery", return_value=(True, None)
-    ) as mock_email:
-        client.post(f"/api/orders/{order_id}/claim")
+        "app.send_delivery_notification", return_value=(True, None)
+    ), patch("app.send_order_accepted", return_value=(True, None)) as mock_email:
+        _claim(client, order_id)
     mock_email.assert_called_once()
     assert mock_email.call_args[0][0] == "student@uni.lu"
 
 
-def test_claim_order_does_not_email_when_no_customer_email_was_given(client):
+def test_claim_order_does_not_email_customer_when_no_customer_email_was_given(client):
     order_id = _create_order_without_email(client)
     with patch("app.send_order_claimed_notification", return_value=(True, None)), patch(
-        "app.send_order_out_for_delivery", return_value=(True, None)
-    ) as mock_email:
-        client.post(f"/api/orders/{order_id}/claim")
+        "app.send_delivery_notification", return_value=(True, None)
+    ), patch("app.send_order_accepted", return_value=(True, None)) as mock_email:
+        _claim(client, order_id)
     mock_email.assert_not_called()
 
 
 def test_claim_order_second_tap_does_not_renotify(client):
     order_id = _create_basic_order(client)
-    with patch("app.send_order_claimed_notification", return_value=(True, None)) as mock_notify:
-        client.post(f"/api/orders/{order_id}/claim")
-        resp = client.post(f"/api/orders/{order_id}/claim")
+    with patch("app.send_order_claimed_notification", return_value=(True, None)) as mock_notify, patch(
+        "app.send_delivery_notification", return_value=(True, None)
+    ):
+        _claim(client, order_id)
+        resp = _claim(client, order_id)
     assert resp.status_code == 200
     assert resp.get_json() == {"claimed": True, "already_claimed": True}
     mock_notify.assert_called_once()
@@ -836,9 +871,9 @@ def test_claim_order_refuses_a_cancelled_order_without_notifying(client):
     token = store.set_real_price(order_id, 6.70)
     store.cancel_order(order_id, token)
     with patch("app.send_order_claimed_notification") as mock_notify, patch(
-        "app.send_order_out_for_delivery"
+        "app.send_order_accepted"
     ) as mock_email:
-        resp = client.post(f"/api/orders/{order_id}/claim")
+        resp = _claim(client, order_id)
     assert resp.status_code == 409
     mock_notify.assert_not_called()
     mock_email.assert_not_called()
@@ -849,9 +884,9 @@ def test_claim_order_refuses_an_already_delivered_order_without_notifying(client
     order_id = _create_basic_order(client, customer_email="student@uni.lu")
     client.post(f"/api/orders/{order_id}/mark-delivered")
     with patch("app.send_order_claimed_notification") as mock_notify, patch(
-        "app.send_order_out_for_delivery"
+        "app.send_order_accepted"
     ) as mock_email:
-        resp = client.post(f"/api/orders/{order_id}/claim")
+        resp = _claim(client, order_id)
     assert resp.status_code == 409
     mock_notify.assert_not_called()
     mock_email.assert_not_called()
@@ -859,8 +894,10 @@ def test_claim_order_refuses_an_already_delivered_order_without_notifying(client
 
 def test_unclaim_releases_the_order_and_pings_the_admin(client):
     order_id = _create_basic_order(client)
-    with patch("app.send_order_claimed_notification", return_value=(True, None)):
-        client.post(f"/api/orders/{order_id}/claim")
+    with patch("app.send_order_claimed_notification", return_value=(True, None)), patch(
+        "app.send_delivery_notification", return_value=(True, None)
+    ):
+        _claim(client, order_id)
     with patch("app.send_order_released_notification", return_value=(True, None)) as mock_released:
         resp = client.post(f"/api/orders/{order_id}/unclaim")
     assert resp.status_code == 200
@@ -877,18 +914,83 @@ def test_unclaim_an_unclaimed_order_is_a_409_without_pinging(client):
     mock_released.assert_not_called()
 
 
+def test_unclaim_after_pickup_is_a_409(client):
+    # Once the food is physically in hand, "release" no longer makes
+    # real-world sense (see OrderStore.mark_unclaimed()'s own docstring).
+    order_id = _create_basic_order(client)
+    with patch("app.send_order_claimed_notification", return_value=(True, None)), patch(
+        "app.send_delivery_notification", return_value=(True, None)
+    ):
+        _claim(client, order_id)
+    client.post(f"/api/orders/{order_id}/picked-up")
+    with patch("app.send_order_released_notification") as mock_released:
+        resp = client.post(f"/api/orders/{order_id}/unclaim")
+    assert resp.status_code == 409
+    mock_released.assert_not_called()
+
+
 def test_reclaiming_after_a_release_never_emails_the_customer_twice(client):
     order_id = _create_basic_order(client, customer_email="student@uni.lu")
     with patch("app.send_order_claimed_notification", return_value=(True, None)) as mock_claimed, patch(
-        "app.send_order_released_notification", return_value=(True, None)
-    ), patch("app.send_order_out_for_delivery", return_value=(True, None)) as mock_email:
-        client.post(f"/api/orders/{order_id}/claim")
+        "app.send_delivery_notification", return_value=(True, None)
+    ), patch("app.send_order_released_notification", return_value=(True, None)), patch(
+        "app.send_order_accepted", return_value=(True, None)
+    ) as mock_email:
+        _claim(client, order_id)
         client.post(f"/api/orders/{order_id}/unclaim")
-        client.post(f"/api/orders/{order_id}/claim")
+        _claim(client, order_id)
     # The admin hears about both claims (it was dropped in between)...
     assert mock_claimed.call_count == 2
-    # ...but the customer only ever gets "on its way" once.
+    # ...but the customer only ever gets "accepted" once.
     mock_email.assert_called_once()
+
+
+def test_mark_picked_up_emails_the_customer_on_its_way(client):
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    with patch("app.send_order_claimed_notification", return_value=(True, None)), patch(
+        "app.send_delivery_notification", return_value=(True, None)
+    ), patch("app.send_order_accepted", return_value=(True, None)):
+        _claim(client, order_id)
+    with patch("app.send_order_out_for_delivery", return_value=(True, None)) as mock_email:
+        resp = client.post(f"/api/orders/{order_id}/picked-up")
+    assert resp.status_code == 200
+    assert resp.get_json() == {"picked_up": True}
+    mock_email.assert_called_once()
+    assert mock_email.call_args[0][0] == "student@uni.lu"
+    listed = next(o for o in client.get("/api/delivery/orders").get_json() if o["id"] == order_id)
+    assert listed["picked_up_at"] is not None
+
+
+def test_mark_picked_up_before_claiming_is_409(client):
+    order_id = _create_basic_order(client)
+    with patch("app.send_order_out_for_delivery") as mock_email:
+        resp = client.post(f"/api/orders/{order_id}/picked-up")
+    assert resp.status_code == 409
+    mock_email.assert_not_called()
+
+
+def test_mark_picked_up_twice_does_not_reemail(client):
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    with patch("app.send_order_claimed_notification", return_value=(True, None)), patch(
+        "app.send_delivery_notification", return_value=(True, None)
+    ), patch("app.send_order_accepted", return_value=(True, None)):
+        _claim(client, order_id)
+    with patch("app.send_order_out_for_delivery", return_value=(True, None)) as mock_email:
+        client.post(f"/api/orders/{order_id}/picked-up")
+        resp = client.post(f"/api/orders/{order_id}/picked-up")
+    assert resp.status_code == 409
+    mock_email.assert_called_once()
+
+
+def test_delivery_orders_strips_courier_email(client):
+    order_id = _create_basic_order(client)
+    with patch("app.send_order_claimed_notification", return_value=(True, None)), patch(
+        "app.send_delivery_notification", return_value=(True, None)
+    ):
+        _claim(client, order_id, courier_email="courier@uni.lu")
+    listed = next(o for o in client.get("/api/delivery/orders").get_json() if o["id"] == order_id)
+    assert "courier_email" not in listed
+    assert "courier_lang" not in listed
 
 
 def test_delivery_orders_carry_a_server_side_expired_flag(client):
@@ -925,7 +1027,7 @@ def test_order_creation_is_rate_limited_before_validation(client):
 
 
 def test_courier_actions_are_rate_limited(client):
-    codes = _post_n(client, "/api/orders/999999/claim", 31)
+    codes = _post_n(client, "/api/orders/999999/claim", 31, json={"courier_email": "courier@uni.lu"})
     assert codes == [404] * 30 + [429]
 
 
@@ -952,7 +1054,7 @@ def test_rate_limits_are_per_client_ip(client):
 
 
 def test_claim_order_unknown_order_404s(client):
-    resp = client.post("/api/orders/999999/claim")
+    resp = _claim(client, 999999)
     assert resp.status_code == 404
 
 

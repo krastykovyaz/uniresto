@@ -1154,6 +1154,79 @@ function openCommunicationEmailSheet(trigger) {
   input.focus();
 }
 
+// Part 81: claiming ("Take this delivery") now requires an email, same
+// reasoning checkout's own customer_email has -- the ONE way this
+// specific claimant gets the order description (dish names, in their
+// own language) back, and a claim with no way to reach the claimant is
+// exactly the gap that left a real courier stuck not knowing what
+// they'd taken on. Reuses/saves state.communicationEmail (the same
+// general "where should we reach you" field checkout's own email
+// pre-fills from) rather than inventing a separate courier-only stored
+// value -- one person's email is one person's email, regardless of
+// which side of the app they're using it from. Required (no "remove"
+// option, unlike openCommunicationEmailSheet above): the claim cannot
+// proceed without one, so `onConfirm` only fires once a valid address
+// is actually saved.
+function openCourierClaimEmailSheet(trigger, onConfirm) {
+  const overlay = el(`<div class="sheet-overlay"></div>`);
+  const sheet = el(`
+    <div class="lang-sheet" role="dialog" aria-modal="true" aria-label="${escapeHtml(tr("courierClaimEmailTitle"))}">
+      <div class="sheet-grabber" aria-hidden="true"></div>
+      <div class="lang-sheet-header">
+        <p class="screen-title">${escapeHtml(tr("courierClaimEmailTitle"))}</p>
+        <button type="button" class="filter-close" aria-label="${escapeHtml(tr("back"))}">${icon("close", 20)}</button>
+      </div>
+      <p class="email-sheet-hint">${escapeHtml(tr("courierClaimEmailHint"))}</p>
+      <div class="field-block">
+        <input type="email" inputmode="email" class="courier-email-sheet-input" placeholder="${escapeHtml(tr("customerEmailPlaceholder"))}" value="${escapeHtml(state.communicationEmail || state.registeredEmail || "")}">
+      </div>
+      <button type="button" class="primary-button courier-email-sheet-save">${escapeHtml(tr("save"))}</button>
+    </div>
+  `);
+  const input = sheet.querySelector(".courier-email-sheet-input");
+
+  function close() {
+    document.removeEventListener("keydown", onKey);
+    overlay.remove();
+  }
+  function onKey(e) {
+    if (e.key === "Escape") {
+      close();
+      trigger?.focus();
+    }
+  }
+  sheet.querySelector(".courier-email-sheet-save").addEventListener("click", () => {
+    const value = input.value.trim();
+    if (!value) {
+      showToast(tr("emailRequired"));
+      return;
+    }
+    if (!isValidEmailFormat(value)) {
+      showToast(tr("invalidEmailFormat"));
+      return;
+    }
+    state.communicationEmail = value;
+    saveCommunicationEmail(value);
+    close();
+    onConfirm(value);
+  });
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) {
+      close();
+      trigger?.focus();
+    }
+  });
+  sheet.querySelector(".filter-close").addEventListener("click", () => {
+    close();
+    trigger?.focus();
+  });
+  document.addEventListener("keydown", onKey);
+
+  overlay.append(sheet);
+  deviceScreen.append(overlay);
+  input.focus();
+}
+
 // Root-level tab destinations, matching the reference design's bottom
 // tab bar. Shown on EVERY screen (not just these 4) so navigation is
 // always one tap away, even from a drill-down screen (a restaurant's
@@ -1657,6 +1730,7 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
           <p class="kind">${escapeHtml(fmtLong(order.order_date))} · ${escapeHtml(orderStatusLabel(order.status))}</p>
           ${hasEarlyOrderItem ? `<p class="kind delivery-early-order-note">${escapeHtml(tr("deliveryEarlyOrderNote"))}</p>` : ""}
           ${(sectionKey === "pending" || sectionKey === "expired") && order.claimed_at ? `<p class="kind delivery-claimed-note">${escapeHtml(tr("deliveryClaimedAt", { time: fmtDateTime(order.claimed_at) }))}</p>` : ""}
+          ${(sectionKey === "pending" || sectionKey === "expired") && order.picked_up_at ? `<p class="kind delivery-claimed-note">${escapeHtml(tr("deliveryPickedUpAt", { time: fmtDateTime(order.picked_up_at) }))}</p>` : ""}
           ${sectionKey === "delivered" ? `<p class="kind delivery-delivered-note">${escapeHtml(tr("deliveryDeliveredAt", { time: fmtDateTime(order.delivered_at) }))}</p>` : ""}
         </div>
       </div>
@@ -1664,18 +1738,23 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
   `);
   if (sectionKey === "pending" || sectionKey === "expired") {
     const actions = el(`<div class="delivery-order-actions"></div>`);
-    // "Take this delivery" (Part 75) -- a courier signaling they're the
-    // one bringing it, which pings the admin (Telegram) and, if given,
-    // the customer (email) the FIRST time ANY courier taps it (see
-    // OrderStore.mark_claimed()'s own docstring). Hidden once claimed --
-    // nothing left to re-trigger, the claimed-note above already shows
-    // it was taken.
+    // "Take this delivery" (Part 75, courier_email required Part 81) --
+    // a courier signaling they're the one bringing it, which pings the
+    // admin (Telegram), emails THIS courier the order description (dish
+    // names, in their own language), and -- if given -- emails the
+    // customer "order accepted", all the FIRST time ANY courier taps it
+    // (see OrderStore.mark_claimed()'s own docstring). Hidden once
+    // claimed -- nothing left to re-trigger, the claimed-note above
+    // already shows it was taken.
     if (!order.claimed_at) {
       const claimBtn = el(`<button type="button" class="secondary-button delivery-claim-btn">${escapeHtml(tr("deliveryClaimJob"))}</button>`);
-      claimBtn.addEventListener("click", async () => {
+      const doClaim = async (courierEmail) => {
         claimBtn.disabled = true;
         try {
-          const result = await api(`/api/orders/${order.id}/claim`, { method: "POST" });
+          const result = await api(`/api/orders/${order.id}/claim`, {
+            method: "POST",
+            body: JSON.stringify({ courier_email: courierEmail, lang: state.lang }),
+          });
           order.claimed_at = new Date().toISOString();
           showToast(tr(result.already_claimed ? "deliveryAlreadyClaimedToast" : "deliveryClaimedToast"));
           onChanged();
@@ -1683,9 +1762,36 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
           showToast(tr("deliveryActionFailed"));
           claimBtn.disabled = false;
         }
+      };
+      claimBtn.addEventListener("click", () => {
+        const knownEmail = (state.communicationEmail || state.registeredEmail || "").trim();
+        if (knownEmail) {
+          doClaim(knownEmail);
+        } else {
+          openCourierClaimEmailSheet(claimBtn, doClaim);
+        }
       });
       actions.append(claimBtn);
-    } else {
+    } else if (!order.picked_up_at) {
+      // Part 81: claimed but not yet physically in hand -- offers BOTH
+      // confirming pickup (the real next step) and releasing the job
+      // (still possible up to this exact point, never after -- see
+      // OrderStore.mark_unclaimed()'s own docstring).
+      const pickupBtn = el(`<button type="button" class="secondary-button delivery-pickup-btn">${escapeHtml(tr("deliveryConfirmPickup"))}</button>`);
+      pickupBtn.addEventListener("click", async () => {
+        pickupBtn.disabled = true;
+        try {
+          await api(`/api/orders/${order.id}/picked-up`, { method: "POST" });
+          order.picked_up_at = new Date().toISOString();
+          showToast(tr("deliveryPickedUpToast"));
+          onChanged();
+        } catch {
+          showToast(tr("deliveryActionFailed"));
+          pickupBtn.disabled = false;
+        }
+      });
+      actions.append(pickupBtn);
+
       // Part 76: whoever took it can give it back -- no accounts, so the
       // app can't tell WHO claimed it; anyone on this screen could, same
       // trust level as claiming itself. Pings the admin server-side.

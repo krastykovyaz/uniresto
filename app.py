@@ -25,6 +25,7 @@ from orderability_engine.feedback import FeedbackStore
 from orderability_engine.mailer import (
     generate_verification_code,
     send_delivery_notification,
+    send_order_accepted,
     send_order_confirmation,
     send_order_needs_confirmation,
     send_order_out_for_delivery,
@@ -288,6 +289,20 @@ def create_app(
             abort(404, description=f"Unknown restaurant slug {slug!r}")
         return restaurant
 
+    def _restopolis_url_for(restaurant_code: str) -> str | None:
+        """Same deep-link api_create_order builds inline (see Part 38's
+        own comment there for why it can only go this far, not to the
+        exact date/items) -- factored out so api_claim_order can hand the
+        claiming courier the same "Open on Restopolis" link every
+        registered subscriber already gets at order-creation time.
+        None for a restaurant code that's since vanished from
+        restaurants.yaml (shouldn't happen for a real order, but an
+        order is a historical record that must never 500 over it)."""
+        restaurant = restaurants.get(restaurant_code)
+        if restaurant is None:
+            return None
+        return f"{RESTOPOLIS_BASE_URL}/Menu/BtnChangeRestaurant?pRestaurantSelection={restaurant.restaurant_id}"
+
     # The ONLY thing that ever live-fetches from Restopolis (see
     # menu_refresh.py's own docstring) -- fixed schedule, entirely off
     # the request path. Default ON for the real app (both the local dev
@@ -530,9 +545,7 @@ def create_app(
         # Restopolis site (its own BtnChangeRestaurant redirect -- see
         # telegram_notify.py's send_admin_notification docstring for why
         # it can only go this far, not to the exact date/items).
-        # restaurant.restaurant_id is real, verified data from
-        # restaurants.yaml (see its own header comment), never guessed.
-        restopolis_url = f"{RESTOPOLIS_BASE_URL}/Menu/BtnChangeRestaurant?pRestaurantSelection={restaurant.restaurant_id}"
+        restopolis_url = _restopolis_url_for(restaurant.code)
         send_admin_notification(
             order, admin_url=admin_url, mark_reviewing_url=mark_reviewing_url, restopolis_url=restopolis_url
         )
@@ -705,6 +718,12 @@ def create_app(
         for order in orders:
             order.pop("customer_email", None)
             order.pop("customer_phone", None)
+            # Part 81: the claiming courier's own contact info is exactly
+            # as private from every OTHER courier browsing this screen as
+            # the customer's is -- nothing here needs to show it, and
+            # nothing should.
+            order.pop("courier_email", None)
+            order.pop("courier_lang", None)
             # Part 76: the Delivery screen's "Expired" section reads this
             # instead of comparing dates on the courier's own device.
             order["expired"] = is_delivery_expired(date.fromisoformat(order["order_date"]), now)
@@ -712,42 +731,85 @@ def create_app(
 
     @app.post("/api/orders/<int:order_id>/claim")
     def api_claim_order(order_id):
-        """Courier-facing (Part 75), same no-account/no-gate reasoning as
-        /api/delivery/orders -- anyone looking at the Delivery screen can
-        claim an order, same trust level as everyone already seeing every
-        order on it. Only the courier who actually WINS the claim (see
+        """Courier-facing (Part 75, courier_email required Part 81), same
+        no-account/no-gate reasoning as /api/delivery/orders -- anyone
+        looking at the Delivery screen can claim an order, same trust
+        level as everyone already seeing every order on it; claiming
+        itself still needs no registration. `courier_email` IS required
+        though (unlike the optional customer_phone) -- the one and only
+        way this specific claimant gets the order's own description
+        (dish names, in their own language) is this email, and a claim
+        with no way to reach the claimant back is exactly the gap that
+        left a real courier stuck not knowing what they'd taken on.
+        Only the courier who actually WINS the claim (see
         OrderStore.mark_claimed()'s own docstring on why a second tap
-        never re-fires this) triggers the admin Telegram ping and, if the
-        customer left an email, the "on its way" email -- both
-        best-effort, same reasoning as every other notification in this
-        app: a flaky send must never fail the claim itself."""
+        never re-fires this) triggers the admin Telegram ping, the
+        courier's own order-description email, and -- if the customer
+        left an email -- the "order accepted" email -- all best-effort,
+        same reasoning as every other notification in this app: a flaky
+        send must never fail the claim itself."""
         if (limited := rate_limited_response("courier_action")) is not None:
             return limited
+        body = request.get_json(force=True, silent=True) or {}
+        courier_email = (body.get("courier_email") or "").strip()
+        courier_lang = _normalize_lang_arg(body.get("lang"))
+        if not courier_email:
+            abort(400, description="'courier_email' is required")
+        if not _is_valid_email_format(courier_email):
+            abort(400, description="'courier_email' must be a valid email address")
         order = store().get_order(order_id)
         if order is None:
             abort(404, description=f"No order #{order_id}")
         # The UI never offers "Take this delivery" on these, but the route
         # is ungated -- a stale tab or a direct call must not email a
-        # customer "on its way" about an order that was called off or is
-        # already in their hands.
+        # customer "order accepted" about an order that was called off or
+        # is already in their hands.
         if order["status"] == "cancelled" or order["delivered_at"]:
             return jsonify({"error": "not_claimable", "status": order["status"], "delivered": bool(order["delivered_at"])}), 409
-        newly_claimed = store().mark_claimed(order_id)
+        newly_claimed = store().mark_claimed(order_id, courier_email=courier_email, courier_lang=courier_lang)
         if newly_claimed:
             send_order_claimed_notification(order, admin_url=_admin_orders_url())
-            # At most once per order (Part 76): a release + re-claim, or a
-            # claim/release loop, must never email the customer again.
-            if order.get("customer_email") and store().mark_on_way_emailed(order_id):
-                send_order_out_for_delivery(order["customer_email"], order)
+            send_delivery_notification(
+                courier_email, order, restopolis_url=_restopolis_url_for(order["restaurant_code"]), courier_lang=courier_lang or "en"
+            )
+            # At most once per order (Part 76): a release + re-claim
+            # must never email the customer again for the SAME claim.
+            if order.get("customer_email") and store().mark_accepted_emailed(order_id):
+                send_order_accepted(order["customer_email"], order)
         return jsonify({"claimed": True, "already_claimed": not newly_claimed})
+
+    @app.post("/api/orders/<int:order_id>/picked-up")
+    def api_mark_picked_up(order_id):
+        """Part 81: a courier confirms they've physically grabbed the food
+        from the canteen counter -- a separate, later fact than claiming
+        the job (see OrderStore.mark_picked_up()'s own docstring). Same
+        no-account/ungated reasoning as claim/unclaim/mark-delivered
+        above: whoever is looking at this order on the Delivery screen
+        can confirm it, no re-verification against courier_email needed.
+        Only the tap that actually wins (claimed but not yet picked up)
+        emails the customer "on its way" -- best-effort, same as every
+        other notification here."""
+        if (limited := rate_limited_response("courier_action")) is not None:
+            return limited
+        order = store().get_order(order_id)
+        if order is None:
+            abort(404, description=f"No order #{order_id}")
+        newly_picked_up = store().mark_picked_up(order_id)
+        if not newly_picked_up:
+            return jsonify({"error": "not_pickupable"}), 409
+        if order.get("customer_email") and store().mark_on_way_emailed(order_id):
+            send_order_out_for_delivery(order["customer_email"], order)
+        return jsonify({"picked_up": True})
 
     @app.post("/api/orders/<int:order_id>/unclaim")
     def api_unclaim_order(order_id):
         """Part 76: "I can't deliver this after all" -- the courier who
         took it gives it back, so it shows "Take this delivery" again for
-        everyone else. Pings the admin (who was told it was claimed); the
-        customer is NOT emailed -- they were told it's on its way once,
-        and the next courier to take it is what actually matters to them."""
+        everyone else (only possible before pickup -- see
+        OrderStore.mark_unclaimed()'s own docstring). Pings the admin
+        (who was told it was claimed); the customer is NOT emailed --
+        they were told it was accepted once, and the next courier to
+        take it is what actually matters to them."""
         if (limited := rate_limited_response("courier_action")) is not None:
             return limited
         order = store().get_order(order_id)

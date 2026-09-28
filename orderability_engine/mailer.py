@@ -257,14 +257,39 @@ def send_order_confirmation(to_email: str, order: dict) -> tuple[bool, str | Non
     return _send(to_email, subject, text_body, html_body)
 
 
-def send_order_out_for_delivery(to_email: str, order: dict) -> tuple[bool, str | None]:
+def send_order_accepted(to_email: str, order: dict) -> tuple[bool, str | None]:
     """Sent the moment a courier taps "Take this delivery" (Part 75) --
-    the ONE thing worth telling the customer they didn't already know
-    from their original order-confirmation email: someone is now
-    actually bringing it. Deliberately short (no item list/prices --
-    already in that first email); the green-box reminder repeats here on
-    purpose, since "have it ready" matters most right before the courier
-    actually arrives, not back when the order was first placed."""
+    the customer's FIRST delivery update: someone has taken the job, but
+    doesn't have the food in hand yet (see send_order_out_for_delivery
+    below for that, separate, later fact -- Part 81 split these two into
+    genuinely different real-world moments, not just different wording
+    for the same click)."""
+    config = _mail_config()
+    if config is None:
+        return False, "Email not configured (RESEND_API_KEY unset)"
+    subject = f"Your order was accepted -- {order['restaurant_name']}"
+    text_body = (
+        f"Good news -- a courier has accepted your order #{order['id']} from {order['restaurant_name']} "
+        "and will head to the canteen to pick it up soon."
+    )
+    body_html = f"""\
+        <p style="margin:0 0 4px;font-size:17px;font-weight:700;">Your order was accepted</p>
+        <p style="margin:0;color:#6b7280;">A courier has accepted order #{order['id']} from {order['restaurant_name']} and will head to the canteen to pick it up soon.</p>"""
+    html_body = _html_shell(f"Order #{order['id']} was accepted.", body_html, config)
+    return _send(to_email, subject, text_body, html_body)
+
+
+def send_order_out_for_delivery(to_email: str, order: dict) -> tuple[bool, str | None]:
+    """Sent the moment a courier confirms they've physically picked up
+    the food from the canteen counter (Part 81's picked_up_at -- a
+    separate, later fact than claimed_at/send_order_accepted above: the
+    courier accepting the job doesn't mean they're holding the food yet).
+    The ONE thing worth telling the customer at this exact moment:
+    someone is now actually bringing it. Deliberately short (no item
+    list/prices -- already in the original order-confirmation email);
+    the green-box reminder repeats here on purpose, since "have it
+    ready" matters most right before the courier actually arrives, not
+    back when the order was first placed or merely accepted."""
     config = _mail_config()
     if config is None:
         return False, "Email not configured (RESEND_API_KEY unset)"

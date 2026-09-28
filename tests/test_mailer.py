@@ -8,6 +8,7 @@ from orderability_engine.mailer import (
     generate_verification_code,
     is_configured,
     send_delivery_notification,
+    send_order_accepted,
     send_order_confirmation,
     send_order_needs_confirmation,
     send_order_out_for_delivery,
@@ -268,6 +269,34 @@ def test_delivery_notification_dish_name_html_is_escaped(monkeypatch):
     html = mock_post.call_args.kwargs["json"]["html"]
     assert "<script>evil()</script>" not in html
     assert "&lt;script&gt;evil()&lt;/script&gt;" in html
+
+
+def test_order_accepted_returns_not_sent_when_unconfigured():
+    sent, error = send_order_accepted("student@uni.lu", _order())
+    assert sent is False
+    assert "not configured" in error
+
+
+def test_order_accepted_includes_the_restaurant_and_order_id(monkeypatch):
+    monkeypatch.setenv("RESEND_API_KEY", "re_placeholder")
+    order = _order(id=99, restaurant_name="Brasserie John's")
+    with patch("orderability_engine.mailer.requests.post", return_value=_mock_response()) as mock_post:
+        send_order_accepted("student@uni.lu", order)
+    payload = mock_post.call_args.kwargs["json"]
+    assert "99" in payload["text"]
+    assert "Brasserie John's" in payload["text"]
+    assert "99" in payload["html"]
+
+
+def test_order_accepted_does_not_claim_the_courier_is_already_bringing_it(monkeypatch):
+    # The real, separate fact (send_order_out_for_delivery, sent at
+    # pickup time, not claim time) must not be pre-empted here.
+    monkeypatch.setenv("RESEND_API_KEY", "re_placeholder")
+    with patch("orderability_engine.mailer.requests.post", return_value=_mock_response()) as mock_post:
+        send_order_accepted("student@uni.lu", _order())
+    payload = mock_post.call_args.kwargs["json"]
+    assert "on its way" not in payload["text"].lower()
+    assert "bringing it to you" not in payload["text"].lower()
 
 
 def test_out_for_delivery_returns_not_sent_when_unconfigured():

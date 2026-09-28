@@ -346,6 +346,67 @@ def test_mark_on_way_emailed_only_true_once(store):
     assert store.mark_on_way_emailed(order_id) is False
 
 
+def test_mark_accepted_emailed_only_true_once(store):
+    order_id = _basic_order_id(store)
+    assert store.mark_accepted_emailed(order_id) is True
+    assert store.mark_accepted_emailed(order_id) is False
+
+
+def test_mark_claimed_persists_courier_email_and_lang(store):
+    order_id = _basic_order_id(store)
+    store.mark_claimed(order_id, courier_email="courier@uni.lu", courier_lang="fr")
+    order = store.get_order(order_id)
+    assert order["courier_email"] == "courier@uni.lu"
+    assert order["courier_lang"] == "fr"
+
+
+def test_mark_claimed_losing_call_does_not_overwrite_the_winners_courier_info(store):
+    order_id = _basic_order_id(store)
+    assert store.mark_claimed(order_id, courier_email="first@uni.lu", courier_lang="en") is True
+    assert store.mark_claimed(order_id, courier_email="second@uni.lu", courier_lang="ru") is False
+    order = store.get_order(order_id)
+    assert order["courier_email"] == "first@uni.lu"
+    assert order["courier_lang"] == "en"
+
+
+def test_mark_picked_up_sets_a_timestamp(store):
+    order_id = _basic_order_id(store)
+    store.mark_claimed(order_id)
+    assert store.get_order(order_id)["picked_up_at"] is None
+    assert store.mark_picked_up(order_id) is True
+    assert store.get_order(order_id)["picked_up_at"] is not None
+
+
+def test_mark_picked_up_before_claiming_returns_false(store):
+    order_id = _basic_order_id(store)
+    assert store.mark_picked_up(order_id) is False
+    assert store.get_order(order_id)["picked_up_at"] is None
+
+
+def test_mark_picked_up_twice_only_succeeds_the_first_time(store):
+    order_id = _basic_order_id(store)
+    store.mark_claimed(order_id)
+    assert store.mark_picked_up(order_id) is True
+    assert store.mark_picked_up(order_id) is False
+
+
+def test_mark_picked_up_refuses_a_delivered_order(store):
+    order_id = _basic_order_id(store)
+    store.mark_claimed(order_id)
+    store.mark_delivered(order_id)
+    assert store.mark_picked_up(order_id) is False
+
+
+def test_mark_unclaimed_refuses_after_pickup(store):
+    # Once the food is physically in hand, "release" no longer makes
+    # real-world sense.
+    order_id = _basic_order_id(store)
+    store.mark_claimed(order_id)
+    store.mark_picked_up(order_id)
+    assert store.mark_unclaimed(order_id) is False
+    assert store.get_order(order_id)["claimed_at"] is not None
+
+
 def test_mark_delivered_sets_a_timestamp(store):
     order_id = _basic_order_id(store)
     assert store.get_order(order_id)["delivered_at"] is None

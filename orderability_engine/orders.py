@@ -76,17 +76,40 @@ CREATE TABLE IF NOT EXISTS orders (
                                         -- yet delivered, or delivered before it's confirmed)
     claimed_at TEXT,                   -- NULL until a courier taps "Take this delivery" (Part 75)
                                         -- -- pings the admin (Telegram) and the customer (email)
-                                        -- the FIRST time this is set; no courier IDENTITY recorded,
-                                        -- this app has no accounts to attribute it to
-    on_way_emailed_at TEXT,            -- when the customer got the "on its way" email (Part 76) --
-                                        -- set at most ONCE per order, so releasing and re-claiming
-                                        -- (or a claim/release loop) can't email them again
+                                        -- the FIRST time this is set
+    on_way_emailed_at TEXT,            -- when the customer got the "picked up, on its way" email
+                                        -- (now sent at pickup time, not claim time -- see
+                                        -- picked_up_at below) -- set at most ONCE per order, so
+                                        -- releasing/re-claiming or re-confirming pickup can't
+                                        -- email them again
     customer_phone TEXT,               -- optional (unlike customer_email, which became required
                                         -- after a real delivery got stuck with no way to reach the
                                         -- customer) -- another admin-only contact channel, same
                                         -- courier-privacy treatment as customer_email: stripped
                                         -- before the Delivery screen ever sees it (see app.py's
                                         -- api_delivery_orders())
+    courier_email TEXT,                -- the claiming courier's own email (now required to claim,
+                                        -- Part 81) -- used once, right at claim time, to send THEM
+                                        -- the order description (dish names, in courier_lang) via
+                                        -- the same email every registered subscriber already gets
+                                        -- at order-creation time; persisted (unlike the original
+                                        -- one-shot customer_email pattern) for admin visibility/
+                                        -- support, same reasoning customer_email itself now has
+    courier_lang TEXT,                 -- whatever language the CLAIMING courier's own app was in
+                                        -- at the moment they claimed (Part 81) -- distinct from
+                                        -- delivery_subscribers.lang, which is each broadcast
+                                        -- recipient's own language, not necessarily this order's
+                                        -- actual claimant
+    picked_up_at TEXT,                 -- NULL until a courier confirms they've physically grabbed
+                                        -- the food from the canteen counter (Part 81) -- a SEPARATE,
+                                        -- later fact than claimed_at (claiming is just "I'll do
+                                        -- this", not "I have it in hand"); this is what actually
+                                        -- triggers the customer's "on its way" email now
+    accepted_emailed_at TEXT,          -- when the customer got the "order accepted" email (Part 81,
+                                        -- sent at claim time) -- same ever-once-per-order dedup
+                                        -- reasoning as on_way_emailed_at above, so a claim/release
+                                        -- loop can't spam the customer with repeated "accepted"
+                                        -- emails
     created_at TEXT NOT NULL
 );
 
@@ -119,6 +142,10 @@ _MIGRATIONS = [
     ("claimed_at", "ALTER TABLE orders ADD COLUMN claimed_at TEXT"),
     ("on_way_emailed_at", "ALTER TABLE orders ADD COLUMN on_way_emailed_at TEXT"),
     ("customer_phone", "ALTER TABLE orders ADD COLUMN customer_phone TEXT"),
+    ("courier_email", "ALTER TABLE orders ADD COLUMN courier_email TEXT"),
+    ("courier_lang", "ALTER TABLE orders ADD COLUMN courier_lang TEXT"),
+    ("picked_up_at", "ALTER TABLE orders ADD COLUMN picked_up_at TEXT"),
+    ("accepted_emailed_at", "ALTER TABLE orders ADD COLUMN accepted_emailed_at TEXT"),
 ]
 
 
@@ -317,7 +344,8 @@ class OrderStore:
         with self._lock:
             row = self._conn.execute(
                 "SELECT id, restaurant_code, restaurant_name, order_date, delivery_location, customer_email, "
-                "status, real_price, created_at, customer_note, customer_lang, delivered_at, claimed_at, customer_phone FROM orders WHERE id = ?",
+                "status, real_price, created_at, customer_note, customer_lang, delivered_at, claimed_at, customer_phone, "
+                "courier_email, courier_lang, picked_up_at FROM orders WHERE id = ?",
                 (order_id,),
             ).fetchone()
             if row is None:
@@ -369,6 +397,9 @@ class OrderStore:
             "delivered_at": row[11],
             "claimed_at": row[12],
             "customer_phone": row[13],
+            "courier_email": row[14],
+            "courier_lang": row[15],
+            "picked_up_at": row[16],
             "items": line_items,
             "totals": aggregate_totals(line_items),
         }
@@ -412,43 +443,82 @@ class OrderStore:
             ).fetchone()
         return row[0]
 
-    def mark_claimed(self, order_id: int) -> bool:
-        """Part 75: True only the FIRST time this succeeds for a given
-        order (the WHERE clause below only matches while claimed_at is
-        still NULL) -- app.py uses that to decide whether to actually
-        notify the admin/customer, so two couriers tapping "Take this
-        delivery" at nearly the same moment only trigger one notification
-        pair, not two. False for an order that's already claimed (not an
-        error -- the second courier just sees it was already taken) or
-        that doesn't exist."""
+    def mark_claimed(self, order_id: int, courier_email: str | None = None, courier_lang: str | None = None) -> bool:
+        """Part 75 (courier_email/courier_lang added Part 81): True only
+        the FIRST time this succeeds for a given order (the WHERE clause
+        below only matches while claimed_at is still NULL) -- app.py uses
+        that to decide whether to actually notify the admin/customer/
+        courier, so two couriers tapping "Take this delivery" at nearly
+        the same moment only trigger one notification round, not two.
+        False for an order that's already claimed (not an error -- the
+        second courier just sees it was already taken) or that doesn't
+        exist. courier_email/courier_lang are only ever WRITTEN here (on
+        the winning claim) -- a losing call's values are simply dropped,
+        never overwrite the winner's."""
         now = datetime.now(timezone.utc).isoformat()
         with self._lock, self._transaction() as conn:
             cur = conn.execute(
-                "UPDATE orders SET claimed_at = ? WHERE id = ? AND claimed_at IS NULL", (now, order_id)
+                "UPDATE orders SET claimed_at = ?, courier_email = ?, courier_lang = ? WHERE id = ? AND claimed_at IS NULL",
+                (now, courier_email, courier_lang, order_id),
             )
             return cur.rowcount > 0
 
     def mark_unclaimed(self, order_id: int) -> bool:
         """Part 76: a courier who took an order but can't do it after all
         gives it back, so it reads as open again for everyone else. True
-        only if it was actually claimed (and not yet delivered) -- False
-        otherwise, so the caller only pings the admin about a real release."""
+        only if it was actually claimed AND not yet physically picked up
+        (Part 81 -- once the food is in hand, "release" no longer makes
+        real-world sense) and not yet delivered -- False otherwise, so
+        the caller only pings the admin about a real release."""
         with self._lock, self._transaction() as conn:
             cur = conn.execute(
-                "UPDATE orders SET claimed_at = NULL WHERE id = ? AND claimed_at IS NOT NULL AND delivered_at IS NULL",
+                "UPDATE orders SET claimed_at = NULL WHERE id = ? AND claimed_at IS NOT NULL "
+                "AND picked_up_at IS NULL AND delivered_at IS NULL",
                 (order_id,),
+            )
+            return cur.rowcount > 0
+
+    def mark_picked_up(self, order_id: int) -> bool:
+        """Part 81: a courier confirms they've physically grabbed the food
+        from the canteen counter -- a separate, later fact than
+        claimed_at (claiming is just "I'll do this", not "I have it in
+        hand"). True only the FIRST time this succeeds for a given order
+        (claimed_at must already be set, picked_up_at must still be NULL,
+        and it must not already be delivered) -- app.py uses that to
+        decide whether to send the customer's "on its way" email, so a
+        double-tap can't send it twice."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock, self._transaction() as conn:
+            cur = conn.execute(
+                "UPDATE orders SET picked_up_at = ? WHERE id = ? AND claimed_at IS NOT NULL "
+                "AND picked_up_at IS NULL AND delivered_at IS NULL",
+                (now, order_id),
             )
             return cur.rowcount > 0
 
     def mark_on_way_emailed(self, order_id: int) -> bool:
         """True only the FIRST time for a given order (same WHERE-IS-NULL
         pattern as mark_claimed()) -- the caller sends the customer's "on
-        its way" email only when this says so, so it goes out at most once
-        per order no matter how many times it's claimed."""
+        its way" email (now sent at pickup time, Part 81 -- see
+        picked_up_at's own schema comment) only when this says so, so it
+        goes out at most once per order no matter how many times pickup
+        is (attempted to be) confirmed."""
         now = datetime.now(timezone.utc).isoformat()
         with self._lock, self._transaction() as conn:
             cur = conn.execute(
                 "UPDATE orders SET on_way_emailed_at = ? WHERE id = ? AND on_way_emailed_at IS NULL", (now, order_id)
+            )
+            return cur.rowcount > 0
+
+    def mark_accepted_emailed(self, order_id: int) -> bool:
+        """Part 81: same ever-once-per-order pattern as
+        mark_on_way_emailed() above, for the customer's "order accepted"
+        email (sent at claim time) -- goes out at most once per order no
+        matter how many times it's claimed/released/re-claimed."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock, self._transaction() as conn:
+            cur = conn.execute(
+                "UPDATE orders SET accepted_emailed_at = ? WHERE id = ? AND accepted_emailed_at IS NULL", (now, order_id)
             )
             return cur.rowcount > 0
 
