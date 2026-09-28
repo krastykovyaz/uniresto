@@ -40,6 +40,7 @@ from orderability_engine.page_views import MAX_SOURCE_LENGTH, PageViewStore
 from orderability_engine.rate_limits import RateLimitStore
 from orderability_engine.service import OrderabilityService
 from orderability_engine.smart_lunch import TIER_ORDER, find_smart_lunch
+from orderability_engine.verified_emails import VerifiedEmailStore
 from orderability_engine.telegram_notify import (
     send_admin_notification,
     send_feedback_notification,
@@ -186,6 +187,8 @@ def create_app(
     order_store: OrderStore | None = None,
     email_verification_store: EmailVerificationStore | None = None,
     delivery_verification_store: EmailVerificationStore | None = None,
+    checkout_verification_store: EmailVerificationStore | None = None,
+    verified_email_store: VerifiedEmailStore | None = None,
     delivery_subscriber_store: DeliverySubscriberStore | None = None,
     coming_soon_click_store: ComingSoonClickStore | None = None,
     feedback_store: FeedbackStore | None = None,
@@ -227,6 +230,16 @@ def create_app(
     app.config["DELIVERY_VERIFICATION_STORE"] = delivery_verification_store or EmailVerificationStore(
         "delivery_email_verification.db"
     )
+    # Part 83: a THIRD, equally separate code-issuing store (same
+    # per-purpose isolation reasoning as delivery's own above) for the
+    # checkout customer_email flow -- but see VerifiedEmailStore's own
+    # docstring for why the downstream FACT "this address is proven
+    # real" is deliberately NOT similarly siloed: it's shared across all
+    # three flows, in ORDER_STORE's own orders.db.
+    app.config["CHECKOUT_VERIFICATION_STORE"] = checkout_verification_store or EmailVerificationStore(
+        "checkout_email_verification.db"
+    )
+    app.config["VERIFIED_EMAIL_STORE"] = verified_email_store or VerifiedEmailStore("orders.db")
     app.config["DELIVERY_SUBSCRIBER_STORE"] = delivery_subscriber_store or DeliverySubscriberStore("orders.db")
     app.config["COMING_SOON_CLICK_STORE"] = coming_soon_click_store or ComingSoonClickStore("orders.db")
     app.config["FEEDBACK_STORE"] = feedback_store or FeedbackStore("orders.db")
@@ -246,6 +259,12 @@ def create_app(
 
     def delivery_verification() -> EmailVerificationStore:
         return app.config["DELIVERY_VERIFICATION_STORE"]
+
+    def checkout_verification() -> EmailVerificationStore:
+        return app.config["CHECKOUT_VERIFICATION_STORE"]
+
+    def verified_emails() -> VerifiedEmailStore:
+        return app.config["VERIFIED_EMAIL_STORE"]
 
     def delivery_subscribers() -> DeliverySubscriberStore:
         return app.config["DELIVERY_SUBSCRIBER_STORE"]
@@ -479,6 +498,15 @@ def create_app(
             abort(400, description="'customer_email' is required")
         if not _is_valid_email_format(customer_email):
             abort(400, description="'customer_email' must be a valid email address")
+        # Part 83: not just well-formed -- actually proven reachable, via
+        # /api/orders/email/send-code + verify-code (or any of the other
+        # two flows that feed the same VerifiedEmailStore -- see its own
+        # docstring). Closes the gap that let orders through with
+        # syntactically-valid but obviously fake addresses like
+        # "example@example.com" -- an admin/courier's only way to reach
+        # a customer is worthless if it was never real to begin with.
+        if not verified_emails().is_verified(customer_email):
+            return jsonify({"error": "email_not_verified", "message": "'customer_email' must be verified first"}), 403
         if customer_note is not None and len(customer_note) > 500:
             abort(400, description="'customer_note' must be at most 500 characters")
 
@@ -613,13 +641,62 @@ def create_app(
     def api_email_verify_code():
         """Checks `code` against whatever was last issued to `email` (see
         EmailVerificationStore.verify()) -- a one-time check: correct or
-        not, the entry is consumed/invalidated so it can't be replayed."""
+        not, the entry is consumed/invalidated so it can't be replayed.
+        On success, also marks the address in VerifiedEmailStore (Part
+        83) -- proving control of it here is just as good as proving it
+        via checkout's own flow, so a student who already verified their
+        University email never has to prove it again just to order."""
         body = request.get_json(force=True, silent=True) or {}
         email = (body.get("email") or "").strip()
         code = (body.get("code") or "").strip()
         if not email or not code:
             abort(400, description="Body must include 'email' and 'code'")
         verified, reason = email_verification().verify(email, code)
+        if verified:
+            verified_emails().mark_verified(email)
+        return jsonify({"verified": verified, "reason": reason})
+
+    @app.post("/api/orders/email/send-code")
+    def api_orders_email_send_code():
+        """Part 83: same verification-code flow as /api/email/send-code
+        above (a SEPARATE EmailVerificationStore instance -- see that
+        route's own reasoning), for checkout's customer_email. NOT
+        restricted to a uni.lu domain (checkout itself never has been --
+        see _is_valid_email_format's docstring on api_create_order): the
+        point here is only proving the address is real and reachable,
+        the same reason customer_email became required in the first
+        place, not proving University affiliation."""
+        body = request.get_json(force=True, silent=True) or {}
+        email = (body.get("email") or "").strip()
+        if not email:
+            abort(400, description="Body must include 'email'")
+        if not _is_valid_email_format(email):
+            abort(400, description="'email' must be a valid email address")
+
+        remaining = checkout_verification().seconds_until_resend_allowed(email)
+        if remaining > 0:
+            return jsonify({"sent": False, "error": "rate_limited", "retry_after_seconds": remaining}), 429
+
+        code = generate_verification_code()
+        sent, error = send_verification_code(email, code)
+        if sent:
+            checkout_verification().issue(email, code)
+        return jsonify({"sent": sent, "error": error})
+
+    @app.post("/api/orders/email/verify-code")
+    def api_orders_email_verify_code():
+        """On a correct code, marks the address in VerifiedEmailStore
+        (Part 83) -- what api_create_order actually checks before
+        letting an order through with this customer_email; on an
+        incorrect/expired one, nothing is persisted."""
+        body = request.get_json(force=True, silent=True) or {}
+        email = (body.get("email") or "").strip()
+        code = (body.get("code") or "").strip()
+        if not email or not code:
+            abort(400, description="Body must include 'email' and 'code'")
+        verified, reason = checkout_verification().verify(email, code)
+        if verified:
+            verified_emails().mark_verified(email)
         return jsonify({"verified": verified, "reason": reason})
 
     # ---------------------------------------------------- Delivery (Part 52+)
@@ -658,7 +735,10 @@ def create_app(
     def api_delivery_register_verify_code():
         """On a correct code, persists the address in DeliverySubscriberStore
         (idempotent -- registering twice is fine) so every future order
-        notifies it; on an incorrect/expired one, nothing is persisted."""
+        notifies it, and marks it in VerifiedEmailStore (Part 83) --
+        proving control of it here is just as good as proving it via
+        checkout's own flow; on an incorrect/expired one, neither is
+        persisted."""
         body = request.get_json(force=True, silent=True) or {}
         email = (body.get("email") or "").strip()
         code = (body.get("code") or "").strip()
@@ -667,6 +747,7 @@ def create_app(
         verified, reason = delivery_verification().verify(email, code)
         if verified:
             delivery_subscribers().add(email, _normalize_lang_arg(body.get("lang")) or "en")
+            verified_emails().mark_verified(email)
         return jsonify({"verified": verified, "reason": reason})
 
     @app.post("/api/delivery/register/quick")
@@ -677,14 +758,12 @@ def create_app(
         already sitting in this browser's own state.registeredEmail --
         which itself only gets set there after that address completed
         the real customer send-code/verify-code flow (Part 25/27), on
-        this same device. Re-proving control of an address this device
-        already proved it can read is a needless second code, not
-        stronger security -- and this app's own checkout already accepts
-        a typed customer_email with zero verification at all (see
-        _is_valid_email_format's docstring), so trusting a client-echoed
-        address here is no looser than the rest of this app's standing
-        trust model. Still domain-checked (courier eligibility, same as
-        every other delivery-registration path), just not code-checked."""
+        this same device -- already marked in VerifiedEmailStore by that
+        earlier verify-code call, so there's nothing new to mark here.
+        Re-proving control of an address this device already proved it
+        can read is a needless second code, not stronger security. Still
+        domain-checked (courier eligibility, same as every other
+        delivery-registration path), just not code-checked."""
         body = request.get_json(force=True, silent=True) or {}
         email = (body.get("email") or "").strip()
         if not email:

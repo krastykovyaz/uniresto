@@ -6,6 +6,7 @@ orderability.db
 orders.db
 email_verification.db
 delivery_email_verification.db
+checkout_email_verification.db
 data/raw/
 .pytest_cache/
 *.egg-info/

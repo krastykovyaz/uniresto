@@ -15,6 +15,7 @@ from orderability_engine.orders import OrderStore
 from orderability_engine.page_views import PageViewStore
 from orderability_engine.rate_limits import RateLimitStore
 from orderability_engine.service import OrderabilityService
+from orderability_engine.verified_emails import VerifiedEmailStore
 from restopolis.config import load_restaurants
 from tests.orderability_helpers import FakeRestopolisClient
 
@@ -55,6 +56,15 @@ def _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, 
     service.check_orderability(altius, fixture_today + datetime.timedelta(days=7), refresh=True)
 
     order_store = OrderStore(tmp_path / "orders.db")
+    verified_email_store = VerifiedEmailStore(tmp_path / "orders.db")
+    # Part 83: "student@uni.lu" is this whole file's canonical placeholder
+    # customer email -- pre-verifying it here (once, for every test using
+    # this client) is far more honest than sprinkling individual
+    # mark_verified() calls across dozens of tests that were never ABOUT
+    # verification in the first place. Tests that specifically exercise
+    # the verification requirement (or a different address) mark/omit it
+    # explicitly themselves.
+    verified_email_store.mark_verified("student@uni.lu")
     delivery_subscriber_store = DeliverySubscriberStore(tmp_path / "orders.db")
     coming_soon_click_store = ComingSoonClickStore(tmp_path / "orders.db")
     feedback_store = FeedbackStore(tmp_path / "orders.db")
@@ -64,6 +74,7 @@ def _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, 
     app = create_app(
         service=service,
         order_store=order_store,
+        verified_email_store=verified_email_store,
         delivery_subscriber_store=delivery_subscriber_store,
         coming_soon_click_store=coming_soon_click_store,
         feedback_store=feedback_store,
@@ -71,10 +82,12 @@ def _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, 
         daily_report_store=daily_report_store,
         rate_limit_store=rate_limit_store,
         # Explicit ":memory:" instances -- isolated per test, never the
-        # real email_verification.db/delivery_email_verification.db
-        # files create_app() defaults to for the real app.
+        # real email_verification.db/delivery_email_verification.db/
+        # checkout_email_verification.db files create_app() defaults to
+        # for the real app.
         email_verification_store=EmailVerificationStore(),
         delivery_verification_store=EmailVerificationStore(),
+        checkout_verification_store=EmailVerificationStore(),
         # No background menu-refresh/daily-report threads here -- this
         # app/FakeRestopolisClient only lives for one test, and each
         # scheduler's own behavior is covered directly in its own test
@@ -272,6 +285,7 @@ def test_create_order_with_uni_lu_email_sends_confirmation(client):
 
 
 def test_create_order_with_student_uni_lu_email_is_also_allowed(client):
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("student@student.uni.lu")
     with patch("app.send_order_confirmation", return_value=(True, None)):
         resp = client.post(
             "/api/orders",
@@ -290,6 +304,7 @@ def test_create_order_with_non_uni_lu_email_is_allowed(client):
     # may deliberately be a personal address (the Profile "Communication
     # email" feature) -- only the University email itself (proving
     # affiliation) is restricted to uni.lu domains.
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("student@gmail.com")
     with patch("app.send_order_confirmation", return_value=(True, None)) as mock_send:
         resp = client.post(
             "/api/orders",
@@ -742,6 +757,79 @@ def test_delivery_register_code_is_not_accepted_by_customer_email_verification(c
     resp = client.post("/api/email/verify-code", json={"email": "student@uni.lu", "code": "654321"})
     assert resp.get_json()["verified"] is False
     assert resp.get_json()["reason"] == "no_code_requested"
+
+
+def test_orders_email_send_code_allows_non_uni_lu_email(client):
+    # Same relaxed domain reasoning as delivery registration -- checkout
+    # itself never restricted customer_email to uni.lu, only proving it's
+    # real matters here.
+    with patch("app.generate_verification_code", return_value="654321"), patch(
+        "app.send_verification_code", return_value=(True, None)
+    ):
+        resp = client.post("/api/orders/email/send-code", json={"email": "customer@gmail.com"})
+    assert resp.status_code == 200
+    assert resp.get_json()["sent"] is True
+
+
+def test_orders_email_send_code_rejects_malformed_email(client):
+    resp = client.post("/api/orders/email/send-code", json={"email": "not-an-email"})
+    assert resp.status_code == 400
+
+
+def test_orders_email_verify_code_marks_the_address_verified(client):
+    with patch("app.generate_verification_code", return_value="654321"), patch(
+        "app.send_verification_code", return_value=(True, None)
+    ):
+        client.post("/api/orders/email/send-code", json={"email": "customer@gmail.com"})
+    resp = client.post("/api/orders/email/verify-code", json={"email": "customer@gmail.com", "code": "654321"})
+    assert resp.get_json()["verified"] is True
+    assert client.application.config["VERIFIED_EMAIL_STORE"].is_verified("customer@gmail.com") is True
+
+
+def test_orders_email_verify_code_wrong_code_does_not_mark_verified(client):
+    with patch("app.generate_verification_code", return_value="654321"), patch(
+        "app.send_verification_code", return_value=(True, None)
+    ):
+        client.post("/api/orders/email/send-code", json={"email": "customer@gmail.com"})
+    resp = client.post("/api/orders/email/verify-code", json={"email": "customer@gmail.com", "code": "000000"})
+    assert resp.get_json()["verified"] is False
+    assert client.application.config["VERIFIED_EMAIL_STORE"].is_verified("customer@gmail.com") is False
+
+
+def test_orders_email_code_is_not_accepted_by_delivery_register_verification(client):
+    # A code issued for checkout must not also verify courier
+    # registration (a separate EmailVerificationStore instance) -- and
+    # vice versa (test_delivery_register_code_is_not_accepted_by_
+    # customer_email_verification already covers that direction).
+    with patch("app.generate_verification_code", return_value="654321"), patch(
+        "app.send_verification_code", return_value=(True, None)
+    ):
+        client.post("/api/orders/email/send-code", json={"email": "student@gmail.com"})
+    resp = client.post("/api/delivery/register/verify-code", json={"email": "student@gmail.com", "code": "654321"})
+    assert resp.get_json()["verified"] is False
+    assert resp.get_json()["reason"] == "no_code_requested"
+
+
+def test_university_email_verification_also_unlocks_ordering(client):
+    # VerifiedEmailStore is shared across all three flows (Part 83) --
+    # proving an address via the University-email flow is just as good
+    # as proving it via checkout's own, so it must not have to be
+    # re-verified.
+    with patch("app.generate_verification_code", return_value="654321"), patch(
+        "app.send_verification_code", return_value=(True, None)
+    ):
+        client.post("/api/email/send-code", json={"email": "student@uni.lu"})
+    client.post("/api/email/verify-code", json={"email": "student@uni.lu", "code": "654321"})
+    assert client.application.config["VERIFIED_EMAIL_STORE"].is_verified("student@uni.lu") is True
+
+
+def test_delivery_register_verification_also_unlocks_ordering(client):
+    with patch("app.generate_verification_code", return_value="654321"), patch(
+        "app.send_verification_code", return_value=(True, None)
+    ):
+        client.post("/api/delivery/register/send-code", json={"email": "courier@gmail.com"})
+    client.post("/api/delivery/register/verify-code", json={"email": "courier@gmail.com", "code": "654321"})
+    assert client.application.config["VERIFIED_EMAIL_STORE"].is_verified("courier@gmail.com") is True
 
 
 def test_delivery_register_quick_persists_the_subscriber_with_no_code(client):
@@ -1204,6 +1292,14 @@ def _create_basic_order(client, customer_email="student@uni.lu", customer_note=N
     payload = {"restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}]}
     if customer_email:
         payload["customer_email"] = customer_email
+        # Part 83: customer_email must now be verified (not just well-
+        # formed) to place an order -- bypasses the real send-code/
+        # verify-code round trip the same way _create_order_without_email
+        # bypasses the API's own validation entirely, since this helper's
+        # whole point is "just get me an order", not exercising
+        # verification itself (see test_order_creation_requires_a_
+        # verified_email below for that).
+        client.application.config["VERIFIED_EMAIL_STORE"].mark_verified(customer_email)
     if customer_note:
         payload["customer_note"] = customer_note
     with patch("app.send_admin_notification", return_value=(True, None)):

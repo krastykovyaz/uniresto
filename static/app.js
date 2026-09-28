@@ -399,6 +399,46 @@ function clearCommunicationEmail() {
   }
 }
 
+// Part 83: which addresses THIS device has already completed checkout's
+// own send-code/verify-code flow for -- a small remembered set (not just
+// one, like communicationEmail above), since a customer may genuinely
+// use more than one address across orders (uni.lu sometimes, personal
+// other times) and re-verifying either every single order would defeat
+// the point of remembering anything at all. The backend's own
+// VerifiedEmailStore is the actual source of truth checked at order
+// creation (never trust the client alone) -- this is purely a client-
+// side shortcut to skip the code round-trip UI when we already know
+// it'll succeed.
+const VERIFIED_ORDER_EMAILS_STORAGE_KEY = "uniresto.verifiedOrderEmails.v1";
+
+function loadVerifiedOrderEmails() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(VERIFIED_ORDER_EMAILS_STORAGE_KEY) || "[]");
+    return Array.isArray(raw) ? raw.filter((e) => typeof e === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberVerifiedOrderEmail(email) {
+  try {
+    const existing = loadVerifiedOrderEmails();
+    if (!existing.includes(email)) {
+      localStorage.setItem(VERIFIED_ORDER_EMAILS_STORAGE_KEY, JSON.stringify([...existing, email]));
+    }
+  } catch {
+    /* localStorage unavailable (private mode, quota, ...) -- just won't persist */
+  }
+}
+
+// state.registeredEmail (Part 25) already completed a real send-code/
+// verify-code flow of its own -- see api.py's api_email_verify_code,
+// which now marks VerifiedEmailStore too, so there's genuinely nothing
+// left to prove for that specific address.
+function isEmailKnownVerified(email) {
+  return email === state.registeredEmail || loadVerifiedOrderEmails().includes(email);
+}
+
 function isFavorite(slug, category, name) {
   const key = favoriteKey(slug, category, name);
   return state.favorites.some((f) => favoriteKey(f.slug, f.category, f.name) === key);
@@ -1225,6 +1265,129 @@ function openCourierClaimEmailSheet(trigger, onConfirm) {
   overlay.append(sheet);
   deviceScreen.append(overlay);
   input.focus();
+}
+
+// Part 83: a real order now needs a PROVEN customer_email, not just a
+// well-formed one -- closes the gap that let orders through with
+// obviously fake addresses like "example@example.com". Auto-sends the
+// code the moment this opens (the email itself was already typed into
+// checkout, nothing left to ask for first) -- same two-step send-code/
+// verify-code flow as deliveryRegisterCard(), against the checkout-
+// specific /api/orders/email/* endpoints (a THIRD, separate
+// EmailVerificationStore server-side -- see app.py). `onVerified` fires
+// once, only on a correct code; the caller (confirmOrder) is what
+// actually submits the order.
+function openOrderEmailVerifySheet(trigger, email, onVerified) {
+  const overlay = el(`<div class="sheet-overlay"></div>`);
+  const sheet = el(`
+    <div class="lang-sheet" role="dialog" aria-modal="true" aria-label="${escapeHtml(tr("verifyYourEmailTitle"))}">
+      <div class="sheet-grabber" aria-hidden="true"></div>
+      <div class="lang-sheet-header">
+        <p class="screen-title">${escapeHtml(tr("verifyYourEmailTitle"))}</p>
+        <button type="button" class="filter-close" aria-label="${escapeHtml(tr("back"))}">${icon("close", 20)}</button>
+      </div>
+      <p class="email-sheet-hint order-email-verify-hint">${escapeHtml(tr("sendingCodeHint"))}</p>
+    </div>
+  `);
+
+  function close() {
+    document.removeEventListener("keydown", onKey);
+    overlay.remove();
+  }
+  function onKey(e) {
+    if (e.key === "Escape") {
+      close();
+      trigger?.focus();
+    }
+  }
+  sheet.querySelector(".filter-close").addEventListener("click", () => {
+    close();
+    trigger?.focus();
+  });
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) {
+      close();
+      trigger?.focus();
+    }
+  });
+  document.addEventListener("keydown", onKey);
+  overlay.append(sheet);
+  deviceScreen.append(overlay);
+
+  function renderVerifyStep() {
+    sheet.innerHTML = `
+      <div class="sheet-grabber" aria-hidden="true"></div>
+      <div class="lang-sheet-header">
+        <p class="screen-title">${escapeHtml(tr("verifyYourEmailTitle"))}</p>
+        <button type="button" class="filter-close" aria-label="${escapeHtml(tr("back"))}">${icon("close", 20)}</button>
+      </div>
+      <p class="email-sheet-hint">${escapeHtml(tr("codeSentHint", { email }))}</p>
+      <div class="field-block">
+        <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" class="order-email-verify-code" placeholder="000000">
+      </div>
+      <button type="button" class="primary-button order-email-verify-confirm">${escapeHtml(tr("confirmCode"))}</button>
+      <button type="button" class="secondary-button order-email-verify-resend">${escapeHtml(tr("resendCode"))}</button>
+    `;
+    sheet.querySelector(".filter-close").addEventListener("click", () => {
+      close();
+      trigger?.focus();
+    });
+    const codeInput = sheet.querySelector(".order-email-verify-code");
+    sheet.querySelector(".order-email-verify-confirm").addEventListener("click", () => submitCode(codeInput.value.trim()));
+    codeInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") sheet.querySelector(".order-email-verify-confirm").click();
+    });
+    sheet.querySelector(".order-email-verify-resend").addEventListener("click", sendCode);
+    codeInput.focus();
+  }
+
+  async function sendCode() {
+    try {
+      const result = await api("/api/orders/email/send-code", { method: "POST", body: JSON.stringify({ email }) });
+      if (!result.sent) {
+        showToast(tr("verificationSendFailed"));
+        close();
+        return;
+      }
+      renderVerifyStep();
+    } catch (err) {
+      if (err.status === 429 && err.body && err.body.retry_after_seconds != null) {
+        showToast(tr("resendCooldown", { n: err.body.retry_after_seconds }));
+        renderVerifyStep();
+      } else {
+        showToast(tr("verificationSendFailed"));
+        close();
+      }
+    }
+  }
+
+  async function submitCode(code) {
+    if (!/^\d{6}$/.test(code)) {
+      showToast(tr("invalidCode"));
+      return;
+    }
+    const confirmBtn = sheet.querySelector(".order-email-verify-confirm");
+    if (confirmBtn) confirmBtn.disabled = true;
+    try {
+      const result = await api("/api/orders/email/verify-code", { method: "POST", body: JSON.stringify({ email, code }) });
+      if (!result.verified) {
+        const reasonKey =
+          { incorrect_code: "invalidCode", code_expired: "codeExpired", too_many_attempts: "tooManyAttempts", no_code_requested: "codeExpired" }[
+            result.reason
+          ] || "verificationFailed";
+        showToast(tr(reasonKey));
+        if (confirmBtn) confirmBtn.disabled = false;
+        return;
+      }
+      close();
+      onVerified();
+    } catch {
+      showToast(tr("verificationFailed"));
+      if (confirmBtn) confirmBtn.disabled = false;
+    }
+  }
+
+  sendCode();
 }
 
 // Root-level tab destinations, matching the reference design's bottom
@@ -3314,6 +3477,9 @@ function foodCard(item) {
     <article class="food-card ${isSelected ? "is-selected" : ""} ${earlyCutoffPassed ? "is-early-cutoff-passed" : ""}" data-item-id="${item.id}">
       <div class="food-card-photo icon-avatar ${categoryIconClass(item)}">
         ${dishIllustrationSvg()}
+        <p class="food-card-photo-note">📸 Add dish pic here!</p>
+        <img class="food-card-custom-photo" alt="" hidden>
+        <input type="file" accept="image/*" class="food-card-photo-input" hidden>
         <button type="button" class="heart-btn ${isFav ? "is-favorite" : ""}" aria-label="${escapeHtml(tr(isFav ? "removeFavorite" : "addFavorite", { name: dishNameLabel(item.name, state.lang) }))}" aria-pressed="${isFav}">${icon(isFav ? "heartFilled" : "heart", 18)}</button>
         ${
           item.vegan || item.vegetarian || item.requires_early_order
@@ -3370,6 +3536,30 @@ function foodCard(item) {
     e.stopPropagation();
     toggleFavorite(state.slug, state.restaurantName, item.category, item.name);
     card.replaceWith(foodCard(item));
+  });
+
+  // Preview-only (see food-card-photo-note's own comment): tapping the
+  // photo tile opens the device's native picker -- plain accept="image/*"
+  // with no `capture` attribute is what actually offers BOTH "Photo
+  // Library" and "Take Photo" on iOS/Android, unlike capture="environment"
+  // which would force the camera and hide the library option entirely.
+  // Client-side preview only (object URL) -- never uploaded/persisted
+  // anywhere, and lost the moment this card next re-renders (e.g. the
+  // heart-button handler above replaces the whole card).
+  const photoTile = card.querySelector(".food-card-photo");
+  const photoInput = card.querySelector(".food-card-photo-input");
+  const photoImg = card.querySelector(".food-card-custom-photo");
+  photoTile.addEventListener("click", (e) => {
+    e.stopPropagation();
+    photoInput.click();
+  });
+  photoInput.addEventListener("click", (e) => e.stopPropagation());
+  photoInput.addEventListener("change", () => {
+    const file = photoInput.files[0];
+    if (!file) return;
+    photoImg.src = URL.createObjectURL(file);
+    photoImg.hidden = false;
+    photoTile.classList.add("has-custom-photo");
   });
 
   function selectOrExplain() {
@@ -4061,7 +4251,7 @@ async function renderReview() {
   app.append(phoneBlock);
 
   const confirmBtn = el(`<button type="button" class="primary-button">${escapeHtml(tr("confirmOrder"))}</button>`);
-  confirmBtn.addEventListener("click", confirmOrder);
+  confirmBtn.addEventListener("click", () => confirmOrder(confirmBtn));
   app.append(confirmBtn);
 
   const backBtn = el(`<button type="button" class="secondary-button">${escapeHtml(tr("continueBrowsing"))}</button>`);
@@ -4069,7 +4259,7 @@ async function renderReview() {
   app.append(backBtn);
 }
 
-async function confirmOrder() {
+async function confirmOrder(triggerBtn) {
   const email = state.customerEmail.trim();
   const phone = state.customerPhone.trim();
   // Checked here, before the request, rather than only relying on the
@@ -4091,6 +4281,21 @@ async function confirmOrder() {
     return;
   }
 
+  // Part 83: a real order now needs a PROVEN email -- if this device
+  // hasn't already proven this exact address (see isEmailKnownVerified's
+  // own comment), the send-code/verify-code sheet has to complete FIRST;
+  // submitOrder() below only ever runs after that, never speculatively.
+  if (!isEmailKnownVerified(email)) {
+    openOrderEmailVerifySheet(triggerBtn, email, () => {
+      rememberVerifiedOrderEmail(email);
+      submitOrder(email, phone);
+    });
+    return;
+  }
+  await submitOrder(email, phone);
+}
+
+async function submitOrder(email, phone) {
   goTo("confirming");
   try {
     const order = await api("/api/orders", {
