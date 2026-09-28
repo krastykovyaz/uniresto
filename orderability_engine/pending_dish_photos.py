@@ -63,6 +63,27 @@ class PendingDishPhotoStore:
         with self._connect() as conn:
             conn.execute("DELETE FROM pending_dish_photos WHERE id = ?", (pending_id,))
 
+    def pop_other_pending_for_dish(self, slug: str, category: str, name: str, keep_id: int) -> list[dict]:
+        """Part 86: once ONE submission for this exact dish has just been
+        approved/replaced, any OTHER still-pending submission for that
+        same dish is now moot -- there's only one live photo a dish can
+        have, so keeping a second (or third) copy sitting in the review
+        queue (and its file on disk) forever, un-decided, is exactly the
+        kind of orphaned duplicate this whole module exists to avoid.
+        Deletes those rows and returns them so the caller can also delete
+        their now-unreferenced files."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, slug, category, name, photo_path, submitted_at FROM pending_dish_photos "
+                "WHERE slug = ? AND category = ? AND name = ? AND id != ?",
+                (slug, category, name, keep_id),
+            ).fetchall()
+            conn.execute(
+                "DELETE FROM pending_dish_photos WHERE slug = ? AND category = ? AND name = ? AND id != ?",
+                (slug, category, name, keep_id),
+            )
+        return [self._row_to_dict(row) for row in rows]
+
     @staticmethod
     def _row_to_dict(row) -> dict:
         return {

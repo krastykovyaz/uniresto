@@ -50,3 +50,36 @@ def test_survives_a_reopened_store(tmp_path):
     pending_id = PendingDishPhotoStore(db_path).create("altius", "Végétarien", "Salad'bar", "/static/dish_photos/a.jpg")
     reopened = PendingDishPhotoStore(db_path)
     assert reopened.get(pending_id)["name"] == "Salad'bar"
+
+
+def test_pop_other_pending_for_dish_removes_and_returns_the_others(tmp_path):
+    store = PendingDishPhotoStore(tmp_path / "orders.db")
+    keep = store.create("altius", "Végétarien", "Salad'bar", "/static/dish_photos/keep.jpg")
+    other1 = store.create("altius", "Végétarien", "Salad'bar", "/static/dish_photos/other1.jpg")
+    other2 = store.create("altius", "Végétarien", "Salad'bar", "/static/dish_photos/other2.jpg")
+
+    popped = store.pop_other_pending_for_dish("altius", "Végétarien", "Salad'bar", keep_id=keep)
+
+    assert {p["id"] for p in popped} == {other1, other2}
+    assert {p["photo_path"] for p in popped} == {"/static/dish_photos/other1.jpg", "/static/dish_photos/other2.jpg"}
+    # The kept one survives, the others are gone.
+    assert store.get(keep) is not None
+    assert store.get(other1) is None
+    assert store.get(other2) is None
+
+
+def test_pop_other_pending_for_dish_never_touches_a_different_dish(tmp_path):
+    store = PendingDishPhotoStore(tmp_path / "orders.db")
+    keep = store.create("altius", "Végétarien", "Salad'bar", "/static/dish_photos/keep.jpg")
+    other_dish = store.create("altius", "Végétarien", "Buddha bowl", "/static/dish_photos/other.jpg")
+
+    popped = store.pop_other_pending_for_dish("altius", "Végétarien", "Salad'bar", keep_id=keep)
+
+    assert popped == []
+    assert store.get(other_dish) is not None
+
+
+def test_pop_other_pending_for_dish_with_nothing_else_returns_empty(tmp_path):
+    store = PendingDishPhotoStore(tmp_path / "orders.db")
+    keep = store.create("altius", "Végétarien", "Salad'bar", "/static/dish_photos/keep.jpg")
+    assert store.pop_other_pending_for_dish("altius", "Végétarien", "Salad'bar", keep_id=keep) == []

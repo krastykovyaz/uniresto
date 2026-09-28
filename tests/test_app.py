@@ -499,6 +499,75 @@ def test_admin_replace_dish_photo_unknown_id_is_friendly_not_404(client, monkeyp
 
 
 # ---------------------------------------------------------------------------
+# Storage cleanup: a dish never keeps more than one photo on disk (Part 86)
+# ---------------------------------------------------------------------------
+
+
+def test_approving_a_resubmission_deletes_the_dishs_previous_live_photo(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    first = _upload_dish_photo(client, category="Végétarien", name="Salad'bar", data=_PNG_BYTES).get_json()
+    client.get(f"/admin/dish-photos/{first['id']}/approve?token=correct-token")
+
+    other_png = b"\x89PNG\r\n\x1a\n" + b"\x11" * 32
+    second = _upload_dish_photo(client, category="Végétarien", name="Salad'bar", data=other_png).get_json()
+    client.get(f"/admin/dish-photos/{second['id']}/approve?token=correct-token")
+
+    listed = client.get("/api/restaurants/altius/dish-photos").get_json()
+    assert listed["Végétarien"]["Salad'bar"] == second["photo_path"]
+    # The FIRST approved photo's file is gone -- nothing points at it anymore.
+    assert client.get(first["photo_path"]).status_code == 404
+    assert client.get(second["photo_path"]).status_code == 200
+
+
+def test_replacing_deletes_the_dishs_previous_live_photo(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    first = _upload_dish_photo(client, category="Végétarien", name="Salad'bar", data=_PNG_BYTES).get_json()
+    client.get(f"/admin/dish-photos/{first['id']}/approve?token=correct-token")
+
+    pending = _upload_dish_photo(client, category="Végétarien", name="Salad'bar").get_json()
+    other_png = b"\x89PNG\r\n\x1a\n" + b"\x22" * 32
+    client.post(
+        f"/admin/dish-photos/{pending['id']}/replace?token=correct-token",
+        data={"photo": (io.BytesIO(other_png), "admin-choice.png")},
+        content_type="multipart/form-data",
+    )
+
+    assert client.get(first["photo_path"]).status_code == 404
+    assert client.get(pending["photo_path"]).status_code == 404  # the discarded submission's own file too
+
+
+def test_approving_discards_other_pending_submissions_for_the_same_dish(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    keeper = _upload_dish_photo(client, category="Végétarien", name="Salad'bar", data=_PNG_BYTES).get_json()
+    other_png = b"\x89PNG\r\n\x1a\n" + b"\x33" * 32
+    other = _upload_dish_photo(client, category="Végétarien", name="Salad'bar", data=other_png).get_json()
+
+    client.get(f"/admin/dish-photos/{keeper['id']}/approve?token=correct-token")
+
+    # The other, never explicitly decided, submission is discarded too --
+    # both its pending row and its file.
+    review_page = client.get(f"/admin/dish-photos/{other['id']}?token=correct-token")
+    assert b"already approved or rejected" in review_page.data
+    assert client.get(other["photo_path"]).status_code == 404
+    # Unrelated to a different dish's own still-pending submission.
+    assert client.get("/admin/dish-photos?token=correct-token").data.count(b"Approve") == 0
+
+
+def test_rejecting_does_not_touch_a_different_pending_submission_for_the_same_dish(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    first = _upload_dish_photo(client, category="Végétarien", name="Salad'bar", data=_PNG_BYTES).get_json()
+    other_png = b"\x89PNG\r\n\x1a\n" + b"\x44" * 32
+    second = _upload_dish_photo(client, category="Végétarien", name="Salad'bar", data=other_png).get_json()
+
+    client.get(f"/admin/dish-photos/{first['id']}/reject?token=correct-token")
+
+    # Rejecting one submission is NOT a decision about the dish itself --
+    # the other one is still legitimately awaiting its own review.
+    assert client.get(second["photo_path"]).status_code == 200
+    assert client.get("/admin/dish-photos?token=correct-token").data.count(b"Approve") == 1
+
+
+# ---------------------------------------------------------------------------
 # API: order quote / create -- server-side recalculation (Task 3 §27/§28)
 # ---------------------------------------------------------------------------
 

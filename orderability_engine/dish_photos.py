@@ -36,8 +36,20 @@ class DishPhotoStore:
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.db_path)
 
-    def set_photo(self, slug: str, category: str, name: str, photo_path: str) -> None:
+    def set_photo(self, slug: str, category: str, name: str, photo_path: str) -> str | None:
+        """Sets this dish's live photo, returning whatever photo_path it
+        had before (or None if it had none). This store only ever keeps
+        ONE row per (slug, category, name), so once this returns, nothing
+        in DISH_PHOTO_STORE points at that old path anymore -- the
+        caller (app.py's admin_approve_dish_photo/admin_replace_dish_photo,
+        Part 86) deletes the now-orphaned FILE, so a dish's storage never
+        accumulates more than one photo on disk no matter how many times
+        it gets re-approved across however many days it reappears on."""
         with self._connect() as conn:
+            previous = conn.execute(
+                "SELECT photo_path FROM dish_photos WHERE slug = ? AND category = ? AND name = ?",
+                (slug, category, name),
+            ).fetchone()
             conn.execute(
                 """
                 INSERT INTO dish_photos (slug, category, name, photo_path, uploaded_at)
@@ -47,6 +59,7 @@ class DishPhotoStore:
                 """,
                 (slug, category, name, photo_path, datetime.now(timezone.utc).isoformat()),
             )
+        return previous[0] if previous else None
 
     def photos_for_restaurant(self, slug: str) -> dict[str, dict[str, str]]:
         """Returns {category: {name: photo_path}} for this restaurant --

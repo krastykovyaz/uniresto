@@ -1285,14 +1285,29 @@ def create_app(
             )
         return render_template("dish_photo_review.html", entry=entry, token=request.args.get("token"))
 
+    def _delete_dish_photo_file(photo_path: str) -> None:
+        (app.config["DISH_PHOTO_DIR"] / Path(photo_path).name).unlink(missing_ok=True)
+
+    def _discard_other_pending_submissions(entry: dict) -> None:
+        """Part 86: `entry`'s dish just got a real decision (approve or
+        replace) -- any OTHER still-pending submission for that exact
+        dish is now moot (a dish only ever shows one live photo), so it's
+        discarded here too rather than sitting in the review queue, and
+        on disk, forever undecided."""
+        others = pending_dish_photos().pop_other_pending_for_dish(entry["slug"], entry["category"], entry["name"], entry["id"])
+        for other in others:
+            _delete_dish_photo_file(other["photo_path"])
+
     @app.get("/admin/dish-photos/<int:pending_id>/approve")
     def admin_approve_dish_photo(pending_id):
         """Part 84: the "✅ Approve" Telegram button (plain URL, same
         no-webhook reasoning as admin_mark_order_reviewing below) --
         publishes the pending photo into DISH_PHOTO_STORE (now live for
         every student browsing this dish) and removes it from the
-        pending queue. The pending file itself is left exactly where it
-        is; only which store's row points at it changes."""
+        pending queue. Whatever photo this dish had live BEFORE this one
+        (Part 86) is now unreferenced anywhere, so its file is deleted --
+        a dish never keeps more than one photo on disk, no matter how
+        many times it gets re-approved."""
         if not _is_admin_authorized():
             abort(404)
         entry = pending_dish_photos().get(pending_id)
@@ -1303,7 +1318,10 @@ def create_app(
                 title="This link isn't valid anymore",
                 message="This photo was already approved or rejected.",
             )
-        dish_photos().set_photo(entry["slug"], entry["category"], entry["name"], entry["photo_path"])
+        previous_photo_path = dish_photos().set_photo(entry["slug"], entry["category"], entry["name"], entry["photo_path"])
+        if previous_photo_path and previous_photo_path != entry["photo_path"]:
+            _delete_dish_photo_file(previous_photo_path)
+        _discard_other_pending_submissions(entry)
         pending_dish_photos().delete(pending_id)
         return render_template(
             "order_action.html",
@@ -1329,8 +1347,7 @@ def create_app(
                 title="This link isn't valid anymore",
                 message="This photo was already approved or rejected.",
             )
-        photo_file = app.config["DISH_PHOTO_DIR"] / Path(entry["photo_path"]).name
-        photo_file.unlink(missing_ok=True)
+        _delete_dish_photo_file(entry["photo_path"])
         pending_dish_photos().delete(pending_id)
         return render_template(
             "order_action.html",
@@ -1387,10 +1404,12 @@ def create_app(
         filename = f"admin-{uuid.uuid4().hex}{ext}"
         (photo_dir / filename).write_bytes(data)
         new_photo_path = f"/static/dish_photos/{filename}"
-        dish_photos().set_photo(entry["slug"], entry["category"], entry["name"], new_photo_path)
+        previous_photo_path = dish_photos().set_photo(entry["slug"], entry["category"], entry["name"], new_photo_path)
+        if previous_photo_path and previous_photo_path != new_photo_path:
+            _delete_dish_photo_file(previous_photo_path)
 
-        old_photo_file = app.config["DISH_PHOTO_DIR"] / Path(entry["photo_path"]).name
-        old_photo_file.unlink(missing_ok=True)
+        _delete_dish_photo_file(entry["photo_path"])
+        _discard_other_pending_submissions(entry)
         pending_dish_photos().delete(pending_id)
         return render_template(
             "order_action.html",

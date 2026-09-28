@@ -41,3 +41,15 @@ def test_survives_a_reopened_store(tmp_path):
     DishPhotoStore(db_path).set_photo("altius", "Végétarien", "Salad'bar", "/static/dish_photos/abc.jpg")
     reopened = DishPhotoStore(db_path)
     assert reopened.photos_for_restaurant("altius") == {"Végétarien": {"Salad'bar": "/static/dish_photos/abc.jpg"}}
+
+
+def test_set_photo_returns_none_when_the_dish_had_no_photo_before(tmp_path):
+    store = DishPhotoStore(tmp_path / "orders.db")
+    assert store.set_photo("altius", "Végétarien", "Salad'bar", "/static/dish_photos/abc.jpg") is None
+
+
+def test_set_photo_returns_the_previous_path_when_replacing_one(tmp_path):
+    store = DishPhotoStore(tmp_path / "orders.db")
+    store.set_photo("altius", "Végétarien", "Salad'bar", "/static/dish_photos/old.jpg")
+    previous = store.set_photo("altius", "Végétarien", "Salad'bar", "/static/dish_photos/new.jpg")
+    assert previous == "/static/dish_photos/old.jpg"
