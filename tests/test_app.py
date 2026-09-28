@@ -392,6 +392,66 @@ def test_admin_reject_dish_photo_requires_token(client):
     assert client.get(upload["photo_path"]).status_code == 200  # file untouched
 
 
+def test_admin_replace_dish_photo_publishes_the_admins_own_upload(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    upload = _upload_dish_photo(client, category="Végétarien", name="Salad'bar").get_json()
+    other_png = b"\x89PNG\r\n\x1a\n" + b"\x11" * 32
+    resp = client.post(
+        f"/admin/dish-photos/{upload['id']}/replace?token=correct-token",
+        data={"photo": (io.BytesIO(other_png), "admin-choice.png")},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 200
+    assert b"published" in resp.data.lower()
+
+    listed = client.get("/api/restaurants/altius/dish-photos").get_json()
+    new_photo_path = listed["Végétarien"]["Salad'bar"]
+    assert new_photo_path != upload["photo_path"]
+    assert client.get(new_photo_path).data == other_png
+    # The student's original submission is discarded, not published.
+    assert client.get(upload["photo_path"]).status_code == 404
+    # Consumed -- no longer sitting in the pending queue.
+    assert client.get("/admin/dish-photos?token=correct-token").data.count(b"Approve") == 0
+
+
+def test_admin_replace_dish_photo_requires_token(client):
+    upload = _upload_dish_photo(client).get_json()
+    other_png = b"\x89PNG\r\n\x1a\n" + b"\x11" * 32
+    resp = client.post(
+        f"/admin/dish-photos/{upload['id']}/replace",
+        data={"photo": (io.BytesIO(other_png), "admin-choice.png")},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 404
+    assert client.get("/api/restaurants/altius/dish-photos").get_json() == {}
+
+
+def test_admin_replace_dish_photo_rejects_a_non_image_file(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    upload = _upload_dish_photo(client).get_json()
+    resp = client.post(
+        f"/admin/dish-photos/{upload['id']}/replace?token=correct-token",
+        data={"photo": (io.BytesIO(b"<script>alert(1)</script>"), "evil.svg")},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 200
+    assert b"Unsupported file type" in resp.data
+    # Untouched -- still pending, original submission still there.
+    assert client.get("/admin/dish-photos?token=correct-token").data.count(b"Approve") == 1
+
+
+def test_admin_replace_dish_photo_unknown_id_is_friendly_not_404(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    other_png = b"\x89PNG\r\n\x1a\n" + b"\x11" * 32
+    resp = client.post(
+        "/admin/dish-photos/999999/replace?token=correct-token",
+        data={"photo": (io.BytesIO(other_png), "admin-choice.png")},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 200
+    assert b"already approved or rejected" in resp.data
+
+
 # ---------------------------------------------------------------------------
 # API: order quote / create -- server-side recalculation (Task 3 §27/§28)
 # ---------------------------------------------------------------------------

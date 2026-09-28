@@ -11,5 +11,15 @@
         <a class="button" href="/admin/dish-photos/{{ entry.id }}/reject?token={{ token }}">❌ Reject</a>
     </div>
 </div>
+
+<div class="card">
+    <p><strong>Or upload a different photo instead</strong></p>
+    <p class="muted">Publishes straight away, in place of the submission above -- e.g. if it's blurry or the wrong dish entirely.</p>
+    <form method="post" action="/admin/dish-photos/{{ entry.id }}/replace?token={{ token }}" enctype="multipart/form-data" style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+        <input type="file" name="photo" accept="image/*" required>
+        <button type="submit">Publish this instead</button>
+    </form>
+</div>
+
 <p><a href="/admin/dish-photos?token={{ token }}">&larr; Back to all pending photos</a></p>
 {% endblock %}

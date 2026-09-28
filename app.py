@@ -1323,6 +1323,66 @@ def create_app(
             message=f"{entry['name']} is back to showing the placeholder until a new photo comes in.",
         )
 
+    @app.post("/admin/dish-photos/<int:pending_id>/replace")
+    def admin_replace_dish_photo(pending_id):
+        """From the "View full card" page (Part 84): lets the admin publish
+        their OWN photo for this dish instead of the student's submission
+        -- e.g. it's blurry, or of the wrong dish entirely. Publishes
+        straight to DISH_PHOTO_STORE (no further review -- the admin IS
+        the reviewer here) and discards the original submission (file and
+        pending row both), same cleanup as reject."""
+        if not _is_admin_authorized():
+            abort(404)
+        entry = pending_dish_photos().get(pending_id)
+        if entry is None:
+            return render_template(
+                "order_action.html",
+                icon="⚠️",
+                title="This link isn't valid anymore",
+                message="This photo was already approved or rejected.",
+            )
+        photo = request.files.get("photo")
+        if photo is None or not photo.filename:
+            return render_template(
+                "order_action.html",
+                icon="⚠️",
+                title="No photo given",
+                message="Choose a file before submitting.",
+            )
+        data = photo.read(MAX_DISH_PHOTO_BYTES + 1)
+        if len(data) > MAX_DISH_PHOTO_BYTES:
+            return render_template(
+                "order_action.html",
+                icon="⚠️",
+                title="That photo is too large",
+                message="Photos must be smaller than 8 MB.",
+            )
+        ext = _sniff_dish_photo_extension(data)
+        if ext is None:
+            return render_template(
+                "order_action.html",
+                icon="⚠️",
+                title="Unsupported file type",
+                message="Photos must be a JPEG, PNG, WEBP, or GIF image.",
+            )
+
+        photo_dir = app.config["DISH_PHOTO_DIR"]
+        photo_dir.mkdir(parents=True, exist_ok=True)
+        filename = f"admin-{uuid.uuid4().hex}{ext}"
+        (photo_dir / filename).write_bytes(data)
+        new_photo_path = f"/static/dish_photos/{filename}"
+        dish_photos().set_photo(entry["slug"], entry["category"], entry["name"], new_photo_path)
+
+        old_photo_file = app.config["DISH_PHOTO_DIR"] / Path(entry["photo_path"]).name
+        old_photo_file.unlink(missing_ok=True)
+        pending_dish_photos().delete(pending_id)
+        return render_template(
+            "order_action.html",
+            icon="✅",
+            title="Your photo is published",
+            message=f"{entry['name']} now shows the photo you just uploaded.",
+        )
+
     @app.get("/admin/orders/<int:order_id>/mark-reviewing")
     def admin_mark_order_reviewing(order_id):
         """Part 37: the link on the Telegram admin ping (a plain URL
