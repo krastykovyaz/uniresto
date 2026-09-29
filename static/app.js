@@ -4,6 +4,7 @@
 // nothing here invents a dish, price, or weight.
 
 import { clampQuantity, computeOrderTotals } from "./order-math.js";
+import { orderFromStorage } from "./shuffle.js";
 import {
   DESSERT_CATEGORIES,
   INCLUDED_SIDE_CATEGORIES,
@@ -2169,16 +2170,17 @@ async function renderDelivery() {
 
 // Belval has no orderable restaurant yet, so instead of four dead "coming
 // soon" cards this screen says so plainly and asks the one useful question:
-// which restaurant would you use first? Tapping a card is a vote -- recorded
-// through the same /api/coming-soon/click signal as before (see
-// /admin/coming-soon-clicks) -- and the pick is remembered on this device so
-// it shows as "Your pick". A vote is only sent when the pick actually
-// changes, so tapping the same card again can't inflate the count.
-const BELVAL_PICK_KEY = "uniresto.belvalPick.v1";
+// which restaurant would you use first? Tapping a card is THE vote for this
+// session -- one time only: once a card is picked the others lock and nothing
+// more is sent, so switching or re-tapping can't inflate the count. The vote
+// goes through the same /api/coming-soon/click signal as before (see
+// /admin/coming-soon-clicks). "Session" is the browser session
+// (sessionStorage): a reload keeps the vote locked, a new visit can vote again.
+const BELVAL_PICK_KEY = "uniresto.belvalPick.session.v1";
 
 function loadBelvalPick() {
   try {
-    const value = localStorage.getItem(BELVAL_PICK_KEY);
+    const value = sessionStorage.getItem(BELVAL_PICK_KEY);
     return COMING_SOON_LOCATIONS.some((l) => l.name === value) ? value : null;
   } catch {
     return null;
@@ -2187,37 +2189,63 @@ function loadBelvalPick() {
 
 function saveBelvalPick(name) {
   try {
-    localStorage.setItem(BELVAL_PICK_KEY, name);
+    sessionStorage.setItem(BELVAL_PICK_KEY, name);
   } catch {
-    /* localStorage unavailable -- the pick just isn't remembered after a reload */
+    /* sessionStorage unavailable -- locked for this screen visit only */
   }
+}
+
+// The four cards in a random order per session (so the one listed first
+// doesn't win just for being first), kept for the whole session so a reload or
+// a switch between campus tabs doesn't reshuffle under a thumb.
+const BELVAL_ORDER_KEY = "uniresto.belvalOrder.session.v1";
+
+function belvalLocationsInSessionOrder() {
+  const names = COMING_SOON_LOCATIONS.map((l) => l.name);
+  let raw = null;
+  try {
+    raw = sessionStorage.getItem(BELVAL_ORDER_KEY);
+  } catch {
+    /* sessionStorage unavailable -- a fresh shuffle each time this screen opens */
+  }
+  const { order, fresh } = orderFromStorage(names, raw);
+  if (fresh) {
+    try {
+      sessionStorage.setItem(BELVAL_ORDER_KEY, JSON.stringify(order));
+    } catch {
+      /* not remembered -- see above */
+    }
+  }
+  return order.map((name) => COMING_SOON_LOCATIONS.find((l) => l.name === name));
 }
 
 function belvalComingContent() {
   const wrap = el(`<div class="belval-coming"></div>`);
-  wrap.append(
-    el(`
-      <div class="belval-banner">
-        <h2>${escapeHtml(tr("belvalComingTitle"))}</h2>
-        <p>${escapeHtml(tr("belvalComingSubtitle"))}</p>
-      </div>
-    `)
-  );
+  const banner = el(`
+    <div class="belval-banner">
+      <h2>${escapeHtml(tr("belvalComingTitle"))}</h2>
+      <p class="belval-banner-text"></p>
+    </div>
+  `);
+  wrap.append(banner);
   const grid = el(`<div class="restaurant-grid" role="radiogroup" aria-label="${escapeHtml(tr("belvalComingSubtitle"))}"></div>`);
   let picked = loadBelvalPick();
   const cards = new Map();
 
   const paint = () => {
+    banner.querySelector(".belval-banner-text").textContent = tr(picked ? "belvalVoted" : "belvalComingSubtitle");
     for (const [name, card] of cards) {
       const isPick = name === picked;
       card.classList.toggle("is-picked", isPick);
+      card.classList.toggle("is-locked", Boolean(picked) && !isPick);
+      card.disabled = Boolean(picked);
       card.setAttribute("aria-checked", String(isPick));
       card.querySelector(".belval-vote-mark").innerHTML = isPick ? icon("check", 14) : "";
       card.querySelector(".belval-your-pick").hidden = !isPick;
     }
   };
 
-  for (const location of COMING_SOON_LOCATIONS) {
+  for (const location of belvalLocationsInSessionOrder()) {
     const card = el(`
       <button type="button" class="restaurant-card belval-choice" role="radio" aria-checked="false">
         <div class="restaurant-card-main">
@@ -2232,7 +2260,7 @@ function belvalComingContent() {
       </button>
     `);
     card.addEventListener("click", () => {
-      if (picked === location.name) return;
+      if (picked) return; // one vote per session
       picked = location.name;
       saveBelvalPick(location.name);
       paint();

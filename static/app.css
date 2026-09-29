@@ -1830,3 +1830,5 @@ svg { display: block; }
 }
 .belval-choice.is-picked { border-color: var(--color-primary, #1e7e34); box-shadow: 0 0 0 1px var(--color-primary, #1e7e34); }
 .belval-choice.is-picked .belval-vote-mark { background: var(--color-primary, #1e7e34); border-color: var(--color-primary, #1e7e34); }
+.belval-choice.is-locked { opacity: 0.5; cursor: default; }
+.belval-choice:disabled { cursor: default; }
