@@ -65,8 +65,9 @@ for a tier ("/" -- the apprenants column of the organic milk) or only marks
 "*" (the official
 "Schoulmëllechprogramm" price, no number given -- chocolate milk for
 apprenants) are simply absent from that tier's table, i.e. unpriced there,
-never guessed. Glaces (ice cream) still have NO price: that official list
-has no ice cream section at all.
+never guessed. Glaces (ice cream) are NOT on the 2026/27 list at all: their
+prices are the 2025/26 season's, as given by the owner -- one price per
+item, used for both tiers, since no per-tier figure was supplied.
 """
 
 from __future__ import annotations
@@ -86,6 +87,20 @@ def price_for_name(prices: dict, name: str) -> float | None:
     if name in prices:
         return prices[name]
     return prices.get(_QUOTED_SEGMENT.sub("", name))
+
+
+_FLAVOUR_LIST = re.compile(r"\s*\([^)]*\)\s*$")
+
+
+def _lookup_price(categories: set, prices: dict, name: str) -> float | None:
+    """price_for_name(), plus -- for ice cream only -- a fallback that drops
+    a trailing "(flavour, flavour, ...)" list, which Restopolis changes from
+    season to season. Never applied to other categories: a trailing
+    parenthesis there is part of the product ("Consigne ECOBOX (500 ml)")."""
+    value = price_for_name(prices, name)
+    if value is None and categories is GLACES_CATEGORIES:
+        value = prices.get(_FLAVOUR_LIST.sub("", name))
+    return value
 
 
 MAIN_CATEGORIES = {"Non-végétarien", "Végétarien", "Végan"}
@@ -110,6 +125,7 @@ TAKEAWAY_VITAMIN_CATEGORIES = {"04. Vitamines à emporter"}
 FRUIT_CATEGORIES = {"06. Fruits"}
 PASTRY_CATEGORIES = {"08. Pâtisserie"}
 LAITAGES_CATEGORIES = {"05. Laitages"}
+GLACES_CATEGORIES = {"07. Glaces"}
 # The 3 real Restopolis "Boissons froides" (cold drinks) categories --
 # water, juice and soda are split into separate raw categories, but all
 # priced from the same combined official table below.
@@ -280,6 +296,18 @@ LAITAGES_PRICES_APPRENANT = {
     "Yaourt nature Luxlait 125 g": 1.05,
 }
 
+# Ice cream is not on the 2026/27 list. These are the 2025/26 season's
+# prices, given by the owner -- a single price per item, applied to both
+# tiers (no apprenants figure was supplied). Keyed by the name WITHOUT the
+# flavour list, because Restopolis changes that list ("Cornet Luxlait 130 ml
+# (Chocolat, Fraise, Vanille)" one season, "... , Praliné, Mocca-vanille)"
+# the next); _lookup_price() strips it for this category only.
+GLACES_PRICES = {
+    "Cornet Luxlait 130 ml": 1.90,
+    "Dame Blanche Luxlait 200 ml": 2.25,
+    "Glace miniature Luxlait 100 ml": 2.25,
+}
+
 PASTRY_PRICES = {
     "Dessert du Jour": 2.20,
 }
@@ -434,6 +462,7 @@ NAME_PRICED_GROUPS = [
     ("takeaway vitamins", TAKEAWAY_VITAMIN_CATEGORIES, TAKEAWAY_VITAMIN_PRICES),
     ("fruit", FRUIT_CATEGORIES, FRUIT_PRICES),
     ("dairy", LAITAGES_CATEGORIES, LAITAGES_PRICES),
+    ("ice cream", GLACES_CATEGORIES, GLACES_PRICES),
     ("pastry", PASTRY_CATEGORIES, PASTRY_PRICES),
     ("cold drinks", COLD_DRINK_CATEGORIES, COLD_DRINK_PRICES),
     ("hot drinks", HOT_DRINK_CATEGORIES, HOT_DRINK_PRICES),
@@ -447,6 +476,7 @@ NAME_PRICED_GROUPS_APPRENANT = [
     ("takeaway vitamins", TAKEAWAY_VITAMIN_CATEGORIES, TAKEAWAY_VITAMIN_PRICES_APPRENANT),
     ("fruit", FRUIT_CATEGORIES, FRUIT_PRICES_APPRENANT),
     ("dairy", LAITAGES_CATEGORIES, LAITAGES_PRICES_APPRENANT),
+    ("ice cream", GLACES_CATEGORIES, GLACES_PRICES),
     ("pastry", PASTRY_CATEGORIES, PASTRY_PRICES_APPRENANT),
     ("cold drinks", COLD_DRINK_CATEGORIES, COLD_DRINK_PRICES_APPRENANT),
     ("hot drinks", HOT_DRINK_CATEGORIES, HOT_DRINK_PRICES_APPRENANT),
@@ -544,10 +574,10 @@ def compute_formula_total(line_items: list[dict], tier: str = "adulte") -> dict:
     )
     snack_total = snack_qty * snack_price
     name_priced_total = sum(
-        price_for_name(prices, it["name"]) * it["quantity"]
+        _lookup_price(categories, prices, it["name"]) * it["quantity"]
         for _, categories, prices in name_priced_groups
         for it in line_items
-        if it["category"] in categories and price_for_name(prices, it["name"]) is not None
+        if it["category"] in categories and _lookup_price(categories, prices, it["name"]) is not None
     )
 
     grand_total = meal_total + snack_total + name_priced_total
@@ -618,10 +648,10 @@ def _non_meal_total(line_items: list[dict], tier: str) -> float:
     _, snack_price, name_priced_groups = _tier_tables(tier)
     snack_qty = sum(it["quantity"] for it in line_items if it["category"] in SNACK_CATEGORIES)
     name_priced_total = sum(
-        price_for_name(prices, it["name"]) * it["quantity"]
+        _lookup_price(categories, prices, it["name"]) * it["quantity"]
         for _, categories, prices in name_priced_groups
         for it in line_items
-        if it["category"] in categories and price_for_name(prices, it["name"]) is not None
+        if it["category"] in categories and _lookup_price(categories, prices, it["name"]) is not None
     )
     return snack_qty * snack_price + name_priced_total
 
@@ -633,6 +663,6 @@ def _name_priced_total_for(category_items: list[dict], tier: str) -> float:
     total = 0.0
     for _, categories, prices in name_priced_groups:
         for it in category_items:
-            if it["category"] in categories and price_for_name(prices, it["name"]) is not None:
-                total += price_for_name(prices, it["name"]) * it["quantity"]
+            if it["category"] in categories and _lookup_price(categories, prices, it["name"]) is not None:
+                total += _lookup_price(categories, prices, it["name"]) * it["quantity"]
     return total

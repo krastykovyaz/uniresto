@@ -30,6 +30,7 @@ export const TAKEAWAY_VITAMIN_CATEGORIES = new Set(["04. Vitamines à emporter"]
 export const FRUIT_CATEGORIES = new Set(["06. Fruits"]);
 export const PASTRY_CATEGORIES = new Set(["08. Pâtisserie"]);
 export const LAITAGES_CATEGORIES = new Set(["05. Laitages"]);
+export const GLACES_CATEGORIES = new Set(["07. Glaces"]);
 // The 3 real Restopolis "Boissons froides" (cold drinks) categories --
 // water, juice and soda are split into separate raw categories, but all
 // priced from the same combined official table below.
@@ -52,6 +53,7 @@ export const OTHER_NAME_PRICED_CATEGORIES = new Set([
   ...TAKEAWAY_VITAMIN_CATEGORIES,
   ...FRUIT_CATEGORIES,
   ...LAITAGES_CATEGORIES,
+  ...GLACES_CATEGORIES,
   ...PASTRY_CATEGORIES,
   ...COLD_DRINK_CATEGORIES,
   ...HOT_DRINK_CATEGORIES,
@@ -150,6 +152,16 @@ export const LAITAGES_PRICES = {
   "Yaourt nature Luxlait 125 g": 1.15,
 };
 
+// Ice cream is not on the 2026/27 list. These are the 2025/26 season's
+// prices, given by the owner -- the same numbers as pricing.py's
+// GLACES_PRICES. Keyed by the name WITHOUT the flavour list, which
+// Restopolis changes from season to season (see lookupPrice()).
+export const GLACES_PRICES = {
+  "Cornet Luxlait 130 ml": 1.9,
+  "Dame Blanche Luxlait 200 ml": 2.25,
+  "Glace miniature Luxlait 100 ml": 2.25,
+};
+
 export const PASTRY_PRICES = {
   "Dessert du Jour": 2.2,
 };
@@ -246,6 +258,7 @@ const NAME_PRICED_GROUPS = [
   [TAKEAWAY_VITAMIN_CATEGORIES, TAKEAWAY_VITAMIN_PRICES],
   [FRUIT_CATEGORIES, FRUIT_PRICES],
   [LAITAGES_CATEGORIES, LAITAGES_PRICES],
+  [GLACES_CATEGORIES, GLACES_PRICES],
   [PASTRY_CATEGORIES, PASTRY_PRICES],
   [COLD_DRINK_CATEGORIES, COLD_DRINK_PRICES],
   [HOT_DRINK_CATEGORIES, HOT_DRINK_PRICES],
@@ -282,12 +295,22 @@ export function priceForName(prices, name) {
   return prices[plain];
 }
 
+// priceForName(), plus -- for ice cream only -- a fallback that drops a
+// trailing "(flavour, flavour, ...)" list. A trailing parenthesis anywhere
+// else is part of the product ("Consigne ECOBOX (500 ml)"). Mirrors
+// _lookup_price() in orderability_engine/pricing.py.
+function lookupPrice(categories, prices, name) {
+  const direct = priceForName(prices, name);
+  if (direct !== undefined || categories !== GLACES_CATEGORIES) return direct;
+  return prices[name.replace(/\s*\([^)]*\)\s*$/, "")];
+}
+
 export function priceForItem(item) {
   if (MAIN_CATEGORIES.has(item.category)) return MEAL_TIER_PRICES.main;
   if (SNACK_CATEGORIES.has(item.category)) return SNACK_PRICE;
   for (const [categories, prices] of NAME_PRICED_GROUPS) {
-    if (categories.has(item.category) && priceForName(prices, item.name) !== undefined) {
-      return priceForName(prices, item.name);
+    if (categories.has(item.category) && lookupPrice(categories, prices, item.name) !== undefined) {
+      return lookupPrice(categories, prices, item.name);
     }
   }
   return null;
@@ -364,8 +387,8 @@ export function computeFormulaTotal(lines) {
     (sum, [categories, prices]) =>
       sum +
       lines
-        .filter((l) => categories.has(l.category) && priceForName(prices, l.name) !== undefined)
-        .reduce((s, l) => s + priceForName(prices, l.name) * l.quantity, 0),
+        .filter((l) => categories.has(l.category) && lookupPrice(categories, prices, l.name) !== undefined)
+        .reduce((s, l) => s + lookupPrice(categories, prices, l.name) * l.quantity, 0),
     0
   );
 

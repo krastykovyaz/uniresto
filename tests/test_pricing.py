@@ -155,17 +155,45 @@ def test_all_four_sandwich_categories_have_at_least_one_real_priced_item():
     assert len(SANDWICH_PRICES) >= 20
 
 
-def test_ice_cream_stays_unpriced():
-    # The official 2026/27 price list has no ice cream section at all, so
-    # there is no real number to use -- never guessed.
-    for name in (
-        "Cornet Luxlait 130 ml (Chocolat, Fraise, Vanille, Praliné, Mocca-vanille)",
-        "Dame Blanche Luxlait 200 ml",
-        "Glace miniature Luxlait 100 ml (Framboise, Praliné, Vanille)",
-    ):
-        result = compute_formula_total([_line("07. Glaces", name=name)])
-        assert result["formula_count"] == 0
-        assert result["total"] is None
+@pytest.mark.parametrize(
+    "name, price",
+    [
+        ("Cornet Luxlait 130 ml (Chocolat, Fraise, Vanille, Praliné, Mocca-vanille)", 1.90),
+        ("Dame Blanche Luxlait 200 ml", 2.25),
+        ("Glace miniature Luxlait 100 ml (Framboise, Praliné, Vanille)", 2.25),
+    ],
+)
+def test_ice_cream_uses_the_2025_26_prices_at_both_tiers(name, price):
+    for tier in ("adulte", "apprenant"):
+        assert compute_formula_total([_line("07. Glaces", name=name)], tier=tier)["total"] == price
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "Cornet Luxlait 130 ml (Chocolat, Fraise, Vanille)",  # an earlier season's flavour list
+        "Cornet Luxlait 130 ml (Pistache)",
+        "Cornet Luxlait 130 ml",
+    ],
+)
+def test_ice_cream_price_survives_a_changed_flavour_list(name):
+    assert compute_formula_total([_line("07. Glaces", name=name)])["total"] == 1.90
+
+
+def test_a_different_ice_cream_stays_unpriced():
+    result = compute_formula_total([_line("07. Glaces", name="Sorbet citron 100 ml (Citron)")])
+    assert result["total"] is None
+
+
+def test_the_flavour_fallback_is_for_ice_cream_only():
+    # A trailing parenthesis elsewhere is part of the product, never dropped
+    # to find a price ("Café (décaféiné)" must not become "Café").
+    assert compute_formula_total([_line("11. Boissons chaudes", name="Espresso (décaféiné)")])["total"] is None
+
+
+def test_ice_cream_shows_in_the_category_breakdown():
+    rows = category_breakdown([_line("07. Glaces", 2, "Dame Blanche Luxlait 200 ml")])
+    assert rows == [{"category": "07. Glaces", "adulte_total": 4.50, "apprenant_total": 4.50}]
 
 
 @pytest.mark.parametrize(

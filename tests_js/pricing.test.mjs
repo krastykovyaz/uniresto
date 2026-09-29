@@ -130,17 +130,24 @@ test("all four sandwich categories have at least one real priced item", () => {
   assert.ok(Object.keys(SANDWICH_PRICES).length >= 20);
 });
 
-test("ice cream stays unpriced -- the official 2026/27 list has no ice cream section", () => {
-  for (const name of [
-    "Cornet Luxlait 130 ml (Chocolat, Fraise, Vanille, Praliné, Mocca-vanille)",
-    "Dame Blanche Luxlait 200 ml",
-    "Glace miniature Luxlait 100 ml (Framboise, Praliné, Vanille)",
-  ]) {
-    const r = computeFormulaTotal([line("07. Glaces", 1, name)]);
-    assert.equal(r.formulaCount, 0);
-    assert.equal(r.total, null);
-    assert.equal(priceForItem({ category: "07. Glaces", name }), null);
+test("ice cream uses the 2025/26 prices", () => {
+  const expected = {
+    "Cornet Luxlait 130 ml (Chocolat, Fraise, Vanille, Praliné, Mocca-vanille)": 1.9,
+    "Dame Blanche Luxlait 200 ml": 2.25,
+    "Glace miniature Luxlait 100 ml (Framboise, Praliné, Vanille)": 2.25,
+  };
+  for (const [name, price] of Object.entries(expected)) {
+    assert.equal(priceForItem({ category: "07. Glaces", name }), price, name);
+    assert.equal(computeFormulaTotal([line("07. Glaces", 1, name)]).total, price, name);
   }
+});
+
+test("ice cream price survives a changed flavour list, and only for ice cream", () => {
+  for (const name of ["Cornet Luxlait 130 ml (Chocolat, Fraise, Vanille)", "Cornet Luxlait 130 ml (Pistache)", "Cornet Luxlait 130 ml"]) {
+    assert.equal(priceForItem({ category: "07. Glaces", name }), 1.9, name);
+  }
+  assert.equal(priceForItem({ category: "07. Glaces", name: "Sorbet citron 100 ml (Citron)" }), null);
+  assert.equal(priceForItem({ category: "11. Boissons chaudes", name: "Espresso (décaféiné)" }), null);
 });
 
 test("dairy is priced at the official adultes tariff", () => {
