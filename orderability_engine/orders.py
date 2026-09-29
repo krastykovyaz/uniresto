@@ -473,6 +473,21 @@ class OrderStore:
             ids = [r[0] for r in self._conn.execute("SELECT id FROM orders ORDER BY id DESC LIMIT ?", (limit,)).fetchall()]
         return [self.get_order(i) for i in ids]
 
+    def list_open_claimed_orders(self) -> list[dict]:
+        """Orders a courier claimed that were never delivered and are
+        still live (awaiting the customer's confirmation, or confirmed) --
+        the only orders that can still earn a no-show penalty. Small by
+        construction, so app.py re-checks it on every relevant request."""
+        with self._lock:
+            ids = [
+                r[0]
+                for r in self._conn.execute(
+                    "SELECT id FROM orders WHERE claimed_at IS NOT NULL AND delivered_at IS NULL "
+                    "AND status IN ('awaiting_confirmation', 'confirmed')"
+                ).fetchall()
+            ]
+        return [self.get_order(i) for i in ids]
+
     def count_created_between(self, start: datetime, end: datetime) -> int:
         """How many orders were actually placed in [start, end) -- both
         real, timezone-aware datetimes. Used by daily_report.py's evening

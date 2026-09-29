@@ -11,7 +11,7 @@ completing a delivery, an approved dish photo) is idempotent per its own
 delivered, or re-saving the same phone number twice can never double-pay
 it. One-time actions (university_email_verified, communication_email_
 added, phone_number_added) use a bare action name -- at most once ever,
-per email. Repeatable actions (an order, a delivery, an approved photo)
+per email. Repeatable actions (an order, a delivery, an approved photo, a penalty)
 fold the specific order/pending id into the action string itself (e.g.
 "order_placed:42"), so THAT specific order/delivery/photo still only
 ever pays out once, while a DIFFERENT order/delivery/photo pays again."""
@@ -36,6 +36,13 @@ PHONE_NUMBER_ADDED = "phone_number_added"
 ORDER_PLACED = "order_placed"
 DELIVERY_COMPLETED = "delivery_completed"
 DISH_PHOTO_APPROVED = "dish_photo_approved"
+# Penalties (negative points), applied once per order by app.py's
+# _apply_expired_order_penalties(): a customer who left a claimed order
+# unconfirmed, and a courier who held a confirmed order and never picked
+# it up. Keyed per order id like every repeatable award, so each order
+# can cost each side at most one Luni.
+ORDER_NOT_CONFIRMED = "order_not_confirmed"
+COURIER_NO_SHOW = "courier_no_show"
 
 REWARD_POINTS = {
     UNIVERSITY_EMAIL_VERIFIED: 3,
@@ -44,6 +51,8 @@ REWARD_POINTS = {
     ORDER_PLACED: 1,
     DELIVERY_COMPLETED: 1,
     DISH_PHOTO_APPROVED: 1,
+    ORDER_NOT_CONFIRMED: -1,
+    COURIER_NO_SHOW: -1,
 }
 
 SCHEMA = """
@@ -88,14 +97,11 @@ class RewardStore:
 
     @staticmethod
     def _add_points(conn: sqlite3.Connection, email: str, delta: int) -> int:
-        conn.execute(
-            """
-            INSERT INTO rewards (email, points, updated_at)
-            VALUES (?, ?, ?)
-            ON CONFLICT(email) DO UPDATE SET points = points + excluded.points, updated_at = excluded.updated_at
-            """,
-            (email, delta, datetime.now(timezone.utc).isoformat()),
-        )
+        """A balance never drops below 0 -- a penalty on an empty balance
+        costs nothing more than it can take."""
+        now = datetime.now(timezone.utc).isoformat()
+        conn.execute("INSERT OR IGNORE INTO rewards (email, points, updated_at) VALUES (?, 0, ?)", (email, now))
+        conn.execute("UPDATE rewards SET points = MAX(0, points + ?), updated_at = ? WHERE email = ?", (delta, now, email))
         return conn.execute("SELECT points FROM rewards WHERE email = ?", (email,)).fetchone()[0]
 
     def add_points(self, email: str, delta: int) -> int:

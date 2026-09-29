@@ -2756,6 +2756,8 @@ function openRewardRulesSheet(trigger) {
         <li><span>${escapeHtml(tr("rewardRuleOrder"))}</span><strong>+1</strong></li>
         <li><span>${escapeHtml(tr("rewardRuleDelivery"))}</span><strong>+1</strong></li>
         <li><span>${escapeHtml(tr("rewardRulePhoto"))}</span><strong>+1</strong></li>
+        <li><span>${escapeHtml(tr("rewardPenaltyNoConfirm"))}</span><strong>−1</strong></li>
+        <li><span>${escapeHtml(tr("rewardPenaltyNoShow"))}</span><strong>−1</strong></li>
       </ul>
     </div>
   `);

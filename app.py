@@ -54,8 +54,10 @@ from orderability_engine.pending_dish_photos import PendingDishPhotoStore
 from orderability_engine.rate_limits import RateLimitStore
 from orderability_engine.rewards import (
     COMMUNICATION_EMAIL_ADDED,
+    COURIER_NO_SHOW,
     DELIVERY_COMPLETED,
     DISH_PHOTO_APPROVED,
+    ORDER_NOT_CONFIRMED,
     ORDER_PLACED,
     PHONE_NUMBER_ADDED,
     REWARD_POINTS,
@@ -484,6 +486,38 @@ def create_app(
         if customer:
             rewards().award_once(customer, f"{ORDER_PLACED}:{order['id']}", REWARD_POINTS[ORDER_PLACED])
 
+    def _apply_expired_order_penalties() -> None:
+        """-1 Luni for whoever let a claimed order fall through, once its
+        delivery day is over (is_delivery_expired -- the same clock the
+        Delivery screen's "Expired" section uses) with nothing delivered:
+
+        - the courier claimed it, the admin priced it and the CUSTOMER
+          never confirmed: -1 for the customer;
+        - the courier claimed it, the customer confirmed, and the courier
+          never picked it up: -1 for the courier.
+
+        Not penalised: an order nobody claimed, one the admin never priced
+        (status still pending/reviewing -- the customer had nothing to
+        confirm), a cancelled one, and a courier who released it in time
+        (claimed_at is cleared again). Idempotent -- award_once keys each
+        penalty by order id -- so it's simply re-run wherever it might
+        change what a person sees (their balance, the Delivery list) rather
+        than on a scheduler."""
+        now = datetime.now(TZINFO)
+        for order in store().list_open_claimed_orders():
+            if not is_delivery_expired(date.fromisoformat(order["order_date"]), now):
+                continue
+            if order["status"] == "awaiting_confirmation":
+                customer = (order.get("reward_email") or "").strip()
+                if not customer and _is_allowed_customer_email((order.get("customer_email") or "").strip()):
+                    customer = order["customer_email"].strip()
+                if customer:
+                    rewards().award_once(customer, f"{ORDER_NOT_CONFIRMED}:{order['id']}", REWARD_POINTS[ORDER_NOT_CONFIRMED])
+            elif order["status"] == "confirmed" and not order.get("picked_up_at"):
+                courier = (order.get("courier_email") or "").strip()
+                if courier:
+                    rewards().award_once(courier, f"{COURIER_NO_SHOW}:{order['id']}", REWARD_POINTS[COURIER_NO_SHOW])
+
     def get_restaurant_or_404(slug: str):
         restaurant = by_slug.get(slug)
         if restaurant is None:
@@ -750,6 +784,7 @@ def create_app(
         email = (request.args.get("email") or "").strip()
         if not email or not _is_allowed_customer_email(email):
             abort(400, description=f"'email' must be a valid address ending in {' or '.join(ALLOWED_EMAIL_DOMAINS)}")
+        _apply_expired_order_penalties()
         return jsonify({"points": rewards().get_points(email)})
 
     # Part 90: Communication email and phone number are BOTH still purely
@@ -780,6 +815,7 @@ def create_app(
             abort(400, description=f"'action' must be one of {sorted(_CLAIMABLE_REWARD_ACTIONS)}")
         if not verified_emails().is_verified(email):
             return jsonify({"error": "email_not_verified", "message": "Your University email must be verified first"}), 403
+        _apply_expired_order_penalties()
         newly_awarded = rewards().award_once(email, action, REWARD_POINTS[action])
         return jsonify({"awarded": newly_awarded, "points": rewards().get_points(email)})
 
@@ -1229,6 +1265,7 @@ def create_app(
         # an ever-growing history of rooms food was brought to is not
         # something any courier needs.
         oldest = now - timedelta(days=DELIVERY_LIST_DAYS)
+        _apply_expired_order_penalties()
         orders = [o for o in store().list_recent_orders() if _as_utc(o["created_at"]) >= oldest]
         for order in orders:
             # Part 81: the claiming courier's own contact info is exactly

@@ -2914,3 +2914,146 @@ def test_tomorrow_is_the_last_day_inside_the_order_window(client):
 def test_today_is_inside_the_order_window(client):
     resp = client.post("/api/orders", json=_bare_order(date="2026-09-23"))
     assert (resp.get_json() or {}).get("error") != "date_too_far"
+
+
+# ---------------------------------------------------------------------------
+# Luni penalties for orders that fall through after a courier claimed them
+# ---------------------------------------------------------------------------
+# The orders in this file are for 2026-09-24, which is long past on the real
+# clock, so they count as "expired" unless a test patches app.is_delivery_expired.
+
+
+def _claim_quietly(client, order_id, courier_email="courier@uni.lu"):
+    with patch("app.send_order_claimed_notification", return_value=(True, None)), patch(
+        "app.send_delivery_notification", return_value=(True, None)
+    ), patch("app.send_order_accepted", return_value=(True, None)):
+        return _claim(client, order_id, courier_email=courier_email)
+
+
+def _price(client, order_id):
+    return client.application.config["ORDER_STORE"].set_real_price(order_id, 8.50)
+
+
+def _confirm(client, order_id):
+    store = client.application.config["ORDER_STORE"]
+    assert store.confirm_order(order_id, _price(client, order_id))
+
+
+def _give(client, email, points):
+    client.application.config["REWARD_STORE"].add_points(email, points)
+
+
+def test_customer_who_never_confirms_a_claimed_order_loses_1_luni(client):
+    _give(client, "student@uni.lu", 3)
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    _claim_quietly(client, order_id)
+    _price(client, order_id)  # admin priced it, customer said nothing
+    assert _points(client, "student@uni.lu") == 2
+    assert _points(client, "courier@uni.lu") == 0
+
+
+def test_the_no_confirm_penalty_is_charged_once_per_order(client):
+    _give(client, "student@uni.lu", 3)
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    _claim_quietly(client, order_id)
+    _price(client, order_id)
+    for _ in range(3):
+        _points(client, "student@uni.lu")
+    assert _points(client, "student@uni.lu") == 2
+
+
+def test_a_penalty_never_takes_a_balance_below_zero(client):
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    _claim_quietly(client, order_id)
+    _price(client, order_id)
+    assert _points(client, "student@uni.lu") == 0
+
+
+def test_courier_who_never_picks_up_a_confirmed_order_loses_1_luni(client):
+    _give(client, "courier@uni.lu", 2)
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    _claim_quietly(client, order_id)
+    _confirm(client, order_id)
+    assert _points(client, "courier@uni.lu") == 1
+    assert _points(client, "student@uni.lu") == 0  # the customer did their part
+
+
+def test_no_penalty_for_a_courier_who_picked_the_order_up(client):
+    _give(client, "courier@uni.lu", 2)
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    _hand_off(client, order_id)
+    _confirm(client, order_id)
+    assert _points(client, "courier@uni.lu") == 2
+
+
+def test_no_penalty_before_the_delivery_day_is_over(client):
+    _give(client, "student@uni.lu", 3)
+    _give(client, "courier@uni.lu", 3)
+    unconfirmed = _create_basic_order(client, customer_email="student@uni.lu")
+    _claim_quietly(client, unconfirmed)
+    _price(client, unconfirmed)
+    with patch("app.is_delivery_expired", return_value=False):
+        assert _points(client, "student@uni.lu") == 3
+        assert _points(client, "courier@uni.lu") == 3
+
+
+def test_no_penalty_when_nobody_claimed_the_order(client):
+    _give(client, "student@uni.lu", 3)
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    _price(client, order_id)
+    assert _points(client, "student@uni.lu") == 3
+
+
+def test_no_penalty_when_the_admin_never_priced_the_order(client):
+    # Still pending: the customer had nothing to confirm yet.
+    _give(client, "student@uni.lu", 3)
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    _claim_quietly(client, order_id)
+    assert _points(client, "student@uni.lu") == 3
+
+
+def test_no_penalty_for_a_courier_who_released_the_order_in_time(client):
+    _give(client, "courier@uni.lu", 2)
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    _claim_quietly(client, order_id)
+    _unclaim(client, order_id)
+    _confirm(client, order_id)
+    assert _points(client, "courier@uni.lu") == 2
+
+
+def test_no_penalty_for_a_delivered_order(client):
+    _give(client, "student@uni.lu", 3)
+    _give(client, "courier@uni.lu", 3)
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    _hand_off(client, order_id)
+    _mark_delivered(client, order_id)
+    _price(client, order_id)
+    assert _points(client, "student@uni.lu") == 4  # +1 for the delivery, no penalty
+    assert _points(client, "courier@uni.lu") == 4
+
+
+def test_no_penalty_for_a_cancelled_order(client):
+    _give(client, "student@uni.lu", 3)
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    _claim_quietly(client, order_id)
+    store = client.application.config["ORDER_STORE"]
+    store.cancel_order(order_id, _price(client, order_id))
+    assert _points(client, "student@uni.lu") == 3
+
+
+def test_penalty_goes_to_the_university_email_not_the_personal_one(client):
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("me@gmail.com")
+    _give(client, "student@uni.lu", 3)
+    order_id = _create_basic_order(client, customer_email="me@gmail.com", reward_email="student@uni.lu")
+    _claim_quietly(client, order_id)
+    _price(client, order_id)
+    assert _points(client, "student@uni.lu") == 2
+
+
+def test_the_delivery_list_also_applies_penalties(client):
+    _give(client, "courier@uni.lu", 2)
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    _claim_quietly(client, order_id)
+    _confirm(client, order_id)
+    client.get("/api/delivery/orders")
+    assert client.application.config["REWARD_STORE"].get_points("courier@uni.lu") == 1
