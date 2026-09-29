@@ -10,7 +10,7 @@
 // substitutes for that, see README.md Part 3 "Never trust the browser").
 
 export const MIN_QUANTITY = 1;
-export const DEFAULT_MAX_QUANTITY = 10;
+export const DEFAULT_MAX_QUANTITY = 2;
 
 export function clampQuantity(quantity, maxQuantity = DEFAULT_MAX_QUANTITY) {
   const n = Math.trunc(Number(quantity));

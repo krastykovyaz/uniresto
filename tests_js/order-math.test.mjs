@@ -25,14 +25,14 @@ test("clampQuantity never goes below 1 (no negative quantities)", () => {
   assert.equal(clampQuantity(-5), 1);
 });
 
-test("clampQuantity caps at maxQuantity (default 10)", () => {
-  assert.equal(clampQuantity(11), 10);
-  assert.equal(clampQuantity(999), 10);
+test("clampQuantity caps at maxQuantity (default 2)", () => {
+  assert.equal(clampQuantity(3), 2);
+  assert.equal(clampQuantity(999), 2);
   assert.equal(clampQuantity(7, 5), 5);
 });
 
 test("clampQuantity truncates fractional input", () => {
-  assert.equal(clampQuantity(2.9), 2);
+  assert.equal(clampQuantity(1.9), 1);
 });
 
 // ---------------------------------------------------------------------------
@@ -115,8 +115,8 @@ test("unknown weight is tracked separately, never treated as zero", () => {
 });
 
 test("unknown weight portions respect quantity too", () => {
-  const totals = computeOrderTotals([{ menuItemId: 4, quantity: 3 }], MENU);
-  assert.equal(totals.unknownWeightPortions, 3);
+  const totals = computeOrderTotals([{ menuItemId: 4, quantity: 2 }], MENU);
+  assert.equal(totals.unknownWeightPortions, 2);
   assert.deepEqual(totals.weightByUnit, {});
 });
 
@@ -140,7 +140,7 @@ test("stale selection referencing a removed menu item is excluded, not crashing"
 
 test("quantity is clamped within computeOrderTotals too (defense in depth)", () => {
   const totals = computeOrderTotals([{ menuItemId: 1, quantity: 50 }], MENU);
-  assert.equal(totals.totalQuantity, 10);
+  assert.equal(totals.totalQuantity, 2);
 });
 
 // ---------------------------------------------------------------------------

@@ -522,6 +522,8 @@ async function api(path, options) {
     const message =
       resp.status === 429 && body && body.error === "rate_limited"
         ? tr("tooManyRequests")
+        : body && body.error === "daily_order_limit"
+        ? tr("dailyOrderLimit", { n: body.max_orders })
         : (body && (body.message || body.reason || body.error)) || `Request failed (${resp.status})`;
     const error = new Error(message);
     error.status = resp.status;
@@ -4008,7 +4010,11 @@ function toggleSelection(itemId) {
 function changeQuantity(itemId, delta) {
   const existing = selectionFor(itemId);
   if (!existing) return;
-  const maxQ = (state.menu && state.menu.max_quantity) || 10;
+  const maxQ = (state.menu && state.menu.max_quantity) || 2;
+  if (delta > 0 && existing.quantity >= maxQ) {
+    showToast(tr("itemQuantityLimit", { n: maxQ }));
+    return;
+  }
   const next = existing.quantity + delta;
   const wasRemoved = next < 1;
   if (wasRemoved) {
@@ -4131,7 +4137,7 @@ async function submitSmartLunch() {
 // fetch" principle as Cart restore/Favorites/Reorder (Parts 46/49/50).
 function addSmartLunchOptionToSelection(option) {
   const byKey = new Map(state.menu.items.map((it) => [cartItemKey(it), it]));
-  const maxQ = (state.menu && state.menu.max_quantity) || 10;
+  const maxQ = (state.menu && state.menu.max_quantity) || 2;
   for (const item of option.items) {
     const liveItem = byKey.get(cartItemKey(item));
     if (!liveItem) continue;

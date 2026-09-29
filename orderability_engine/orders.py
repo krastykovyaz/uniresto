@@ -41,8 +41,15 @@ from pathlib import Path
 from orderability_engine.menu_service import requires_early_order
 from orderability_engine.pricing import compute_formula_total
 
-MAX_QUANTITY = 10
+# Per line: one unique dish can be ordered at most twice, so a cart can
+# hold many different dishes (2 mains, 2 salads, 2 desserts ...) but never
+# ten of the same one.
+MAX_QUANTITY = 2
 MIN_QUANTITY = 1
+# How many not-cancelled orders one client may have for a given
+# order_date. Last night's abuse (5 orders in 5 minutes, 10 of every dish
+# each) shows both caps are needed.
+MAX_ORDERS_PER_DAY = 2
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS orders (
@@ -152,6 +159,10 @@ _MIGRATIONS = [
     # reads, so the order's Luni has to land here to be visible at all.
     ("reward_email", "ALTER TABLE orders ADD COLUMN reward_email TEXT"),
 ]
+
+
+class DailyOrderLimitError(Exception):
+    """This client already has MAX_ORDERS_PER_DAY live orders for that date."""
 
 
 class OrderValidationError(Exception):
@@ -311,10 +322,21 @@ class OrderStore:
         customer_lang: str | None = None,
         customer_phone: str | None = None,
         reward_email: str | None = None,
+        max_orders_per_day: int | None = None,
     ) -> int:
-        """items: recalculate_order()'s "items" list (server-priced/weighed)."""
+        """items: recalculate_order()'s "items" list (server-priced/weighed).
+        With max_orders_per_day set, raises DailyOrderLimitError instead of
+        inserting when customer_email/reward_email already have that many
+        non-cancelled orders for order_date -- checked inside the same
+        write transaction as the INSERT, so two simultaneous requests
+        (even on different gunicorn workers) can't both slip under it."""
         now = datetime.now(timezone.utc).isoformat()
         with self._lock, self._transaction() as conn:
+            if max_orders_per_day is not None:
+                if not conn.in_transaction:
+                    conn.execute("BEGIN IMMEDIATE")
+                if self._count_live_orders_for_day(conn, order_date, [customer_email, reward_email]) >= max_orders_per_day:
+                    raise DailyOrderLimitError()
             cur = conn.execute(
                 """
                 INSERT INTO orders (restaurant_code, restaurant_name, order_date, delivery_location, customer_email, customer_note, customer_lang, customer_phone, reward_email, status, created_at)
@@ -345,6 +367,22 @@ class OrderStore:
                 ],
             )
         return order_id
+
+    @staticmethod
+    def _count_live_orders_for_day(conn: sqlite3.Connection, order_date: date, emails: list[str | None]) -> int:
+        addresses = sorted({e.strip().lower() for e in emails if e and e.strip()})
+        if not addresses:
+            return 0
+        marks = ",".join("?" * len(addresses))
+        return conn.execute(
+            f"SELECT COUNT(*) FROM orders WHERE order_date = ? AND status != 'cancelled' "
+            f"AND (lower(customer_email) IN ({marks}) OR lower(reward_email) IN ({marks}))",
+            (order_date.isoformat(), *addresses, *addresses),
+        ).fetchone()[0]
+
+    def count_live_orders_for_day(self, order_date: date, emails: list[str | None]) -> int:
+        with self._lock:
+            return self._count_live_orders_for_day(self._conn, order_date, emails)
 
     def get_order(self, order_id: int) -> dict | None:
         with self._lock:

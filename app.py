@@ -41,7 +41,14 @@ from orderability_engine.menu_refresh import start_menu_refresh_scheduler
 from orderability_engine.menu_service import flatten_menu_items, get_customer_menu
 from orderability_engine.delivery_rules import is_delivery_expired
 from orderability_engine.models import STATUS_VALUES, TZINFO
-from orderability_engine.orders import MAX_QUANTITY, OrderStore, OrderValidationError, recalculate_order
+from orderability_engine.orders import (
+    MAX_ORDERS_PER_DAY,
+    MAX_QUANTITY,
+    DailyOrderLimitError,
+    OrderStore,
+    OrderValidationError,
+    recalculate_order,
+)
 from orderability_engine.page_views import MAX_SOURCE_LENGTH, PageViewStore
 from orderability_engine.pending_dish_photos import PendingDishPhotoStore
 from orderability_engine.rate_limits import RateLimitStore
@@ -911,18 +918,26 @@ def create_app(
         except OrderValidationError as exc:
             return jsonify({"error": "invalid_selection", "message": str(exc)}), 400
 
-        order_id = store().create_order(
-            restaurant.code,
-            restaurant.name,
-            d,
-            quote["items"],
-            delivery_location,
-            customer_email,
-            customer_note,
-            customer_lang,
-            customer_phone,
-            reward_email=reward_email,
-        )
+        try:
+            order_id = store().create_order(
+                restaurant.code,
+                restaurant.name,
+                d,
+                quote["items"],
+                delivery_location,
+                customer_email,
+                customer_note,
+                customer_lang,
+                customer_phone,
+                reward_email=reward_email,
+                max_orders_per_day=MAX_ORDERS_PER_DAY,
+            )
+        except DailyOrderLimitError:
+            return jsonify({
+                "error": "daily_order_limit",
+                "message": f"You can place at most {MAX_ORDERS_PER_DAY} orders for the same day",
+                "max_orders": MAX_ORDERS_PER_DAY,
+            }), 409
         order = store().get_order(order_id)
         # No Luni here: orders cost nothing and take one request, so paying
         # on creation made them farmable. The "order" reward pays out in

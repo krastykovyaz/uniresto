@@ -171,7 +171,7 @@ def test_api_menu_for_available_date_includes_weight_and_ids(client):
     assert resp.status_code == 200
     body = resp.get_json()
     assert body["date"] == "2026-09-24"
-    assert body["max_quantity"] == 10
+    assert body["max_quantity"] == 2
     ids = {it["id"] for it in body["items"]}
     assert len(ids) == len(body["items"])  # ids are unique
 
@@ -2683,3 +2683,121 @@ def test_award_once_records_and_pays_together(tmp_path):
     assert rewards.award_once("a@uni.lu", "x:1", 2) is True
     assert rewards.award_once("a@uni.lu", "x:1", 2) is False
     assert rewards.get_points("a@uni.lu") == 2
+
+
+# ---------------------------------------------------------------------------
+# Order limits: 2 per dish, 2 orders per day per client
+# ---------------------------------------------------------------------------
+
+
+def _order_payload(items, customer_email="student@uni.lu", date="2026-09-24", **extra):
+    return {
+        "restaurant": "altius",
+        "date": date,
+        "items": items,
+        "delivery_location": "Building A — Room 1.01",
+        "customer_email": customer_email,
+        **extra,
+    }
+
+
+def _post_order(client, payload):
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified(payload["customer_email"])
+    with patch("app.send_admin_notification", return_value=(True, None)):
+        return client.post("/api/orders", json=payload)
+
+
+def test_a_dish_can_be_ordered_twice_but_not_three_times(client):
+    assert _post_order(client, _order_payload([{"id": SALAD_BAR_ID, "quantity": 2}])).status_code == 201
+    resp = _post_order(client, _order_payload([{"id": SALAD_BAR_ID, "quantity": 3}], customer_email="other@uni.lu"))
+    assert resp.status_code == 400
+    assert resp.get_json()["error"] == "invalid_selection"
+
+
+def test_an_order_can_hold_several_different_dishes_two_each(client):
+    resp = _post_order(
+        client, _order_payload([{"id": SALAD_BAR_ID, "quantity": 2}, {"id": BRETZEL_ID, "quantity": 2}])
+    )
+    assert resp.status_code == 201
+    assert sum(i["quantity"] for i in resp.get_json()["items"]) == 4
+
+
+def test_menu_advertises_the_per_dish_cap(client):
+    assert client.get("/api/restaurants/altius/menu/2026-09-24").get_json()["max_quantity"] == 2
+
+
+def test_third_order_for_the_same_day_is_refused(client):
+    payload = _order_payload([{"id": SALAD_BAR_ID, "quantity": 1}])
+    assert _post_order(client, payload).status_code == 201
+    assert _post_order(client, payload).status_code == 201
+    resp = _post_order(client, payload)
+    assert resp.status_code == 409
+    assert resp.get_json() == {
+        "error": "daily_order_limit",
+        "message": "You can place at most 2 orders for the same day",
+        "max_orders": 2,
+    }
+
+
+def test_the_daily_limit_is_per_client_not_global(client):
+    payload = _order_payload([{"id": SALAD_BAR_ID, "quantity": 1}])
+    for _ in range(2):
+        _post_order(client, payload)
+    other = dict(payload, customer_email="courier@uni.lu")
+    assert _post_order(client, other).status_code == 201
+
+
+def test_the_daily_limit_is_per_order_date(client):
+    payload = _order_payload([{"id": SALAD_BAR_ID, "quantity": 1}])
+    for _ in range(2):
+        _post_order(client, payload)
+    assert _order_count(client, "2026-09-24") == 2
+    # A different day is a fresh allowance.
+    assert _order_count(client, "2026-09-25") == 0
+
+
+def test_the_daily_limit_ignores_case_in_the_email(client):
+    for email in ("student@uni.lu", "Student@Uni.lu"):
+        assert _post_order(client, _order_payload([{"id": SALAD_BAR_ID, "quantity": 1}], customer_email=email)).status_code == 201
+    resp = _post_order(client, _order_payload([{"id": SALAD_BAR_ID, "quantity": 1}], customer_email="STUDENT@uni.lu"))
+    assert resp.status_code == 409
+
+
+def test_a_second_address_cannot_dodge_the_limit_via_the_university_email(client):
+    for personal in ("a@gmail.com", "b@gmail.com"):
+        resp = _post_order(
+            client, _order_payload([{"id": SALAD_BAR_ID, "quantity": 1}], customer_email=personal, reward_email="student@uni.lu")
+        )
+        assert resp.status_code == 201
+    resp = _post_order(
+        client, _order_payload([{"id": SALAD_BAR_ID, "quantity": 1}], customer_email="c@gmail.com", reward_email="student@uni.lu")
+    )
+    assert resp.status_code == 409
+
+
+def test_a_cancelled_order_frees_up_the_allowance(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    payload = _order_payload([{"id": SALAD_BAR_ID, "quantity": 1}])
+    first = _post_order(client, payload).get_json()["id"]
+    _post_order(client, payload)
+    assert _post_order(client, payload).status_code == 409
+    store = client.application.config["ORDER_STORE"]
+    store.cancel_order(first, store.set_real_price(first, 6.70))
+    assert _post_order(client, payload).status_code == 201
+
+
+def test_a_refused_order_sends_no_notifications(client):
+    payload = _order_payload([{"id": SALAD_BAR_ID, "quantity": 1}])
+    for _ in range(2):
+        _post_order(client, payload)
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified(payload["customer_email"])
+    with patch("app.send_admin_notification") as admin, patch("app.send_order_confirmation") as confirmation:
+        assert client.post("/api/orders", json=payload).status_code == 409
+    admin.assert_not_called()
+    confirmation.assert_not_called()
+
+
+def _order_count(client, order_date):
+    return client.application.config["ORDER_STORE"].count_live_orders_for_day(
+        datetime.date.fromisoformat(order_date), ["student@uni.lu"]
+    )
