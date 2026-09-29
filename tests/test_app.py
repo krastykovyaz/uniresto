@@ -3368,7 +3368,12 @@ def test_the_plain_link_keeps_the_generic_preview(client):
 def test_a_dish_link_previews_that_dish(client):
     main = _item(client, "Végétarien")
     html = client.get(_share_url(main)).data.decode()
-    assert main["name"].replace("'", "&#39;") in _meta(html, "og:title") or main["name"] in _meta(html, "og:title")
+    # the preview title is in the sharer's language (default English) when the dish has a translation
+    from orderability_engine.dish_name_labels import dish_name_label
+    from orderability_engine.dish_names import split_dish_size
+
+    expected = split_dish_size(dish_name_label(main["name"], "en"))[0]
+    assert expected.replace("'", "&#39;") in _meta(html, "og:title") or expected in _meta(html, "og:title")
     assert "€6.70" in _meta(html, "og:title")  # a main dish alone: the Formule 3 price
     assert "Altius" in _meta(html, "og:description") and "order on UniResto" in _meta(html, "og:description")
     image = _meta(html, "og:image")

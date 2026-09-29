@@ -393,7 +393,8 @@ test("the three Rosport Blue bottles get one title and three different sizes", (
 
 test("dishTitleWithSize keeps the exact product in one-line summaries", () => {
   assert.equal(dishTitleWithSize("Rosport Blue 0,50 l non consigné", "en"), "Rosport Blue (0,50 l non consigné)");
-  assert.equal(dishTitleWithSize("Salad'bar", "en"), "Salad'bar");
+  assert.equal(dishTitleWithSize("A dish that is not on the menu yet", "en"), "A dish that is not on the menu yet");
+  assert.equal(dishTitleWithSize("Salad'bar", "en"), "Salad bar"); // translated, and it has no size to add
 });
 
 test("no live menu item title still contains a size", async () => {
@@ -483,4 +484,39 @@ test("translated titles read as real words in the user's language", () => {
 test("the size stays available for the card body even when the title is translated", () => {
   assert.equal(dishSize("Lait Luxlait BIO 0,25 l Tétra Pack (gratuit)"), "0,25 l Tétra Pack (gratuit)");
   assert.equal(dishSize("Consigne ECOBOX (500 ml)"), "500 ml");
+});
+
+
+test("every daily dish in the menu snapshot is translated", () => {
+  const menus = JSON.parse(readFileSync(new URL("../data/menus.json", import.meta.url), "utf-8"));
+  const names = new Set();
+  (function walk(x) {
+    if (Array.isArray(x)) x.forEach(walk);
+    else if (x && typeof x === "object") {
+      if (typeof x.name === "string" && typeof x.category === "string" && !/^\d\d/.test(x.category)) names.add(x.name);
+      Object.values(x).forEach(walk);
+    }
+  })(menus);
+  assert.ok(names.size > 10);
+  assert.deepEqual([...names].filter((n) => !DISH_NAME_LABELS[n]), []);
+});
+
+test("daily-dish translations are real translations, not copies of the French", () => {
+  // Latin-script languages may keep a loanword (Minestrone, Falafel), but the whole
+  // name is never left as the French original in a non-Latin script.
+  for (const lang of ["zh", "hi", "ar", "bn", "ru", "ur"]) {
+    for (const [raw, labels] of Object.entries(DISH_NAME_LABELS)) {
+      if (/^[A-Za-z0-9 '"&\/().,-]+$/.test(labels.en) && labels.en === raw) continue; // brand-like names identical everywhere
+      assert.notEqual(labels[lang], raw, `${raw} [${lang}]`);
+    }
+  }
+});
+
+test("daily dishes read as real dishes in a few languages", () => {
+  assert.equal(dishTitle("Potiron farci aux lentilles et fromage de chèvre", "en"), "Pumpkin stuffed with lentils and goat cheese");
+  assert.equal(dishTitle("Potiron farci aux lentilles et fromage de chèvre", "es"), "Calabaza rellena de lentejas y queso de cabra");
+  assert.equal(dishTitle("Soupe à l'oignon", "ru"), "Луковый суп");
+  assert.equal(dishTitle("Gratin dauphinois", "ar"), "غراتان دوفينوا");
+  assert.equal(dishTitle("Salad'bar", "zh"), "沙拉吧");
+  assert.equal(dishTitle("Chili sin carne", "hi"), "चिली सिन कार्ने");
 });
