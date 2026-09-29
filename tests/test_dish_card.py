@@ -13,9 +13,9 @@ def _render(**overrides):
     return Image.open(io.BytesIO(render_dish_card(**args)))
 
 
-def test_a_card_is_a_1200_by_630_png():
+def test_a_card_is_a_1200_by_630_jpeg():
     image = _render()
-    assert image.format == "PNG" and image.size == (WIDTH, HEIGHT) == (1200, 630)
+    assert image.format == "JPEG" and image.size == (WIDTH, HEIGHT) == (1200, 630)
 
 
 @pytest.mark.parametrize(
@@ -39,6 +39,16 @@ def test_a_missing_or_broken_photo_falls_back_to_the_placeholder(tmp_path):
     broken.write_bytes(b"not an image")
     assert _render(photo_path=tmp_path / "missing.jpg").getpixel((200, 300)) == _render().getpixel((200, 300))
     assert _render(photo_path=broken).getpixel((200, 300)) == _render().getpixel((200, 300))
+
+
+def test_a_card_with_a_busy_photo_stays_under_whatsapps_300_kb(tmp_path):
+    import random
+
+    random.seed(1)
+    noisy = Image.effect_noise((1600, 1200), 90).convert("RGB")  # worst case for compression
+    photo = tmp_path / "noisy.png"
+    noisy.save(photo)
+    assert len(render_dish_card(title="Noisy", size=None, category="x", price_text="€1.00", badge=None, footer="f", photo_path=photo)) < 300_000
 
 
 def test_the_photo_fills_the_left_panel(tmp_path):

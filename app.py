@@ -342,7 +342,7 @@ def create_app(
     app.config["DAILY_REPORT_STORE"] = daily_report_store or DailyReportStore("orders.db")
     app.config["RATE_LIMIT_STORE"] = rate_limit_store or RateLimitStore("orders.db")
     app.config["RESTAURANTS_BY_SLUG"] = by_slug
-    # Rendered link-preview cards (see /og/dish.png below). Overridable so
+    # Rendered link-preview cards (see /og/dish.jpg below). Overridable so
     # tests never write into the repo.
     app.config["OG_CACHE_DIR"] = Path(og_cache_dir) if og_cache_dir else Path("og_cache")
 
@@ -2063,7 +2063,7 @@ def create_app(
     # Sharing a dish from the app links to  /?dish=<slug>&date=<date>&cat=<category>&name=<raw name>
     # (&lang=..). The same URL is what a chat app's crawler fetches to build
     # the link preview, so GET / answers a dish link with THAT dish's Open
-    # Graph tags and a picture of its card (/og/dish.png), instead of the
+    # Graph tags and a picture of its card (/og/dish.jpg), instead of the
     # generic app banner; a person's browser runs the app, which opens the
     # dish (static/app.js's openSharedDish()).
 
@@ -2123,7 +2123,7 @@ def create_app(
         ]
         key = hashlib.sha1("|".join(fields).encode("utf-8")).hexdigest()
         cache_dir = app.config["OG_CACHE_DIR"]
-        target = cache_dir / f"{key}.png"
+        target = cache_dir / f"{key}.jpg"
         if target.is_file():
             return target
         cache_dir.mkdir(parents=True, exist_ok=True)
@@ -2141,7 +2141,7 @@ def create_app(
         tmp.write_bytes(png)
         tmp.replace(target)
         cutoff = time.time() - 14 * 86400
-        for old in cache_dir.glob("*.png"):
+        for old in cache_dir.glob("*.jpg"):
             try:
                 if old.stat().st_mtime < cutoff:
                     old.unlink()
@@ -2149,7 +2149,7 @@ def create_app(
                 pass
         return target
 
-    @app.get("/og/dish.png")
+    @app.get("/og/dish.jpg")
     def og_dish_image():
         ctx = _dish_share_context(
             request.args.get("dish", ""), request.args.get("date", ""), request.args.get("cat", ""), request.args.get("name", "")

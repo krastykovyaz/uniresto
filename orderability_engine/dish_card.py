@@ -7,7 +7,7 @@ the photo on the left (or a soft placeholder when nobody has added one yet),
 then category, title, size, diet badge and the price in green -- so the
 preview is that exact dish, not the generic app banner.
 
-Pure Pillow, no network. The font is bundled (assets/fonts, DejaVu, free
+Pure Pillow, no network. Returns JPEG bytes (small enough for WhatsApp). The font is bundled (assets/fonts, DejaVu, free
 licence): Pillow's built-in one has no accented letters or "€".
 """
 
@@ -121,7 +121,7 @@ def render_dish_card(
     footer: str,
     photo_path: Path | None = None,
 ) -> bytes:
-    """A 1200x630 PNG of one dish's card. `badge` is e.g. "VEGAN" or None;
+    """A 1200x630 JPEG of one dish's card. `badge` is e.g. "VEGAN" or None;
     `footer` the small line under it (restaurant · date)."""
     canvas = Image.new("RGB", (WIDTH, HEIGHT), _BACKGROUND)
     draw = ImageDraw.Draw(canvas)
@@ -186,6 +186,8 @@ def render_dish_card(
         footer = footer[:-2].rstrip() + "…"
     draw.text((x, card_box[3] - 82), footer, font=footer_font, fill=_MUTED)
 
+    # JPEG, not PNG: with a real photo on it a PNG runs to ~500 KB, and
+    # WhatsApp drops link-preview images much over 300 KB. This is ~60-120 KB.
     out = io.BytesIO()
-    canvas.save(out, format="PNG", optimize=True)
+    canvas.save(out, format="JPEG", quality=88, optimize=True)
     return out.getvalue()

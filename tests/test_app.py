@@ -3372,7 +3372,7 @@ def test_a_dish_link_previews_that_dish(client):
     assert "€6.70" in _meta(html, "og:title")  # a main dish alone: the Formule 3 price
     assert "Altius" in _meta(html, "og:description") and "order on UniResto" in _meta(html, "og:description")
     image = _meta(html, "og:image")
-    assert "/og/dish.png?" in image and "dish=altius" in image and "date=2026-09-24" in image
+    assert "/og/dish.jpg?" in image and "dish=altius" in image and "date=2026-09-24" in image
     assert _meta(html, "twitter:image") == image and _meta(html, "twitter:card") == "summary_large_image"
 
 
@@ -3415,10 +3415,11 @@ def test_a_broken_dish_link_falls_back_to_the_generic_preview(client, query):
     assert "<script>alert(1)" not in html
 
 
-def test_the_card_image_is_a_1200_by_630_png(client):
+def test_the_card_image_is_a_1200_by_630_jpeg_small_enough_for_whatsapp(client):
     main = _item(client, "Végétarien")
-    resp = client.get(f"/og/dish.png?dish=altius&date=2026-09-24&cat={quote(main['category'])}&name={quote(main['name'])}")
-    assert resp.status_code == 200 and resp.mimetype == "image/png"
+    resp = client.get(f"/og/dish.jpg?dish=altius&date=2026-09-24&cat={quote(main['category'])}&name={quote(main['name'])}")
+    assert resp.status_code == 200 and resp.mimetype == "image/jpeg"
+    assert len(resp.data) < 300_000
     assert "max-age" in resp.headers["Cache-Control"]
     image = Image.open(io.BytesIO(resp.data))
     assert image.size == (1200, 630)
@@ -3426,24 +3427,24 @@ def test_the_card_image_is_a_1200_by_630_png(client):
 
 def test_the_card_image_is_cached_between_requests(client, tmp_path):
     main = _item(client, "Végétarien")
-    url = f"/og/dish.png?dish=altius&date=2026-09-24&cat={quote(main['category'])}&name={quote(main['name'])}"
+    url = f"/og/dish.jpg?dish=altius&date=2026-09-24&cat={quote(main['category'])}&name={quote(main['name'])}"
     client.get(url)
-    files = list((tmp_path / "og_cache").glob("*.png"))
+    files = list((tmp_path / "og_cache").glob("*.jpg"))
     assert len(files) == 1
     mtime = files[0].stat().st_mtime_ns
     client.get(url)
-    assert [f.stat().st_mtime_ns for f in (tmp_path / "og_cache").glob("*.png")] == [mtime]
+    assert [f.stat().st_mtime_ns for f in (tmp_path / "og_cache").glob("*.jpg")] == [mtime]
 
 
 def test_the_card_image_404s_for_a_dish_that_is_not_on_the_menu(client):
-    assert client.get("/og/dish.png?dish=altius&date=2026-09-24&cat=Entr%C3%A9e&name=Nope").status_code == 404
-    assert client.get("/og/dish.png").status_code == 404
+    assert client.get("/og/dish.jpg?dish=altius&date=2026-09-24&cat=Entr%C3%A9e&name=Nope").status_code == 404
+    assert client.get("/og/dish.jpg").status_code == 404
 
 
 def test_an_approved_photo_changes_the_card(client, monkeypatch):
     monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
     dish = _item(client, "Entrée", "Salad'bar")
-    url = f"/og/dish.png?dish=altius&date=2026-09-24&cat={quote(dish['category'])}&name={quote(dish['name'])}"
+    url = f"/og/dish.jpg?dish=altius&date=2026-09-24&cat={quote(dish['category'])}&name={quote(dish['name'])}"
     placeholder = client.get(url).data
     upload = client.post(
         "/api/restaurants/altius/dish-photos",
