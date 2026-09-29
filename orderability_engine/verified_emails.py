@@ -26,6 +26,9 @@ needs to keep re-validating.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import secrets
 import sqlite3
 import threading
 from datetime import datetime, timezone
@@ -36,7 +39,19 @@ CREATE TABLE IF NOT EXISTS verified_emails (
     email TEXT PRIMARY KEY,
     verified_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS signing_keys (
+    name TEXT PRIMARY KEY,
+    key TEXT NOT NULL
+);
 """
+
+# The identity proof handed to a browser right after it completes a
+# send-code/verify-code round trip. "This address was verified once, by
+# somebody" is NOT proof that THIS caller owns it -- the address is just
+# a string anyone can type -- so every action that acts as an address
+# (ordering, courier actions, Luni claims/reads, photo uploads) also has
+# to present the token only the verifying browser was ever given.
+_TOKEN_KEY_NAME = "identity-token-v1"
 
 
 class VerifiedEmailStore:
@@ -68,6 +83,35 @@ class VerifiedEmailStore:
                 (email, now),
             )
             self._conn.commit()
+
+    def _signing_key(self) -> bytes:
+        """Random, created on first use and kept in the same database as
+        everything else (so a backup restores tokens together with the
+        verified set). Never in .env, never sent to a client."""
+        with self._lock:
+            row = self._conn.execute("SELECT key FROM signing_keys WHERE name = ?", (_TOKEN_KEY_NAME,)).fetchone()
+            if row is None:
+                self._conn.execute(
+                    "INSERT OR IGNORE INTO signing_keys (name, key) VALUES (?, ?)", (_TOKEN_KEY_NAME, secrets.token_hex(32))
+                )
+                self._conn.commit()
+                row = self._conn.execute("SELECT key FROM signing_keys WHERE name = ?", (_TOKEN_KEY_NAME,)).fetchone()
+        return row[0].encode("ascii")
+
+    @staticmethod
+    def _token_subject(email: str) -> bytes:
+        return email.strip().lower().encode("utf-8")
+
+    def issue_token(self, email: str) -> str:
+        """Deterministic per address: proving the address again (another
+        device, a lost localStorage) simply yields the same token, and
+        nothing has to be stored per token."""
+        return hmac.new(self._signing_key(), self._token_subject(email), hashlib.sha256).hexdigest()
+
+    def token_valid(self, email: str, token: object) -> bool:
+        if not isinstance(token, str) or not token:
+            return False
+        return hmac.compare_digest(self.issue_token(email), token)
 
     def is_verified(self, email: str) -> bool:
         with self._lock:

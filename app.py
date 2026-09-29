@@ -12,7 +12,9 @@ import time
 import logging
 import os
 import re
+import json
 import secrets
+from urllib.parse import unquote
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -391,6 +393,34 @@ def create_app(
     def verified_emails() -> VerifiedEmailStore:
         return app.config["VERIFIED_EMAIL_STORE"]
 
+    def _presented_tokens() -> dict:
+        """The identity tokens this browser holds, from the
+        X-Identity-Tokens header (URL-encoded JSON {email: token}), keyed
+        by lower-cased address. Anything malformed is simply "no tokens"."""
+        raw = request.headers.get("X-Identity-Tokens", "")
+        if not raw or len(raw) > 4096:
+            return {}
+        try:
+            data = json.loads(unquote(raw))
+        except ValueError:
+            return {}
+        if not isinstance(data, dict):
+            return {}
+        return {str(k).strip().lower(): v for k, v in data.items()}
+
+    def _token_payload(verified: bool, email: str) -> dict:
+        return {"token": verified_emails().issue_token(email)} if verified else {}
+
+    def _is_proven(email: str) -> bool:
+        """True only if `email` was verified AND this request carries the
+        token issued to whoever verified it. Being verified by somebody
+        is not enough -- see VerifiedEmailStore's identity-proof note.
+        Callers answer a failure exactly like "not verified", so nothing
+        reveals whether an address is known."""
+        if not verified_emails().is_verified(email):
+            return False
+        return verified_emails().token_valid(email, _presented_tokens().get(email.strip().lower()))
+
     def dish_photos() -> DishPhotoStore:
         return app.config["DISH_PHOTO_STORE"]
 
@@ -469,7 +499,7 @@ def create_app(
                 ),
                 400,
             )
-        if not verified_emails().is_verified(email):
+        if not _is_proven(email):
             return None, (
                 jsonify({"error": "email_not_verified", "message": "Your University email must be verified before acting as a courier"}),
                 403,
@@ -703,7 +733,7 @@ def create_app(
             abort(400, description="Form must include 'email'")
         if not _is_allowed_customer_email(email):
             abort(400, description=f"'email' must be a valid address ending in {' or '.join(ALLOWED_EMAIL_DOMAINS)}")
-        if not verified_emails().is_verified(email):
+        if not _is_proven(email):
             return jsonify({"error": "email_not_verified", "message": "Your University email must be verified before uploading a photo"}), 403
         category = (request.form.get("category") or "").strip()
         name = (request.form.get("name") or "").strip()
@@ -767,6 +797,11 @@ def create_app(
         email = (request.args.get("email") or "").strip()
         if not email or not _is_allowed_customer_email(email):
             abort(400, description=f"'email' must be a valid address ending in {' or '.join(ALLOWED_EMAIL_DOMAINS)}")
+        # Same answer as an unverified address: a balance is only shown to
+        # the browser that proved the address (and never reveals whether
+        # some other address is known).
+        if not _is_proven(email):
+            return jsonify({"error": "email_not_verified", "message": "Your University email must be verified first"}), 403
         _apply_expired_order_penalties()
         return jsonify({"points": rewards().get_points(email)})
 
@@ -813,7 +848,7 @@ def create_app(
             abort(400, description=f"'email' must be a valid address ending in {' or '.join(ALLOWED_EMAIL_DOMAINS)}")
         if action not in _CLAIMABLE_REWARD_ACTIONS:
             abort(400, description=f"'action' must be one of {sorted(_CLAIMABLE_REWARD_ACTIONS)}")
-        if not verified_emails().is_verified(email):
+        if not _is_proven(email):
             return jsonify({"error": "email_not_verified", "message": "Your University email must be verified first"}), 403
         _apply_expired_order_penalties()
 
@@ -943,7 +978,7 @@ def create_app(
         # syntactically-valid but obviously fake addresses like
         # "example@example.com" -- an admin/courier's only way to reach
         # a customer is worthless if it was never real to begin with.
-        if not verified_emails().is_verified(customer_email):
+        if not _is_proven(customer_email):
             return jsonify({"error": "email_not_verified", "message": "'customer_email' must be verified first"}), 403
         if not reward_email:
             return jsonify({
@@ -952,7 +987,7 @@ def create_app(
             }), 403
         if not _is_allowed_customer_email(reward_email):
             abort(400, description=f"'reward_email' must be a valid address ending in {' or '.join(ALLOWED_EMAIL_DOMAINS)}")
-        if not verified_emails().is_verified(reward_email):
+        if not _is_proven(reward_email):
             return jsonify({
                 "error": "university_email_not_verified",
                 "message": "Your University email must be verified before placing an order",
@@ -1145,7 +1180,7 @@ def create_app(
             # checkout/courier ones below that share the same
             # VerifiedEmailStore fact but aren't "registering" anything.
             rewards().award_once(email, UNIVERSITY_EMAIL_VERIFIED, REWARD_POINTS[UNIVERSITY_EMAIL_VERIFIED])
-        return jsonify({"verified": verified, "reason": reason})
+        return jsonify({"verified": verified, "reason": reason, **_token_payload(verified, email)})
 
     @app.post("/api/orders/email/send-code")
     def api_orders_email_send_code():
@@ -1190,7 +1225,7 @@ def create_app(
         verified, reason = checkout_verification().verify(email, code)
         if verified:
             verified_emails().mark_verified(email)
-        return jsonify({"verified": verified, "reason": reason})
+        return jsonify({"verified": verified, "reason": reason, **_token_payload(verified, email)})
 
     # ---------------------------------------------------- Delivery (Part 52+)
 
@@ -1243,7 +1278,7 @@ def create_app(
         if verified:
             delivery_subscribers().add(email, _normalize_lang_arg(body.get("lang")) or "en")
             verified_emails().mark_verified(email)
-        return jsonify({"verified": verified, "reason": reason})
+        return jsonify({"verified": verified, "reason": reason, **_token_payload(verified, email)})
 
     @app.post("/api/delivery/register/quick")
     def api_delivery_register_quick():
@@ -1267,7 +1302,7 @@ def create_app(
             abort(400, description=f"'email' must be a valid address ending in {' or '.join(ALLOWED_EMAIL_DOMAINS)}")
         # The docstring's premise, actually enforced: without this, anyone
         # could subscribe any uni.lu address to every future order email.
-        if not verified_emails().is_verified(email):
+        if not _is_proven(email):
             return jsonify({"error": "email_not_verified", "message": "Your University email must be verified first"}), 403
         delivery_subscribers().add(email, _normalize_lang_arg(body.get("lang")) or "en")
         return jsonify({"registered": True})

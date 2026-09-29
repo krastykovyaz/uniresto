@@ -65,6 +65,9 @@ const FAVORITES_STORAGE_KEY = "uniresto.favorites.v1";
 // runs synchronously as part of constructing `state` below, so this const
 // must exist before that point.
 const EMAIL_STORAGE_KEY = "uniresto.email.v1";
+// Server-signed proofs of the addresses this browser verified -- see loadIdentityTokens().
+// Declared up here because `state` below reads it while it is being built.
+const IDENTITY_TOKENS_STORAGE_KEY = "uniresto.identityTokens.v1";
 // Same reason -- loadRegisteredEmail() calls isAllowedUniLuEmail() (further
 // down the file, but hoisted since it's a `function`), which reads this.
 const ALLOWED_EMAIL_DOMAINS = ["@uni.lu", "@student.uni.lu"];
@@ -309,8 +312,10 @@ function loadRegisteredEmail() {
     const raw = localStorage.getItem(EMAIL_STORAGE_KEY);
     // A value that somehow fails today's domain check (e.g. hand-edited
     // in devtools, or the rule changes later) is treated as unset rather
-    // than trusted/surfaced as-is.
-    return raw && isAllowedUniLuEmail(raw) ? raw : null;
+    // than trusted/surfaced as-is. So is an address this browser holds no
+    // identity token for (verified before tokens existed): the server
+    // would refuse to act as it, so it has to be verified once more.
+    return raw && isAllowedUniLuEmail(raw) && loadIdentityToken(raw) ? raw : null;
   } catch {
     return null;
   }
@@ -330,6 +335,42 @@ function clearRegisteredEmail() {
   } catch {
     /* ignore */
   }
+}
+
+// Identity tokens: verify-code hands the browser a server-signed token
+// for the address it just proved, and every API call sends the ones this
+// browser holds (see api()). "Verified once, by somebody" is not enough
+// for the server to let a request act as an address -- anyone can type
+// anyone's address -- only the verifying browser has the token.
+function loadIdentityTokens() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(IDENTITY_TOKENS_STORAGE_KEY) || "{}");
+    return raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  } catch {
+    return {};
+  }
+}
+
+function loadIdentityToken(email) {
+  const token = loadIdentityTokens()[String(email || "").trim().toLowerCase()];
+  return typeof token === "string" && token ? token : null;
+}
+
+function saveIdentityToken(email, token) {
+  if (!email || !token) return;
+  try {
+    const tokens = loadIdentityTokens();
+    tokens[email.trim().toLowerCase()] = token;
+    localStorage.setItem(IDENTITY_TOKENS_STORAGE_KEY, JSON.stringify(tokens));
+  } catch {
+    /* localStorage unavailable -- the address just has to be verified again next visit */
+  }
+}
+
+function identityTokensHeader() {
+  const tokens = loadIdentityTokens();
+  // URL-encoded so an address with non-ASCII characters is still a legal header value.
+  return Object.keys(tokens).length ? encodeURIComponent(JSON.stringify(tokens)) : null;
 }
 
 // -------------------------------------------------------- Registered phone
@@ -453,6 +494,9 @@ function rememberVerifiedOrderEmail(email) {
 // which now marks VerifiedEmailStore too, so there's genuinely nothing
 // left to prove for that specific address.
 function isEmailKnownVerified(email) {
+  // An address with no token here (verified before tokens existed, or on
+  // another device) has to be proven again -- the server won't act on it.
+  if (!loadIdentityToken(email)) return false;
   return email === state.registeredEmail || loadVerifiedOrderEmails().includes(email);
 }
 
@@ -506,9 +550,12 @@ function addToOrderHistory(orderId) {
 // ------------------------------------------------------------------ API
 
 async function api(path, options) {
+  const headers = { "Content-Type": "application/json" };
+  const tokensHeader = identityTokensHeader();
+  if (tokensHeader) headers["X-Identity-Tokens"] = tokensHeader;
   const resp = await fetch(path, {
-    headers: { "Content-Type": "application/json" },
     ...options,
+    headers,
   });
   let body = null;
   try {
@@ -971,6 +1018,7 @@ function openEmailSheet(trigger) {
         if (confirmBtn) confirmBtn.disabled = false;
         return;
       }
+      saveIdentityToken(pendingEmail, result.token);
       commit(pendingEmail);
     } catch {
       showToast(tr("verificationFailed"));
@@ -1410,6 +1458,7 @@ function openOrderEmailVerifySheet(trigger, email, onVerified) {
         if (confirmBtn) confirmBtn.disabled = false;
         return;
       }
+      saveIdentityToken(email, result.token);
       close();
       onVerified();
     } catch {
@@ -1844,6 +1893,7 @@ function deliveryRegisterCard() {
         if (confirmBtn) confirmBtn.disabled = false;
         return;
       }
+      saveIdentityToken(pendingEmail, result.token);
       finishRegistering(pendingEmail);
     } catch {
       showToast(tr("verificationFailed"));
@@ -3924,7 +3974,10 @@ function foodCard(item) {
       form.append("category", item.category);
       form.append("name", item.name);
       form.append("photo", file);
-      const res = await fetch(`/api/restaurants/${state.slug}/dish-photos`, { method: "POST", body: form });
+      const uploadHeaders = {};
+      const tokensHeader = identityTokensHeader();
+      if (tokensHeader) uploadHeaders["X-Identity-Tokens"] = tokensHeader;
+      const res = await fetch(`/api/restaurants/${state.slug}/dish-photos`, { method: "POST", body: form, headers: uploadHeaders });
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error((body && (body.message || body.error)) || `Upload failed (${res.status})`);
       // Part 84: NOT live yet -- an admin still has to approve it over

@@ -1,8 +1,11 @@
 import datetime
 import io
+import json
 from unittest.mock import patch
+from urllib.parse import quote
 
 import pytest
+from flask.testing import FlaskClient
 from PIL import Image
 
 from app import create_app
@@ -29,6 +32,28 @@ from tests.orderability_helpers import FakeRestopolisClient
 # id 32 = "Bretzel salé" (Constant products, 80 g -- real weight data)
 SALAD_BAR_ID = 0
 BRETZEL_ID = 32
+
+
+class _BrowserClient(FlaskClient):
+    """A test client that behaves like a browser which completed the
+    verification for every address the store knows: it sends the identity
+    token for each one, as static/app.js does. That keeps the many tests
+    that are not ABOUT identity working unchanged. `held_tokens_for` (a
+    list of addresses, or None for "all") narrows what this "browser"
+    holds -- how the abuse tests play an attacker who never verified the
+    victim's address."""
+
+    held_tokens_for = None
+
+    def open(self, *args, **kwargs):
+        store = self.application.config["VERIFIED_EMAIL_STORE"]
+        emails = self.held_tokens_for
+        if emails is None:
+            emails = [row[0] for row in store._conn.execute("SELECT email FROM verified_emails")]
+        headers = kwargs["headers"] = dict(kwargs.get("headers") or {})
+        if emails and "X-Identity-Tokens" not in headers:
+            headers["X-Identity-Tokens"] = quote(json.dumps({e.lower(): store.issue_token(e) for e in emails}))
+        return super().open(*args, **kwargs)
 
 
 def _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, now=None):
@@ -112,6 +137,7 @@ def _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, 
         enable_daily_report_scheduler=False,
     )
     app.testing = True
+    app.test_client_class = _BrowserClient
     return app.test_client()
 
 
@@ -660,7 +686,10 @@ def test_rewards_rejects_a_non_university_email(client):
 
 def test_rewards_are_scoped_per_email(client):
     client.application.config["REWARD_STORE"].add_points("a@uni.lu", 10)
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("a@uni.lu")
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("b@uni.lu")
     assert client.get("/api/rewards?email=b@uni.lu").get_json() == {"points": 0}
+    assert client.get("/api/rewards?email=a@uni.lu").get_json() == {"points": 10}
 
 
 # ---------------------------------------------------------------------------
@@ -799,7 +828,8 @@ def test_plus_tagged_and_student_addresses_are_one_reward_identity(client):
         store.issue(email, code)
         client.post("/api/email/verify-code", json={"email": email, "code": code})
     assert client.get("/api/rewards?email=dupe@uni.lu").get_json() == {"points": 3}
-    assert client.get("/api/rewards?email=DUPE%2B9@student.uni.lu").get_json() == {"points": 3}
+    assert client.get("/api/rewards?email=dupe@student.uni.lu").get_json() == {"points": 3}
+    assert client.get("/api/rewards?email=dupe%2B2@uni.lu").get_json() == {"points": 3}
 
 
 def test_plus_tags_cannot_claim_the_contact_bonuses_again(client):
@@ -908,6 +938,7 @@ def test_delivery_luni_goes_to_the_claiming_courier_not_the_caller(client):
 
 
 def test_delivering_your_own_order_awards_nothing(client):
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("COURIER@uni.lu")
     order_id = _create_basic_order(client, customer_email="courier@uni.lu")
     _hand_off(client, order_id, courier_email="COURIER@uni.lu")
     _mark_delivered(client, order_id)
@@ -2823,11 +2854,11 @@ def _order_payload(items, customer_email="student@uni.lu", date="2026-09-24", **
     }
 
 
-def _post_order(client, payload):
+def _post_order(client, payload, headers=None):
     client.application.config["VERIFIED_EMAIL_STORE"].mark_verified(payload["customer_email"])
     client.application.config["VERIFIED_EMAIL_STORE"].mark_verified(payload["reward_email"])
     with patch("app.send_admin_notification", return_value=(True, None)):
-        return client.post("/api/orders", json=payload)
+        return client.post("/api/orders", json=payload, headers=headers)
 
 
 def test_a_dish_can_be_ordered_twice_but_not_three_times(client):
@@ -3584,3 +3615,97 @@ def test_replacing_the_photo_updates_the_other_restaurant_too(client, monkeypatc
 def test_a_dish_with_no_photo_anywhere_stays_photo_less(client, monkeypatch):
     _approve_photo_for(client, monkeypatch, "altius", "Entrée", "Salad'bar")
     assert client.get("/api/restaurants/brasserie-johns/dish-photos").get_json().get("Dessert") is None
+
+
+# ---------------------------------------------------------------------------
+# Identity proof: an address that was verified is not usable by anyone who
+# merely types it -- only by the browser that completed the code round trip.
+# ---------------------------------------------------------------------------
+
+
+def _attacker(client, *emails):
+    """The same app, seen by a browser that never verified the victim's address."""
+    other = client.application.test_client()
+    other.held_tokens_for = list(emails)
+    return other
+
+
+def test_verify_code_hands_out_a_token_that_only_that_address_can_use(client):
+    for path, store_key in (
+        ("/api/email/verify-code", "EMAIL_VERIFICATION_STORE"),
+        ("/api/orders/email/verify-code", "CHECKOUT_VERIFICATION_STORE"),
+        ("/api/delivery/register/verify-code", "DELIVERY_VERIFICATION_STORE"),
+    ):
+        client.application.config[store_key].issue("fresh@uni.lu", "123456")
+        body = client.post(path, json={"email": "fresh@uni.lu", "code": "123456"}).get_json()
+        assert body["verified"] is True and body["token"]
+        verified = client.application.config["VERIFIED_EMAIL_STORE"]
+        assert verified.token_valid("fresh@uni.lu", body["token"])
+        assert not verified.token_valid("other@uni.lu", body["token"])
+
+
+def test_a_wrong_code_yields_no_token(client):
+    client.application.config["EMAIL_VERIFICATION_STORE"].issue("fresh@uni.lu", "123456")
+    body = client.post("/api/email/verify-code", json={"email": "fresh@uni.lu", "code": "000000"}).get_json()
+    assert body["verified"] is False and "token" not in body
+
+
+def test_an_attacker_cannot_order_as_a_verified_victim(client):
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("victim@uni.lu")
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("attacker@gmail.com")
+    attacker = _attacker(client, "attacker@gmail.com")
+    payload = dict(_order_payload([{"id": SALAD_BAR_ID, "quantity": 1}]), customer_email="attacker@gmail.com", reward_email="victim@uni.lu")
+    for _ in range(3):
+        resp = _post_order(attacker, payload)
+        assert resp.status_code == 403
+        assert resp.get_json()["error"] == "university_email_not_verified"
+    # ...and so the victim's own daily allowance is untouched.
+    victim = _attacker(client, "victim@uni.lu", "student@uni.lu")
+    resp = _post_order(victim, dict(_order_payload([{"id": SALAD_BAR_ID, "quantity": 1}]), customer_email="student@uni.lu", reward_email="victim@uni.lu"))
+    assert resp.status_code == 201
+
+
+def test_an_attacker_cannot_order_to_a_victims_mailbox(client):
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("victim@gmail.com")
+    attacker = _attacker(client, "student@uni.lu")
+    payload = dict(_order_payload([{"id": SALAD_BAR_ID, "quantity": 1}]), customer_email="victim@gmail.com", reward_email="student@uni.lu")
+    resp = _post_order(attacker, payload)
+    assert resp.status_code == 403 and resp.get_json()["error"] == "email_not_verified"
+
+
+def test_a_forged_or_borrowed_token_does_not_work(client):
+    store = client.application.config["VERIFIED_EMAIL_STORE"]
+    store.mark_verified("victim@uni.lu")
+    attacker = client.application.test_client()
+    payload = dict(_order_payload([{"id": SALAD_BAR_ID, "quantity": 1}]), reward_email="victim@uni.lu")
+    for tokens in ({"victim@uni.lu": "deadbeef"}, {"victim@uni.lu": store.issue_token("student@uni.lu")}, {"victim@uni.lu": 7}):
+        resp = _post_order(attacker, payload, headers={"X-Identity-Tokens": quote(json.dumps(tokens))})
+        assert resp.status_code == 403
+    for junk in ("not json", quote("[1,2]"), quote("{" * 10), "x" * 5000):
+        assert _post_order(attacker, payload, headers={"X-Identity-Tokens": junk}).status_code == 403
+
+
+def test_an_attacker_cannot_claim_luni_into_a_victims_account(client):
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("victim@uni.lu")
+    attacker = _attacker(client, "attacker@gmail.com")
+    resp = _claim_reward(attacker, "phone_number_added", "+352 621 999 888", email="victim@uni.lu")
+    assert resp.status_code == 403
+    assert client.application.config["REWARD_STORE"].get_points("victim@uni.lu") == 0
+
+
+def test_an_attacker_cannot_read_a_victims_balance_and_learns_nothing_about_who_exists(client):
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("victim@uni.lu")
+    attacker = _attacker(client, "attacker@gmail.com")
+    known = attacker.get("/api/rewards?email=victim@uni.lu")
+    unknown = attacker.get("/api/rewards?email=nobody@uni.lu")
+    assert known.status_code == unknown.status_code == 403
+    assert known.get_json() == unknown.get_json()
+
+
+def test_an_attacker_cannot_act_as_a_verified_courier(client):
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    attacker = _attacker(client, "attacker@gmail.com")
+    resp = attacker.post(f"/api/orders/{order_id}/claim", json={"courier_email": "courier@uni.lu"})
+    assert resp.status_code == 403 and resp.get_json()["error"] == "email_not_verified"
+    # ...and the browser that did verify it still can.
+    assert client.post(f"/api/orders/{order_id}/claim", json={"courier_email": "courier@uni.lu"}).status_code == 200
