@@ -43,8 +43,10 @@ from orderability_engine.delivery_rules import is_delivery_expired
 from orderability_engine.models import STATUS_VALUES, TZINFO
 from orderability_engine.orders import (
     MAX_ORDERS_PER_DAY,
+    MAX_ORDER_DATES,
     MAX_QUANTITY,
     DailyOrderLimitError,
+    OrderDatesLimitError,
     OrderStore,
     OrderValidationError,
     recalculate_order,
@@ -192,9 +194,6 @@ def _is_valid_email_format(email: str) -> bool:
 PRIVATE_ORDER_FIELDS = ("customer_email", "customer_phone", "courier_email", "courier_lang", "reward_email")
 
 
-# An order can only be for today or tomorrow -- MAX_ORDER_DAYS calendar
-# days counting today. Keep in step with DATE_PICKER_DAYS in static/app.js.
-MAX_ORDER_DAYS = 2
 MAX_CUSTOMER_NOTE_LENGTH = 200
 MAX_FEEDBACK_LENGTH = 500
 DELIVERY_LIST_DAYS = 14
@@ -941,12 +940,6 @@ def create_app(
 
         restaurant = get_restaurant_or_404(slug)
         d = parse_date_arg(date_str)
-        if d > svc().today() + timedelta(days=MAX_ORDER_DAYS - 1):
-            return jsonify({
-                "error": "date_too_far",
-                "message": f"Orders can only be placed for the next {MAX_ORDER_DAYS} days, today included",
-                "max_days": MAX_ORDER_DAYS,
-            }), 409
 
         # Re-check orderability AND re-fetch the live menu at confirm time,
         # not just at page-load time -- both can have changed since.
@@ -987,7 +980,15 @@ def create_app(
                 customer_phone,
                 reward_email=reward_email,
                 max_orders_per_day=MAX_ORDERS_PER_DAY,
+                max_order_dates=MAX_ORDER_DATES,
+                today=svc().today(),
             )
+        except OrderDatesLimitError:
+            return jsonify({
+                "error": "order_days_limit",
+                "message": f"You can have orders on at most {MAX_ORDER_DATES} different days at a time",
+                "max_days": MAX_ORDER_DATES,
+            }), 409
         except DailyOrderLimitError:
             return jsonify({
                 "error": "daily_order_limit",

@@ -2882,38 +2882,94 @@ def test_feedback_of_500_characters_is_allowed_and_501_is_not(client):
 
 
 # ---------------------------------------------------------------------------
-# Order window: today and tomorrow only
+# A client may have live orders on at most 2 different days -- any 2 of the
+# days on offer, not just the next two
 # ---------------------------------------------------------------------------
 
 
-def test_order_for_a_date_beyond_tomorrow_is_refused(client):
-    # The fixture pins "today" to 2026-09-23 (see conftest.fixture_today),
-    # so the 25th is day three.
+def _seed_order_on(client, order_date, email="student@uni.lu", cancelled=False):
+    """A live order for `order_date`, written straight to the store (the
+    fixture menu only covers a couple of real dates)."""
+    store = client.application.config["ORDER_STORE"]
+    order_id = store.create_order(
+        "UDL-CKB-ALTIUS",
+        "Altius",
+        datetime.date.fromisoformat(order_date),
+        [{"category": "Entrée", "name": "Salad'bar", "quantity": 1}],
+        "Building A — Room 1.01",
+        email,
+        reward_email=email,
+    )
+    if cancelled:
+        store.admin_cancel_order(order_id)
+    return order_id
+
+
+def test_a_third_different_day_is_refused(client):
+    # Fixture "today" is 2026-09-23; the two seeded days are both upcoming.
+    _seed_order_on(client, "2026-09-30")
+    _seed_order_on(client, "2026-10-01")
     with patch("app.send_admin_notification") as admin:
-        resp = client.post("/api/orders", json=_bare_order(date="2026-09-25"))
+        resp = client.post("/api/orders", json=_bare_order(date="2026-09-24"))
     assert resp.status_code == 409
     assert resp.get_json() == {
-        "error": "date_too_far",
-        "message": "Orders can only be placed for the next 2 days, today included",
+        "error": "order_days_limit",
+        "message": "You can have orders on at most 2 different days at a time",
         "max_days": 2,
     }
     admin.assert_not_called()
 
 
-def test_order_for_a_date_weeks_away_is_refused(client):
-    assert client.post("/api/orders", json=_bare_order(date="2026-10-15")).get_json()["error"] == "date_too_far"
-
-
-def test_tomorrow_is_the_last_day_inside_the_order_window(client):
-    # The 24th is tomorrow relative to the fixture's 23rd, and is the date
-    # every order test in this file uses.
+def test_a_second_day_is_fine(client):
+    _seed_order_on(client, "2026-09-30")
     with patch("app.send_admin_notification", return_value=(True, None)):
         assert client.post("/api/orders", json=_bare_order(date="2026-09-24")).status_code == 201
 
 
-def test_today_is_inside_the_order_window(client):
-    resp = client.post("/api/orders", json=_bare_order(date="2026-09-23"))
-    assert (resp.get_json() or {}).get("error") != "date_too_far"
+def test_ordering_again_on_a_day_you_already_have_is_not_a_new_day(client):
+    _seed_order_on(client, "2026-09-24")
+    _seed_order_on(client, "2026-09-30")
+    with patch("app.send_admin_notification", return_value=(True, None)):
+        assert client.post("/api/orders", json=_bare_order(date="2026-09-24")).status_code == 201
+
+
+def test_cancelled_orders_do_not_count_as_a_day(client):
+    _seed_order_on(client, "2026-09-30", cancelled=True)
+    _seed_order_on(client, "2026-10-01")
+    with patch("app.send_admin_notification", return_value=(True, None)):
+        assert client.post("/api/orders", json=_bare_order(date="2026-09-24")).status_code == 201
+
+
+def test_past_days_do_not_count_as_a_day(client):
+    _seed_order_on(client, "2026-09-20")
+    _seed_order_on(client, "2026-09-21")
+    with patch("app.send_admin_notification", return_value=(True, None)):
+        assert client.post("/api/orders", json=_bare_order(date="2026-09-24")).status_code == 201
+
+
+def test_the_days_limit_is_per_client(client):
+    _seed_order_on(client, "2026-09-30")
+    _seed_order_on(client, "2026-10-01")
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("courier@uni.lu")
+    with patch("app.send_admin_notification", return_value=(True, None)):
+        resp = client.post("/api/orders", json=_bare_order(date="2026-09-24", customer_email="courier@uni.lu", reward_email="courier@uni.lu"))
+    assert resp.status_code == 201
+
+
+def test_the_days_limit_follows_the_university_email_across_personal_addresses(client):
+    _seed_order_on(client, "2026-09-30")
+    _seed_order_on(client, "2026-10-01")
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("me@gmail.com")
+    resp = client.post("/api/orders", json=_bare_order(date="2026-09-24", customer_email="me@gmail.com"))
+    assert resp.status_code == 409 and resp.get_json()["error"] == "order_days_limit"
+
+
+def test_there_is_no_two_day_booking_horizon(client):
+    # Any day on offer can be ordered, however far out: a far date is judged
+    # by its own menu/status (409 date_not_available here), never refused
+    # just for being far.
+    resp = client.post("/api/orders", json=_bare_order(date="2026-10-15"))
+    assert resp.get_json()["error"] != "date_too_far"
 
 
 # ---------------------------------------------------------------------------

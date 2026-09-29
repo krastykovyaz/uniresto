@@ -50,6 +50,9 @@ MIN_QUANTITY = 1
 # order_date. Last night's abuse (5 orders in 5 minutes, 10 of every dish
 # each) shows both caps are needed.
 MAX_ORDERS_PER_DAY = 2
+# ...and on how many DIFFERENT upcoming dates one client may have live
+# orders at once -- any two of the days on offer, not just the next two.
+MAX_ORDER_DATES = 2
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS orders (
@@ -163,6 +166,10 @@ _MIGRATIONS = [
 
 class DailyOrderLimitError(Exception):
     """This client already has MAX_ORDERS_PER_DAY live orders for that date."""
+
+
+class OrderDatesLimitError(Exception):
+    """This client already has live orders on MAX_ORDER_DATES other upcoming dates."""
 
 
 class OrderValidationError(Exception):
@@ -323,20 +330,30 @@ class OrderStore:
         customer_phone: str | None = None,
         reward_email: str | None = None,
         max_orders_per_day: int | None = None,
+        max_order_dates: int | None = None,
+        today: date | None = None,
     ) -> int:
         """items: recalculate_order()'s "items" list (server-priced/weighed).
         With max_orders_per_day set, raises DailyOrderLimitError instead of
         inserting when customer_email/reward_email already have that many
         non-cancelled orders for order_date -- checked inside the same
         write transaction as the INSERT, so two simultaneous requests
-        (even on different gunicorn workers) can't both slip under it."""
+        (even on different gunicorn workers) can't both slip under it.
+        max_order_dates (with `today`) likewise raises OrderDatesLimitError
+        when this would be a new date on top of that many other upcoming
+        ones the client already has live orders for."""
         now = datetime.now(timezone.utc).isoformat()
         with self._lock, self._transaction() as conn:
-            if max_orders_per_day is not None:
+            if max_orders_per_day is not None or max_order_dates is not None:
                 if not conn.in_transaction:
                     conn.execute("BEGIN IMMEDIATE")
-                if self._count_live_orders_for_day(conn, order_date, [customer_email, reward_email]) >= max_orders_per_day:
+                emails = [customer_email, reward_email]
+                if max_orders_per_day is not None and self._count_live_orders_for_day(conn, order_date, emails) >= max_orders_per_day:
                     raise DailyOrderLimitError()
+                if max_order_dates is not None:
+                    dates = self._live_order_dates(conn, emails, today or order_date)
+                    if order_date.isoformat() not in dates and len(dates) >= max_order_dates:
+                        raise OrderDatesLimitError()
             cur = conn.execute(
                 """
                 INSERT INTO orders (restaurant_code, restaurant_name, order_date, delivery_location, customer_email, customer_note, customer_lang, customer_phone, reward_email, status, created_at)
@@ -379,6 +396,22 @@ class OrderStore:
             f"AND (lower(customer_email) IN ({marks}) OR lower(reward_email) IN ({marks}))",
             (order_date.isoformat(), *addresses, *addresses),
         ).fetchone()[0]
+
+    @staticmethod
+    def _live_order_dates(conn: sqlite3.Connection, emails: list[str | None], from_date: date) -> set[str]:
+        """Distinct order_dates (today onward) this client has non-cancelled
+        orders for -- past days stop counting, or two old orders would
+        block ordering forever."""
+        addresses = sorted({e.strip().lower() for e in emails if e and e.strip()})
+        if not addresses:
+            return set()
+        marks = ",".join("?" * len(addresses))
+        rows = conn.execute(
+            f"SELECT DISTINCT order_date FROM orders WHERE order_date >= ? AND status != 'cancelled' "
+            f"AND (lower(customer_email) IN ({marks}) OR lower(reward_email) IN ({marks}))",
+            (from_date.isoformat(), *addresses, *addresses),
+        ).fetchall()
+        return {r[0] for r in rows}
 
     def count_live_orders_for_day(self, order_date: date, emails: list[str | None]) -> int:
         with self._lock:
