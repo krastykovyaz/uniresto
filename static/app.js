@@ -2167,36 +2167,94 @@ async function renderDelivery() {
   app.append(body);
 }
 
+// Belval has no orderable restaurant yet, so instead of four dead "coming
+// soon" cards this screen says so plainly and asks the one useful question:
+// which restaurant would you use first? Tapping a card is a vote -- recorded
+// through the same /api/coming-soon/click signal as before (see
+// /admin/coming-soon-clicks) -- and the pick is remembered on this device so
+// it shows as "Your pick". A vote is only sent when the pick actually
+// changes, so tapping the same card again can't inflate the count.
+const BELVAL_PICK_KEY = "uniresto.belvalPick.v1";
+
+function loadBelvalPick() {
+  try {
+    const value = localStorage.getItem(BELVAL_PICK_KEY);
+    return COMING_SOON_LOCATIONS.some((l) => l.name === value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveBelvalPick(name) {
+  try {
+    localStorage.setItem(BELVAL_PICK_KEY, name);
+  } catch {
+    /* localStorage unavailable -- the pick just isn't remembered after a reload */
+  }
+}
+
+function belvalComingContent() {
+  const wrap = el(`<div class="belval-coming"></div>`);
+  wrap.append(
+    el(`
+      <div class="belval-banner">
+        <h2>${escapeHtml(tr("belvalComingTitle"))}</h2>
+        <p>${escapeHtml(tr("belvalComingSubtitle"))}</p>
+      </div>
+    `)
+  );
+  const grid = el(`<div class="restaurant-grid" role="radiogroup" aria-label="${escapeHtml(tr("belvalComingSubtitle"))}"></div>`);
+  let picked = loadBelvalPick();
+  const cards = new Map();
+
+  const paint = () => {
+    for (const [name, card] of cards) {
+      const isPick = name === picked;
+      card.classList.toggle("is-picked", isPick);
+      card.setAttribute("aria-checked", String(isPick));
+      card.querySelector(".belval-vote-mark").innerHTML = isPick ? icon("check", 14) : "";
+      card.querySelector(".belval-your-pick").hidden = !isPick;
+    }
+  };
+
+  for (const location of COMING_SOON_LOCATIONS) {
+    const card = el(`
+      <button type="button" class="restaurant-card belval-choice" role="radio" aria-checked="false">
+        <div class="restaurant-card-main">
+          <div class="icon-avatar is-other">${icon("fork", 20)}</div>
+          <div class="belval-choice-text">
+            <h2>${escapeHtml(location.name)}</h2>
+            <p class="kind">${escapeHtml(tr(location.kindKey))} · ${escapeHtml(location.building)}</p>
+            <p class="belval-your-pick" hidden>${escapeHtml(tr("belvalYourPick"))}</p>
+          </div>
+          <span class="belval-vote-mark" aria-hidden="true"></span>
+        </div>
+      </button>
+    `);
+    card.addEventListener("click", () => {
+      if (picked === location.name) return;
+      picked = location.name;
+      saveBelvalPick(location.name);
+      paint();
+      showToast(tr("belvalPickToast", { name: location.name }));
+      // Best-effort, never blocks the toast above.
+      api("/api/coming-soon/click", { method: "POST", body: JSON.stringify({ location: location.name }) }).catch(() => {});
+    });
+    cards.set(location.name, card);
+    grid.append(card);
+  }
+  paint();
+  wrap.append(grid);
+  return wrap;
+}
+
 // The restaurant-grid content for whichever campus state.restaurantsCampusFilter
 // currently selects (Part 68) -- Kirchberg shows the real, orderable
 // restaurants exactly as before; Belval shows the same de-emphasized
 // "coming soon" cards that used to sit mixed in below them.
 function restaurantGridContent() {
   const grid = el(`<div class="restaurant-grid"></div>`);
-  if (state.restaurantsCampusFilter === "belval") {
-    for (const location of COMING_SOON_LOCATIONS) {
-      const card = el(`
-        <button class="restaurant-card is-coming-soon" aria-label="${escapeHtml(location.name)}: ${escapeHtml(tr("comingSoonBadge"))}">
-          <div class="restaurant-card-main">
-            <div class="icon-avatar is-other">${icon("fork", 20)}</div>
-            <div>
-              <h2>${escapeHtml(location.name)}</h2>
-              <p class="kind">${escapeHtml(tr(location.kindKey))} · ${escapeHtml(location.building)}</p>
-            </div>
-          </div>
-        </button>
-      `);
-      card.addEventListener("click", () => {
-        showToast(tr("comingSoonToast"));
-        // Best-effort interest signal (Part 69) -- never blocks or
-        // surfaces an error for the toast above, which is the actual
-        // point of tapping this card; see /admin/coming-soon-clicks.
-        api("/api/coming-soon/click", { method: "POST", body: JSON.stringify({ location: location.name }) }).catch(() => {});
-      });
-      grid.append(card);
-    }
-    return grid;
-  }
+  if (state.restaurantsCampusFilter === "belval") return belvalComingContent();
   for (const r of state.restaurants) {
     const card = el(`
       <button class="restaurant-card" aria-label="${tr("select")}: ${escapeHtml(r.name)}">
@@ -2236,9 +2294,9 @@ function renderRestaurants() {
 }
 
 // Not real Restopolis restaurants -- no menu, no orderability, never
-// selectable (clicking just shows comingSoonToast) -- shown de-emphasized
-// (.is-coming-soon) alongside the real ones so people can see more
-// locations are planned without mistaking these for orderable today.
+// selectable -- the Belval screen (belvalComingContent above) turns them into
+// a vote for which one to open first, so people can see more locations are
+// planned without mistaking these for orderable today.
 // Names/buildings given directly by the admin, not translated (same as
 // a real restaurant's own name/building proper nouns never are).
 const COMING_SOON_LOCATIONS = [
