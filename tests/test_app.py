@@ -725,7 +725,11 @@ def test_verifying_via_checkout_flow_does_not_award_the_registration_bonus(clien
     assert client.get("/api/rewards?email=checkout-only@uni.lu").get_json() == {"points": 0}
 
 
-def _claim_reward(client, action, value=None, email="student@uni.lu"):
+def _claim_reward(client, action, value=None, email="student@uni.lu", verify_value=True):
+    # The communication address has to be one the browser has proven it can
+    # read; most tests aren't about that, so prove it here unless told not to.
+    if verify_value and action == "communication_email_added" and value and "@" in value:
+        client.application.config["VERIFIED_EMAIL_STORE"].mark_verified(value)
     body = {"email": email, "action": action}
     if value is not None:
         body["value"] = value
@@ -2308,7 +2312,7 @@ def test_create_order_passes_a_mark_reviewing_url_when_admin_token_is_set(client
     mark_reviewing_url = mock_notify.call_args.kwargs["mark_reviewing_url"]
     assert mark_reviewing_url is not None
     assert f"/admin/orders/{order_id}/mark-reviewing" in mark_reviewing_url
-    assert "token=correct-token" in mark_reviewing_url
+    _assert_link_token_opens_admin(client, mark_reviewing_url, "correct-token")
 
 
 def test_create_order_passes_a_restopolis_url_for_the_ordered_restaurant(client):
@@ -3327,7 +3331,8 @@ def test_the_new_order_telegram_ping_carries_a_cancel_link(client, monkeypatch):
     with patch("app.send_admin_notification", return_value=(True, None)) as mock_notify:
         order_id = client.post("/api/orders", json=_bare_order()).get_json()["id"]
     cancel_url = mock_notify.call_args.kwargs["cancel_url"]
-    assert f"/admin/orders/{order_id}/cancel?token=correct-token" in cancel_url
+    assert f"/admin/orders/{order_id}/cancel?token=" in cancel_url
+    _assert_link_token_opens_admin(client, cancel_url, "correct-token")
 
 
 def test_no_cancel_link_without_an_admin_token(client):
@@ -3774,3 +3779,55 @@ def test_the_share_card_cache_is_capped(client, tmp_path, monkeypatch):
     files = sorted(f.name for f in cache.glob("*.jpg"))
     assert len(files) == 3
     assert "old0.jpg" not in files and "old1.jpg" not in files and "old2.jpg" not in files
+
+
+# ---------------------------------------------------------------------------
+# Low hardening: Telegram links carry an expiring token, not the admin key
+# ---------------------------------------------------------------------------
+
+
+def _assert_link_token_opens_admin(client, url, admin_token):
+    from urllib.parse import parse_qs, urlparse
+
+    parsed = urlparse(url)
+    token = parse_qs(parsed.query)["token"][0]
+    assert token != admin_token and admin_token not in url
+    assert client.get(f"/admin/orders?token={token}").status_code == 200
+
+
+def test_telegram_links_carry_an_expiring_token_not_the_admin_key(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    import app as app_module
+
+    with client.application.test_request_context("/"):
+        link = app_module._admin_link_token()
+    assert "correct-token" not in link
+    assert client.get(f"/admin/orders?token={link}").status_code == 200
+    expires, _, signature = link.partition(".")
+    for bad in (f"{int(expires) + 1}.{signature}", f"{expires}.{'0' * len(signature)}", "x.y", ".", link.split(".")[0]):
+        assert client.get(f"/admin/orders?token={bad}").status_code == 404
+    monkeypatch.setattr(app_module.time, "time", lambda: int(expires) + 1)
+    assert client.get(f"/admin/orders?token={link}").status_code == 404
+    # the admin's own key keeps working
+    assert client.get("/admin/orders?token=correct-token").status_code == 200
+
+
+def test_an_admin_link_token_is_useless_once_the_admin_key_changes(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "old-token")
+    import app as app_module
+
+    with client.application.test_request_context("/"):
+        link = app_module._admin_link_token()
+    monkeypatch.setenv("ADMIN_TOKEN", "new-token")
+    assert client.get(f"/admin/orders?token={link}").status_code == 404
+
+
+def test_the_communication_email_bonus_needs_a_verified_address(client):
+    resp = _claim_reward(client, "communication_email_added", "typed-not-verified@gmail.com", verify_value=False)
+    assert resp.status_code == 403 and resp.get_json()["error"] == "email_not_verified"
+    assert client.application.config["REWARD_STORE"].get_points("student@uni.lu") == 0
+    # someone else's browser can't use an address verified elsewhere
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("verified-elsewhere@gmail.com")
+    stranger = client.application.test_client()
+    stranger.held_tokens_for = ["student@uni.lu"]
+    assert _claim_reward(stranger, "communication_email_added", "verified-elsewhere@gmail.com", verify_value=False).status_code == 403

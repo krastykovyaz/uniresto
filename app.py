@@ -7,6 +7,7 @@ real Restopolis order placement, no delivery routing.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import io
 import time
 import logging
@@ -244,13 +245,45 @@ def _is_admin_authorized() -> bool:
     if not expected:
         return False
     given = request.args.get("token") or (request.form.get("token") if request.method == "POST" else None)
-    return given is not None and secrets.compare_digest(given, expected)
+    if given is None:
+        return False
+    return secrets.compare_digest(given, expected) or _is_valid_admin_link_token(given, expected)
+
+
+# Links inside Telegram messages (buttons, "see it" URLs) used to carry the
+# permanent ADMIN_TOKEN itself, so a forwarded message, a screenshot or a
+# link-preview log leaked the admin key for good. They now carry a signed,
+# expiring token instead -- "<expiry>.<hmac>" -- that opens the same admin
+# pages until it runs out; the real ADMIN_TOKEN never leaves the server and
+# your own bookmark. A fresh one is minted for every message.
+ADMIN_LINK_TTL_SECONDS = 2 * 24 * 3600
+
+
+def _admin_link_signature(admin_token: str, expires: str) -> str:
+    return hmac.new(admin_token.encode(), f"admin-link|{expires}".encode(), hashlib.sha256).hexdigest()
+
+
+def _admin_link_token() -> str | None:
+    """A fresh expiring token for links sent over Telegram; None when
+    ADMIN_TOKEN isn't set (the admin pages are unreachable then)."""
+    admin_token = os.environ.get("ADMIN_TOKEN")
+    if not admin_token:
+        return None
+    expires = str(int(time.time()) + ADMIN_LINK_TTL_SECONDS)
+    return f"{expires}.{_admin_link_signature(admin_token, expires)}"
+
+
+def _is_valid_admin_link_token(given: str, admin_token: str) -> bool:
+    expires, _, signature = given.partition(".")
+    if not expires.isdigit() or not signature or int(expires) < time.time():
+        return False
+    return secrets.compare_digest(signature, _admin_link_signature(admin_token, expires))
 
 
 def _admin_orders_url() -> str | None:
     """Link to /admin/orders for a Telegram ping, or None when ADMIN_TOKEN
     isn't set (the page is unreachable without it anyway)."""
-    admin_token = os.environ.get("ADMIN_TOKEN")
+    admin_token = _admin_link_token()
     return f"{request.host_url}admin/orders?token={admin_token}" if admin_token else None
 
 
@@ -258,7 +291,7 @@ def _admin_dish_photo_urls(pending_id: int) -> tuple[str | None, str | None, str
     """(review_url, approve_url, reject_url) for a pending dish photo's
     Telegram ping -- all None together when ADMIN_TOKEN isn't set, same
     reasoning as _admin_orders_url() above."""
-    admin_token = os.environ.get("ADMIN_TOKEN")
+    admin_token = _admin_link_token()
     if not admin_token:
         return None, None, None
     base = f"{request.host_url}admin/dish-photos/{pending_id}"
@@ -877,6 +910,11 @@ def create_app(
                     abort(400, description="'value' must be a valid email address")
                 if _is_allowed_customer_email(raw_value):
                     abort(400, description="'value' must be a communication address other than a University one")
+                # A free 1 Luni for typing any address is farmable, so the
+                # address has to be one this browser has proven it can read
+                # (checkout verifies it on the first order).
+                if not _is_proven(raw_value):
+                    return jsonify({"error": "email_not_verified", "message": "Verify this address first"}), 403
                 value_key = normalize_contact_email(raw_value)
             else:
                 value_key = normalize_phone(raw_value)
@@ -1088,7 +1126,7 @@ def create_app(
         # Also best-effort (Part 30): pings the admin to go place the
         # matching reservation in real Restopolis. Never blocks or fails
         # order creation -- same reasoning as the email above.
-        admin_token = os.environ.get("ADMIN_TOKEN")
+        admin_token = _admin_link_token()
         admin_url = f"{request.host_url}admin/orders?token={admin_token}" if admin_token else None
         mark_reviewing_url = (
             f"{request.host_url}admin/orders/{order['id']}/mark-reviewing?token={admin_token}" if admin_token else None
@@ -1569,7 +1607,7 @@ def create_app(
         if contact_email is not None and not _is_valid_email_format(contact_email):
             abort(400, description="'email' is not a valid email address")
         feedback().record(message, contact_email)
-        admin_token = os.environ.get("ADMIN_TOKEN")
+        admin_token = _admin_link_token()
         admin_url = f"{request.host_url}admin/feedback?token={admin_token}" if admin_token else None
         send_feedback_notification(message, contact_email, admin_url=admin_url)
         return jsonify({"recorded": True})
