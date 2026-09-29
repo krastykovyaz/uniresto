@@ -158,8 +158,11 @@ test("dairy is priced at the official adultes tariff", () => {
   }
 });
 
-test("the free school milk has no adultes price", () => {
-  assert.equal(priceForItem({ category: "05. Laitages", name: "Lait Luxlait BIO 0,25 l Tétra Pack (gratuit)" }), null);
+test("the free school milk costs the same as the regular one above the school programme", () => {
+  const free = priceForItem({ category: "05. Laitages", name: "Lait Luxlait BIO 0,25 l Tétra Pack (gratuit)" });
+  const regular = priceForItem({ category: "05. Laitages", name: "Lait Luxlait BIO 0,25 l Tétra Pack" });
+  assert.equal(free, 0.95);
+  assert.equal(free, regular);
 });
 
 test("a seasonal name in quotes still matches the official dairy line", () => {

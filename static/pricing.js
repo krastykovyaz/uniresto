@@ -138,12 +138,14 @@ export const FRUIT_PRICES = {
 
 // Official 2026/27 Cafétéria list, "LAITAGES" block, adultes column -- the
 // same numbers as orderability_engine/pricing.py's LAITAGES_PRICES. The free
-// school milk ("gratuit") is "/" at this tier, so it has no entry.
+// school milk ("gratuit") is "/" on the list, but it's the same pack as the
+// regular Lait Luxlait BIO, so it's priced the same (the owner's call).
 export const LAITAGES_PRICES = {
   "Mini fromage frais avec coulis de fruits de saison 150 g": 3.5,
   "Mini muesli maison 150 g": 3.5,
   "Lait chocolaté Luxlait 0,25 l Tétra Pack": 1.1,
   "Lait Luxlait BIO 0,25 l Tétra Pack": 0.95,
+  "Lait Luxlait BIO 0,25 l Tétra Pack (gratuit)": 0.95,
   "Yaourt aux fruits Luxlait 125 g": 1.35,
   "Yaourt nature Luxlait 125 g": 1.15,
 };

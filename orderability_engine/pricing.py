@@ -60,9 +60,9 @@ everywhere else in this module.
 Two categories (Féculents/starches, Légumes/vegetables) still ride
 along free with any main dish -- see INCLUDED_SIDE_CATEGORIES. Laitages
 (dairy) are priced from the official 2026/27 "LISTE DE PRIX" (Cafétéria,
-apprenants / adultes / visiteurs columns): the two lines the list leaves
-blank for a tier ("/" -- the adultes column of the free school milk, the
-apprenants column of the organic milk) or only marks "*" (the official
+apprenants / adultes / visiteurs columns): the lines the list leaves blank
+for a tier ("/" -- the apprenants column of the organic milk) or only marks
+"*" (the official
 "Schoulmëllechprogramm" price, no number given -- chocolate milk for
 apprenants) are simply absent from that tier's table, i.e. unpriced there,
 never guessed. Glaces (ice cream) still have NO price: that official list
@@ -255,13 +255,17 @@ FRUIT_PRICES_APPRENANT = {
     "Mini fruits découpés mélangés/non-mélangés 150 g": 2.50,
 }
 
-# Official 2026/27 Cafétéria list, "LAITAGES" block. Adultes column; the
-# free school milk ("gratuit") is "/" there, i.e. not sold at this tier.
+# Official 2026/27 Cafétéria list, "LAITAGES" block. Adultes column. The
+# free school milk ("gratuit") is "/" there -- not sold to adults at all --
+# but it is the very same Lait Luxlait BIO 0,25 l pack, so the app prices
+# it like the regular one (0.95) for everyone above the school programme:
+# the owner's call, not a number on the list.
 LAITAGES_PRICES = {
     "Mini fromage frais avec coulis de fruits de saison 150 g": 3.50,
     "Mini muesli maison 150 g": 3.50,
     "Lait chocolaté Luxlait 0,25 l Tétra Pack": 1.10,
     "Lait Luxlait BIO 0,25 l Tétra Pack": 0.95,
+    "Lait Luxlait BIO 0,25 l Tétra Pack (gratuit)": 0.95,
     "Yaourt aux fruits Luxlait 125 g": 1.35,
     "Yaourt nature Luxlait 125 g": 1.15,
 }

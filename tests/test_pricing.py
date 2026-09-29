@@ -200,9 +200,12 @@ def test_dairy_apprenants_tariff_and_its_gaps():
     assert total("Lait Luxlait BIO 0,25 l Tétra Pack") is None
 
 
-def test_the_free_school_milk_is_not_sold_to_adultes():
-    result = compute_formula_total([_line("05. Laitages", name="Lait Luxlait BIO 0,25 l Tétra Pack (gratuit)")])
-    assert result["total"] is None
+def test_the_free_school_milk_costs_the_same_as_the_regular_one_above_the_school_programme():
+    # The list has "/" for adultes, but it is the same pack -- priced like
+    # the regular organic milk on purpose (see LAITAGES_PRICES).
+    free = compute_formula_total([_line("05. Laitages", name="Lait Luxlait BIO 0,25 l Tétra Pack (gratuit)")])
+    regular = compute_formula_total([_line("05. Laitages", name="Lait Luxlait BIO 0,25 l Tétra Pack")])
+    assert free["total"] == regular["total"] == 0.95
 
 
 def test_a_seasonal_name_in_quotes_still_matches_the_official_line():
