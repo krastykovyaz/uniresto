@@ -19,7 +19,6 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from flask import Flask, abort, jsonify, redirect, render_template, request, send_from_directory, url_for
-from PIL import Image, ImageOps, UnidentifiedImageError
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from orderability_engine.cache import OrderabilityCache
@@ -58,6 +57,7 @@ from orderability_engine.orders import (
 )
 from orderability_engine.page_views import MAX_SOURCE_LENGTH, PageViewStore
 from orderability_engine.pending_dish_photos import PendingDishPhotoStore
+from orderability_engine.photo_sanitize import sanitize_dish_photo
 from orderability_engine.pricing import INCLUDED_SIDE_CATEGORIES, compute_formula_total
 from orderability_engine.rate_limits import RateLimitStore
 from orderability_engine.rewards import (
@@ -673,39 +673,6 @@ def create_app(
             return ".webp"
         return None
 
-    # Phone photos carry EXIF -- GPS coordinates of wherever the student
-    # took the shot (often their room), device model, timestamps -- and
-    # every approved photo is published at a public URL. So nothing the
-    # client sent is ever written to disk as-is: it's decoded and
-    # re-encoded as a fresh JPEG, which keeps only the pixels. Sniffing
-    # above still runs first as the cheap gate; this is the real one.
-    MAX_DISH_PHOTO_PIXELS = 40_000_000  # decompression-bomb guard
-    MAX_DISH_PHOTO_SIDE = 1600
-
-    def _sanitize_dish_photo(data: bytes) -> bytes | None:
-        try:
-            with Image.open(io.BytesIO(data), formats=["JPEG", "PNG", "GIF", "WEBP"]) as img:
-                width, height = img.size
-                if width * height > MAX_DISH_PHOTO_PIXELS:
-                    return None
-                img.draft("RGB", (MAX_DISH_PHOTO_SIDE, MAX_DISH_PHOTO_SIDE))
-                # Bake EXIF orientation into the pixels before dropping
-                # the tag, or portrait phone shots would show up sideways.
-                img = ImageOps.exif_transpose(img)
-                if img.mode in ("RGBA", "LA", "P"):
-                    img = img.convert("RGBA")
-                    background = Image.new("RGB", img.size, (255, 255, 255))
-                    background.paste(img, mask=img.getchannel("A"))
-                    img = background
-                else:
-                    img = img.convert("RGB")
-                img.thumbnail((MAX_DISH_PHOTO_SIDE, MAX_DISH_PHOTO_SIDE))
-                out = io.BytesIO()
-                img.save(out, format="JPEG", quality=85, optimize=True)
-                return out.getvalue()
-        except (UnidentifiedImageError, Image.DecompressionBombError, OSError, ValueError, SyntaxError):
-            return None
-
     @app.post("/api/restaurants/<slug>/dish-photos")
     def api_upload_dish_photo(slug):
         """A student submits a real photo for a real menu item straight
@@ -752,7 +719,7 @@ def create_app(
         data = photo.read(MAX_DISH_PHOTO_BYTES + 1)
         if len(data) > MAX_DISH_PHOTO_BYTES:
             return jsonify({"error": "too_large", "message": "Photo must be smaller than 8 MB"}), 400
-        clean = _sanitize_dish_photo(data) if _sniff_dish_photo_extension(data) else None
+        clean = sanitize_dish_photo(data) if _sniff_dish_photo_extension(data) else None
         if clean is None:
             return jsonify({"error": "unsupported_type", "message": "Photo must be a JPEG, PNG, WEBP, or GIF image"}), 400
 
@@ -1865,7 +1832,7 @@ def create_app(
                 title="That photo is too large",
                 message="Photos must be smaller than 8 MB.",
             )
-        clean = _sanitize_dish_photo(data) if _sniff_dish_photo_extension(data) else None
+        clean = sanitize_dish_photo(data) if _sniff_dish_photo_extension(data) else None
         if clean is None:
             return render_template(
                 "order_action.html",

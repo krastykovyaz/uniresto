@@ -95,3 +95,69 @@ def test_the_shared_photo_follows_the_source_when_it_is_replaced(tmp_path):
     store.set_photo("altius", "Snack", "Bowl", "/static/dish_photos/1.jpg")
     store.set_photo("altius", "Snack", "Bowl", "/static/dish_photos/2.jpg")
     assert store.photos_visible_to("brasserie-johns")["Snack"]["Bowl"] == "/static/dish_photos/2.jpg"
+
+
+# ---------------------------------------------------------------------------
+# scripts/attach_dish_photo.py -- the admin attaching a photo directly
+# ---------------------------------------------------------------------------
+
+import importlib.util  # noqa: E402
+import io  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+import pytest  # noqa: E402
+from PIL import Image  # noqa: E402
+
+_spec = importlib.util.spec_from_file_location("attach_dish_photo", Path(__file__).resolve().parent.parent / "scripts" / "attach_dish_photo.py")
+attach_module = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(attach_module)
+
+
+def _png(colour=(200, 40, 40), size=(64, 48)):
+    out = io.BytesIO()
+    Image.new("RGB", size, colour).save(out, format="PNG")
+    return out.getvalue()
+
+
+def _webp_with_exif():
+    exif = Image.Exif()
+    exif[0x010F] = "SnoopPhone"
+    exif[0x8825] = {1: "N", 2: (49.0, 30.0, 17.0), 3: "E", 4: (5.0, 56.0, 51.0)}
+    out = io.BytesIO()
+    Image.new("RGB", (40, 30), (10, 200, 10)).save(out, format="JPEG", exif=exif)
+    return out.getvalue()
+
+
+def test_attaching_makes_it_the_dishs_live_photo_at_that_restaurant_and_the_others(tmp_path):
+    photo_dir = tmp_path / "photos"
+    path = attach_module.attach_dish_photo(_png(), "altius", "Végan", "Potiron farci", tmp_path / "orders.db", photo_dir)
+    assert path.startswith("/static/dish_photos/admin-") and path.endswith(".jpg")
+    assert (photo_dir / Path(path).name).is_file()
+    store = DishPhotoStore(tmp_path / "orders.db")
+    assert store.photos_for_restaurant("altius") == {"Végan": {"Potiron farci": path}}
+    assert store.photos_visible_to("brasserie-johns") == {"Végan": {"Potiron farci": path}}
+
+
+def test_the_file_is_a_fresh_jpeg_without_exif(tmp_path):
+    photo_dir = tmp_path / "photos"
+    path = attach_module.attach_dish_photo(_webp_with_exif(), "altius", "C", "N", tmp_path / "orders.db", photo_dir)
+    data = (photo_dir / Path(path).name).read_bytes()
+    assert data.startswith(b"\xff\xd8") and b"SnoopPhone" not in data
+    assert len(Image.open(io.BytesIO(data)).getexif()) == 0
+
+
+def test_replacing_deletes_the_previous_file(tmp_path):
+    photo_dir = tmp_path / "photos"
+    first = attach_module.attach_dish_photo(_png(), "altius", "C", "N", tmp_path / "orders.db", photo_dir)
+    second = attach_module.attach_dish_photo(_png((0, 0, 200)), "altius", "C", "N", tmp_path / "orders.db", photo_dir)
+    assert first != second
+    assert not (photo_dir / Path(first).name).exists() and (photo_dir / Path(second).name).is_file()
+    assert DishPhotoStore(tmp_path / "orders.db").photos_for_restaurant("altius")["C"]["N"] == second
+
+
+def test_a_non_image_is_refused_and_leaves_nothing_behind(tmp_path):
+    photo_dir = tmp_path / "photos"
+    with pytest.raises(ValueError):
+        attach_module.attach_dish_photo(b"<script>alert(1)</script>", "altius", "C", "N", tmp_path / "orders.db", photo_dir)
+    assert not photo_dir.exists() or list(photo_dir.iterdir()) == []
+    assert DishPhotoStore(tmp_path / "orders.db").photos_for_restaurant("altius") == {}
