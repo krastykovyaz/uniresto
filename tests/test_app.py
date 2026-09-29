@@ -3057,3 +3057,80 @@ def test_the_delivery_list_also_applies_penalties(client):
     _confirm(client, order_id)
     client.get("/api/delivery/orders")
     assert client.application.config["REWARD_STORE"].get_points("courier@uni.lu") == 1
+
+
+# ---------------------------------------------------------------------------
+# Admin: cancel an order from the /admin/orders panel
+# ---------------------------------------------------------------------------
+
+
+def _admin_status(client, order_id):
+    return client.get(f"/api/orders/{order_id}").get_json()["status"]
+
+
+def test_admin_can_cancel_a_pending_order(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    order_id = _create_basic_order(client)
+    resp = client.post(f"/admin/orders/{order_id}/cancel?token=correct-token")
+    assert resp.status_code == 302 and "/admin/orders" in resp.headers["Location"]
+    assert _admin_status(client, order_id) == "cancelled"
+
+
+def test_admin_can_cancel_a_reviewing_and_an_awaiting_order(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    store = client.application.config["ORDER_STORE"]
+    reviewing = _create_basic_order(client, customer_email="student@uni.lu")
+    store.mark_reviewing(reviewing)
+    awaiting = _create_basic_order(client, customer_email="courier@uni.lu")
+    store.set_real_price(awaiting, 8.50)
+    for order_id in (reviewing, awaiting):
+        client.post(f"/admin/orders/{order_id}/cancel?token=correct-token")
+        assert _admin_status(client, order_id) == "cancelled"
+
+
+def test_admin_cancel_needs_the_token(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    order_id = _create_basic_order(client)
+    assert client.post(f"/admin/orders/{order_id}/cancel").status_code == 404
+    assert client.post(f"/admin/orders/{order_id}/cancel?token=wrong").status_code == 404
+    assert _admin_status(client, order_id) == "pending"
+
+
+def test_admin_cancel_is_post_only(client, monkeypatch):
+    # A link that merely gets opened (a preview, a scanner) must not cancel.
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    order_id = _create_basic_order(client)
+    assert client.get(f"/admin/orders/{order_id}/cancel?token=correct-token").status_code == 405
+    assert _admin_status(client, order_id) == "pending"
+
+
+def test_admin_cancel_of_a_missing_order_is_404(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    assert client.post("/admin/orders/999999/cancel?token=correct-token").status_code == 404
+
+
+def test_admin_cancel_leaves_a_confirmed_order_alone(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    order_id = _create_basic_order(client)
+    _confirm(client, order_id)
+    client.post(f"/admin/orders/{order_id}/cancel?token=correct-token")
+    assert _admin_status(client, order_id) == "confirmed"
+
+
+def test_the_admin_panel_shows_a_cancel_button_per_order(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    pending = _create_basic_order(client, customer_email="student@uni.lu")
+    awaiting = _create_basic_order(client, customer_email="courier@uni.lu")
+    client.application.config["ORDER_STORE"].set_real_price(awaiting, 8.50)
+    page = client.get("/admin/orders?token=correct-token").data.decode()
+    assert f"/admin/orders/{pending}/cancel?token=correct-token" in page
+    assert f"/admin/orders/{awaiting}/cancel?token=correct-token" in page
+
+
+def test_cancelling_frees_the_customers_daily_slot_and_closes_it_for_couriers(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    ids = [_create_basic_order(client) for _ in range(2)]
+    client.post(f"/admin/orders/{ids[0]}/cancel?token=correct-token")
+    assert _create_basic_order(client)  # a third would have been refused without the cancel
+    listed = next(o for o in client.get("/api/delivery/orders").get_json() if o["id"] == ids[0])
+    assert listed["status"] == "cancelled"

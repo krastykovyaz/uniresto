@@ -1843,6 +1843,20 @@ def create_app(
         store().mark_reviewing(order_id)
         return redirect(f"/admin/orders?token={request.args.get('token', '')}")
 
+    @app.post("/admin/orders/<int:order_id>/cancel")
+    def admin_cancel_order(order_id):
+        """Lets the admin cancel an order from the /admin/orders panel --
+        e.g. spam or a test order, which otherwise sat there (and on the
+        public Delivery list) forever. A cancelled order costs nobody
+        Luni, frees the customer's daily-order slot and shows up under
+        "Closed" for couriers."""
+        if not _is_admin_authorized():
+            abort(404)
+        if store().get_order(order_id) is None:
+            abort(404, description=f"No order with id {order_id}")
+        store().admin_cancel_order(order_id)
+        return redirect(f"/admin/orders?token={request.args.get('token') or request.form.get('token', '')}")
+
     @app.post("/admin/orders/<int:order_id>/set-price")
     def admin_set_order_price(order_id):
         """Records what Restopolis actually charged (an admin-supplied

@@ -39,6 +39,10 @@
             <button type="submit">Record &amp; email customer</button>
         </form>
         {% endif %}
+        <form method="post" action="/admin/orders/{{ o.id }}/cancel?token={{ token }}" onsubmit="return confirm('Cancel order #{{ o.id }}? This cannot be undone.');" style="margin-left: auto;">
+            <input type="hidden" name="token" value="{{ token }}">
+            <button type="submit" style="background: #b02a37;">Cancel order</button>
+        </form>
     </div>
 </div>
 {% endfor %}
@@ -52,6 +56,12 @@
     <strong>Order #{{ o.id }}</strong> &mdash; {{ o.restaurant_name }} &middot; {{ o.order_date }}
     <div class="muted">
         Real price: €{{ '%.2f'|format(o.real_price) }} &middot; sent to {{ o.customer_email }}
+    </div>
+    <div style="margin-top: 0.5rem; display: flex;">
+        <form method="post" action="/admin/orders/{{ o.id }}/cancel?token={{ token }}" onsubmit="return confirm('Cancel order #{{ o.id }}? This cannot be undone.');" style="margin-left: auto;">
+            <input type="hidden" name="token" value="{{ token }}">
+            <button type="submit" style="background: #b02a37;">Cancel order</button>
+        </form>
     </div>
 </div>
 {% endfor %}

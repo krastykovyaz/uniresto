@@ -616,6 +616,22 @@ class OrderStore:
             )
             return cur.rowcount > 0
 
+    def admin_cancel_order(self, order_id: int) -> bool:
+        """The admin calling an order off (spam, a test, something the
+        canteen can't do) from the /admin/orders panel -- any order still
+        waiting on the admin or the customer. False if there's no such
+        order or it's already confirmed/cancelled. Unlike cancel_order()
+        this needs no customer token; the ADMIN_TOKEN gate is the auth.
+        The status change also kills any confirm/cancel email link already
+        sent, since those only match while awaiting_confirmation."""
+        with self._lock, self._transaction() as conn:
+            cur = conn.execute(
+                "UPDATE orders SET status = 'cancelled' WHERE id = ? "
+                "AND status IN ('pending', 'reviewing', 'awaiting_confirmation')",
+                (order_id,),
+            )
+            return cur.rowcount > 0
+
     def set_real_price(self, order_id: int, real_price: float) -> str | None:
         """Records what Restopolis actually charged (an admin-supplied
         FACT, from having placed the real reservation -- never derived or
