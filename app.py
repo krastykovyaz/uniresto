@@ -648,7 +648,7 @@ def create_app(
     @app.get("/api/restaurants/<slug>/dish-photos")
     def api_dish_photos(slug):
         get_restaurant_or_404(slug)
-        return jsonify(dish_photos().photos_for_restaurant(slug))
+        return jsonify(dish_photos().photos_visible_to(slug))
 
     # Raster-only, sniffed from the file's own bytes rather than trusted
     # from the client-sent MIME type or filename (both spoofable) -- this
@@ -2120,7 +2120,7 @@ def create_app(
         else:
             total = compute_formula_total([{"category": category, "name": name, "quantity": 1}], tier="adulte")["total"]
             price_text = f"€{total:.2f}" if total is not None else "Canteen Price"
-        photo_path = dish_photos().photos_for_restaurant(slug).get(category, {}).get(name)
+        photo_path = dish_photos().photos_visible_to(slug).get(category, {}).get(name)
         photo_file = None
         if photo_path:
             candidate = app.config["DISH_PHOTO_DIR"] / Path(photo_path).name

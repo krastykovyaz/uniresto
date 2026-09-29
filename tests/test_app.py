@@ -3542,3 +3542,45 @@ def test_other_messages_and_odd_updates_are_ignored(client, telegram):
 
 def test_the_webhook_only_accepts_post(client, telegram):
     assert client.get("/telegram/webhook", headers=telegram).status_code == 405
+
+
+# ---------------------------------------------------------------------------
+# A photo of a dish also shows on the other restaurant's menu
+# ---------------------------------------------------------------------------
+
+
+def _approve_photo_for(client, monkeypatch, slug, category, name, colour=(200, 40, 40)):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    upload = client.post(
+        f"/api/restaurants/{slug}/dish-photos",
+        data={"email": "student@uni.lu", "category": category, "name": name, "photo": (io.BytesIO(_image_bytes(colour, size=(64, 48))), "dish.png")},
+        content_type="multipart/form-data",
+    ).get_json()
+    client.post(f"/admin/dish-photos/{upload['id']}/approve", data={"token": "correct-token"})
+    return upload["photo_path"]
+
+
+def test_an_approved_photo_shows_on_the_other_restaurant_for_the_same_dish(client, monkeypatch):
+    path = _approve_photo_for(client, monkeypatch, "altius", "Entrée", "Salad'bar")
+    assert client.get("/api/restaurants/altius/dish-photos").get_json() == {"Entrée": {"Salad'bar": path}}
+    assert client.get("/api/restaurants/brasserie-johns/dish-photos").get_json() == {"Entrée": {"Salad'bar": path}}
+
+
+def test_the_other_restaurants_own_photo_is_not_overridden(client, monkeypatch):
+    shared = _approve_photo_for(client, monkeypatch, "altius", "Entrée", "Salad'bar")
+    own = _approve_photo_for(client, monkeypatch, "brasserie-johns", "Entrée", "Salad'bar", colour=(40, 40, 200))
+    assert client.get("/api/restaurants/brasserie-johns/dish-photos").get_json()["Entrée"]["Salad'bar"] == own
+    assert client.get("/api/restaurants/altius/dish-photos").get_json()["Entrée"]["Salad'bar"] == shared
+    assert own != shared
+
+
+def test_replacing_the_photo_updates_the_other_restaurant_too(client, monkeypatch):
+    _approve_photo_for(client, monkeypatch, "altius", "Entrée", "Salad'bar")
+    newer = _approve_photo_for(client, monkeypatch, "altius", "Entrée", "Salad'bar", colour=(40, 200, 40))
+    assert client.get("/api/restaurants/brasserie-johns/dish-photos").get_json()["Entrée"]["Salad'bar"] == newer
+    assert client.get(newer).status_code == 200  # the file it points at is still there
+
+
+def test_a_dish_with_no_photo_anywhere_stays_photo_less(client, monkeypatch):
+    _approve_photo_for(client, monkeypatch, "altius", "Entrée", "Salad'bar")
+    assert client.get("/api/restaurants/brasserie-johns/dish-photos").get_json().get("Dessert") is None

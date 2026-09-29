@@ -3,11 +3,17 @@ for a menu item via the food card's upload tile (see static/app.js's
 food-card-photo-input), and from then on everyone sees that photo instead
 of the generic plate illustration, on every date this exact dish reappears.
 
-Keyed by (restaurant slug, category, name) -- the same identity favorites
+Stored per (restaurant slug, category, name) -- the same identity favorites
 already use (see toggleFavorite()/isFavorite() in static/app.js). item.id
 is NOT usable as a key: it's only a stable sequential index within one
 response, re-derived fresh on every request (see
-menu_service.flatten_menu_items's own docstring)."""
+menu_service.flatten_menu_items's own docstring).
+
+The SAME dish (same category and name) is often on more than one restaurant's
+menu -- a photo taken at one is a photo of the other's too. Each photo stays
+filed under the restaurant it was submitted for (so replacing or deleting it
+there only ever touches its own file), and photos_visible_to() lets every
+other restaurant show it when it has no photo of its own for that dish."""
 
 from __future__ import annotations
 
@@ -83,5 +89,25 @@ class DishPhotoStore:
             ).fetchall()
         result: dict[str, dict[str, str]] = {}
         for category, name, photo_path in rows:
+            result.setdefault(category, {})[name] = photo_path
+        return result
+
+    def photos_visible_to(self, slug: str) -> dict[str, dict[str, str]]:
+        """What this restaurant's menu should SHOW: its own photos, plus --
+        for a dish (category + name) it has no photo of its own -- the photo
+        another restaurant has for that same dish (the most recently
+        uploaded one if several do). A restaurant's own photo always wins.
+        Read live on every call, so it follows the source photo: replace
+        it there and every restaurant showing it changes with it."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT slug, category, name, photo_path FROM dish_photos "
+                "ORDER BY (slug = ?) ASC, uploaded_at ASC",
+                (slug,),
+            ).fetchall()
+        # Ordered so a later row overwrites an earlier one: other restaurants'
+        # (oldest first, so the newest of them wins), then this restaurant's own last.
+        result: dict[str, dict[str, str]] = {}
+        for _slug, category, name, photo_path in rows:
             result.setdefault(category, {})[name] = photo_path
         return result

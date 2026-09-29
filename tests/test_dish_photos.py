@@ -53,3 +53,45 @@ def test_set_photo_returns_the_previous_path_when_replacing_one(tmp_path):
     store.set_photo("altius", "Végétarien", "Salad'bar", "/static/dish_photos/old.jpg")
     previous = store.set_photo("altius", "Végétarien", "Salad'bar", "/static/dish_photos/new.jpg")
     assert previous == "/static/dish_photos/old.jpg"
+
+
+# ---------------------------------------------------------------------------
+# The same dish on another restaurant's menu shows the photo too
+# ---------------------------------------------------------------------------
+
+
+def test_a_photo_is_visible_to_the_other_restaurant_for_the_same_dish(tmp_path):
+    store = DishPhotoStore(tmp_path / "orders.db")
+    store.set_photo("altius", "Snack à emporter", "Buddha bowl", "/static/dish_photos/a.jpg")
+    assert store.photos_visible_to("brasserie-johns") == {"Snack à emporter": {"Buddha bowl": "/static/dish_photos/a.jpg"}}
+    assert store.photos_visible_to("altius") == store.photos_for_restaurant("altius")
+
+
+def test_the_restaurants_own_photo_wins(tmp_path):
+    store = DishPhotoStore(tmp_path / "orders.db")
+    store.set_photo("altius", "Snack", "Bowl", "/static/dish_photos/altius.jpg")
+    store.set_photo("brasserie-johns", "Snack", "Bowl", "/static/dish_photos/johns.jpg")
+    assert store.photos_visible_to("brasserie-johns")["Snack"]["Bowl"] == "/static/dish_photos/johns.jpg"
+    assert store.photos_visible_to("altius")["Snack"]["Bowl"] == "/static/dish_photos/altius.jpg"
+
+
+def test_only_the_same_category_and_name_is_shared(tmp_path):
+    store = DishPhotoStore(tmp_path / "orders.db")
+    store.set_photo("altius", "Snack", "Bowl", "/static/dish_photos/a.jpg")
+    visible = store.photos_visible_to("brasserie-johns")
+    assert "Other" not in visible and visible == {"Snack": {"Bowl": "/static/dish_photos/a.jpg"}}
+    assert store.photos_visible_to("nowhere-else").get("Snack", {}).get("Different name") is None
+
+
+def test_the_newest_other_photo_is_used_when_several_restaurants_have_one(tmp_path):
+    store = DishPhotoStore(tmp_path / "orders.db")
+    store.set_photo("altius", "Snack", "Bowl", "/static/dish_photos/old.jpg")
+    store.set_photo("third", "Snack", "Bowl", "/static/dish_photos/new.jpg")
+    assert store.photos_visible_to("brasserie-johns")["Snack"]["Bowl"] == "/static/dish_photos/new.jpg"
+
+
+def test_the_shared_photo_follows_the_source_when_it_is_replaced(tmp_path):
+    store = DishPhotoStore(tmp_path / "orders.db")
+    store.set_photo("altius", "Snack", "Bowl", "/static/dish_photos/1.jpg")
+    store.set_photo("altius", "Snack", "Bowl", "/static/dish_photos/2.jpg")
+    assert store.photos_visible_to("brasserie-johns")["Snack"]["Bowl"] == "/static/dish_photos/2.jpg"
