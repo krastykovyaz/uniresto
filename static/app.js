@@ -1085,14 +1085,61 @@ function openEmailSheet(trigger) {
 // balance briefly rendered one point stale. Updates state.rewardPoints
 // itself from the response, since that's the authoritative post-award
 // total already, without needing a second round trip.
-async function claimRewardOnce(action) {
-  if (!state.registeredEmail) return;
+// Claims already settled for this University email on THIS device, so a
+// Profile visit doesn't re-ask the server (and burn its per-IP claim budget)
+// about things it already answered. "Settled" = paid, already paid, or
+// refused because someone else's number/address got there first -- only a
+// network failure is worth retrying. Keyed by identity + action + value.
+const CLAIMED_KEY = "uniresto.luni.claimed.v1";
+
+function claimedRewards() {
   try {
-    const result = await api("/api/rewards/claim", { method: "POST", body: JSON.stringify({ email: state.registeredEmail, action }) });
-    state.rewardPoints = result.points;
+    return new Set(JSON.parse(localStorage.getItem(CLAIMED_KEY) || "[]"));
   } catch {
-    /* best-effort -- never blocks the actual save this followed */
+    return new Set();
   }
+}
+
+function rememberClaimedReward(key) {
+  try {
+    const all = claimedRewards();
+    all.add(key);
+    localStorage.setItem(CLAIMED_KEY, JSON.stringify([...all]));
+  } catch {
+    /* localStorage unavailable -- the server still dedupes, this only saves a request */
+  }
+}
+
+// `value` is what the action is about -- the communication email or the phone
+// number -- and the server needs it: Luni for those only pay once per real,
+// unique value (see api_rewards_claim), so a claim without one earns nothing.
+async function claimRewardOnce(action, value = null) {
+  if (!state.registeredEmail) return;
+  const key = `${state.registeredEmail.toLowerCase()}|${action}|${(value || "").toLowerCase()}`;
+  if (claimedRewards().has(key)) return;
+  try {
+    const result = await api("/api/rewards/claim", {
+      method: "POST",
+      body: JSON.stringify({ email: state.registeredEmail, action, ...(value ? { value } : {}) }),
+    });
+    state.rewardPoints = result.points;
+    rememberClaimedReward(key);
+  } catch (err) {
+    // A 400 means this exact value can never pay (malformed) -- settled too.
+    if (err.status === 400) rememberClaimedReward(key);
+    /* anything else: best-effort -- never blocks the actual save this followed */
+  }
+}
+
+// Everything already on file that should have earned Luni: the verified
+// University email, and any communication email / phone number saved
+// before these rules (or a claim) existed. Idempotent on the server, and
+// remembered per device above, so it costs nothing once settled.
+async function claimPendingRewards() {
+  if (!state.registeredEmail) return;
+  await claimRewardOnce("university_email_verified");
+  if (state.communicationEmail) await claimRewardOnce("communication_email_added", state.communicationEmail);
+  if (state.registeredPhone) await claimRewardOnce("phone_number_added", state.registeredPhone);
 }
 
 function openPhoneSheet(trigger) {
@@ -1128,7 +1175,7 @@ function openPhoneSheet(trigger) {
     state.registeredPhone = phone;
     if (phone) {
       saveRegisteredPhone(phone);
-      await claimRewardOnce("phone_number_added");
+      await claimRewardOnce("phone_number_added", phone);
     } else {
       clearRegisteredPhone();
     }
@@ -1206,7 +1253,7 @@ function openCommunicationEmailSheet(trigger) {
     state.customerEmail = email || state.registeredEmail || "";
     if (email) {
       saveCommunicationEmail(email);
-      await claimRewardOnce("communication_email_added");
+      await claimRewardOnce("communication_email_added", email);
     } else {
       clearCommunicationEmail();
     }
@@ -2855,7 +2902,8 @@ function renderProfile() {
   // "if (state.registeredEmail)" fetch too, firing a new request on every
   // resolution forever (a real bug an earlier version of this had).
   if (state.registeredEmail) {
-    api(`/api/rewards?email=${encodeURIComponent(state.registeredEmail)}`)
+    claimPendingRewards()
+      .then(() => api(`/api/rewards?email=${encodeURIComponent(state.registeredEmail)}`))
       .then((result) => {
         state.rewardPoints = result.points;
         const countEl = rewardRow.querySelector(".profile-row-count");

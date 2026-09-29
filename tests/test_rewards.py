@@ -1,4 +1,4 @@
-from orderability_engine.rewards import RewardStore
+from orderability_engine.rewards import CLAIM_ALREADY_AWARDED, CLAIM_AWARDED, CLAIM_VALUE_ALREADY_USED, RewardStore
 
 
 def test_get_points_is_zero_for_an_unknown_email(tmp_path):
@@ -82,3 +82,33 @@ def test_award_once_is_scoped_per_email(tmp_path):
     assert store.get_points("b@uni.lu") == 0
     paid = store.award_once("b@uni.lu", "phone_number_added", 1)
     assert paid is True
+
+
+def test_balances_read_and_write_through_the_canonical_identity(tmp_path):
+    store = RewardStore(tmp_path / "orders.db")
+    store.add_points("Name+1@student.uni.lu", 4)
+    assert store.get_points("name@uni.lu") == 4
+    assert store.award_once("NAME@uni.lu", "x", 2) is True
+    assert store.award_once("name+2@uni.lu", "x", 2) is False
+
+
+def test_claim_value_pays_once_per_identity_and_once_per_value(tmp_path):
+    store = RewardStore(tmp_path / "orders.db")
+    assert store.claim_value("a@uni.lu", "phone_number_added", "621123456", 1) == CLAIM_AWARDED
+    assert store.claim_value("a@uni.lu", "phone_number_added", "621123456", 1) == CLAIM_ALREADY_AWARDED
+    assert store.claim_value("b@uni.lu", "phone_number_added", "621123456", 1) == CLAIM_VALUE_ALREADY_USED
+    assert store.get_points("a@uni.lu") == 1
+    assert store.get_points("b@uni.lu") == 0
+
+
+def test_the_same_value_can_earn_under_a_different_action(tmp_path):
+    store = RewardStore(tmp_path / "orders.db")
+    store.claim_value("a@uni.lu", "phone_number_added", "x", 1)
+    assert store.claim_value("b@uni.lu", "communication_email_added", "x", 1) == CLAIM_AWARDED
+
+
+def test_a_refused_value_leaves_no_trace(tmp_path):
+    store = RewardStore(tmp_path / "orders.db")
+    store.claim_value("a@uni.lu", "phone_number_added", "621123456", 1)
+    store.claim_value("b@uni.lu", "phone_number_added", "621123456", 1)
+    assert store.claim_value("b@uni.lu", "phone_number_added", "691999888", 1) == CLAIM_AWARDED

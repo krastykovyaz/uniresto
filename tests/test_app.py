@@ -695,32 +695,141 @@ def test_verifying_via_checkout_flow_does_not_award_the_registration_bonus(clien
     assert client.get("/api/rewards?email=checkout-only@uni.lu").get_json() == {"points": 0}
 
 
+def _claim_reward(client, action, value=None, email="student@uni.lu"):
+    body = {"email": email, "action": action}
+    if value is not None:
+        body["value"] = value
+    return client.post("/api/rewards/claim", json=body)
+
+
 def test_rewards_claim_awards_for_communication_email(client):
-    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("student@uni.lu")
-    resp = client.post("/api/rewards/claim", json={"email": "student@uni.lu", "action": "communication_email_added"})
-    body = resp.get_json()
+    body = _claim_reward(client, "communication_email_added", "me@gmail.com").get_json()
     assert body["awarded"] is True
     assert body["points"] == 1
 
 
 def test_rewards_claim_for_communication_email_only_pays_once(client):
-    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("student@uni.lu")
-    client.post("/api/rewards/claim", json={"email": "student@uni.lu", "action": "communication_email_added"})
-    resp = client.post("/api/rewards/claim", json={"email": "student@uni.lu", "action": "communication_email_added"})
-    assert resp.get_json() == {"awarded": False, "points": 1}
+    _claim_reward(client, "communication_email_added", "me@gmail.com")
+    resp = _claim_reward(client, "communication_email_added", "other@gmail.com")
+    assert resp.get_json() == {"awarded": False, "reason": "already_awarded", "points": 1}
 
 
 def test_rewards_claim_awards_for_phone_number(client):
-    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("student@uni.lu")
-    resp = client.post("/api/rewards/claim", json={"email": "student@uni.lu", "action": "phone_number_added"})
-    assert resp.get_json() == {"awarded": True, "points": 1}
+    resp = _claim_reward(client, "phone_number_added", "+352 621 123 456")
+    assert resp.get_json() == {"awarded": True, "reason": None, "points": 1}
 
 
 def test_rewards_claim_communication_email_and_phone_both_pay(client):
-    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("student@uni.lu")
-    client.post("/api/rewards/claim", json={"email": "student@uni.lu", "action": "communication_email_added"})
-    client.post("/api/rewards/claim", json={"email": "student@uni.lu", "action": "phone_number_added"})
+    _claim_reward(client, "communication_email_added", "me@gmail.com")
+    _claim_reward(client, "phone_number_added", "621123456")
     assert client.get("/api/rewards?email=student@uni.lu").get_json() == {"points": 2}
+
+
+def test_rewards_claim_needs_the_value_it_is_about(client):
+    assert _claim_reward(client, "communication_email_added").status_code == 400
+    assert _claim_reward(client, "phone_number_added").status_code == 400
+    assert client.get("/api/rewards?email=student@uni.lu").get_json() == {"points": 0}
+
+
+def test_rewards_claim_rejects_garbage_values(client):
+    assert _claim_reward(client, "communication_email_added", "not-an-email").status_code == 400
+    assert _claim_reward(client, "phone_number_added", "abc").status_code == 400
+    assert _claim_reward(client, "phone_number_added", "123").status_code == 400
+    assert _claim_reward(client, "phone_number_added", ["621123456"]).status_code == 400
+
+
+def test_a_university_address_is_not_a_communication_email(client):
+    assert _claim_reward(client, "communication_email_added", "someone@uni.lu").status_code == 400
+    assert _claim_reward(client, "communication_email_added", "someone@student.uni.lu").status_code == 400
+
+
+def _second_student(client, email="second@uni.lu"):
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified(email)
+    return email
+
+
+def test_one_phone_number_pays_only_one_account(client):
+    _claim_reward(client, "phone_number_added", "+352 621 123 456")
+    other = _second_student(client)
+    resp = _claim_reward(client, "phone_number_added", "621 123 456", email=other).get_json()
+    assert resp == {"awarded": False, "reason": "value_already_used", "points": 0}
+
+
+@pytest.mark.parametrize("variant", ["+352621123456", "00352 621 123 456", "621-123-456", "(621) 123456"])
+def test_phone_formats_are_recognised_as_the_same_number(client, variant):
+    _claim_reward(client, "phone_number_added", "+352 621 123 456")
+    other = _second_student(client)
+    assert _claim_reward(client, "phone_number_added", variant, email=other).get_json()["awarded"] is False
+
+
+@pytest.mark.parametrize("variant", ["Me@Gmail.com", "me+shop@gmail.com", "m.e@gmail.com", "me@googlemail.com"])
+def test_one_communication_email_pays_only_one_account(client, variant):
+    _claim_reward(client, "communication_email_added", "me@gmail.com")
+    other = _second_student(client)
+    resp = _claim_reward(client, "communication_email_added", variant, email=other).get_json()
+    assert resp["awarded"] is False and resp["reason"] == "value_already_used"
+
+
+def test_a_refused_duplicate_does_not_burn_the_action_for_a_real_value(client):
+    _claim_reward(client, "phone_number_added", "621123456")
+    other = _second_student(client)
+    _claim_reward(client, "phone_number_added", "621123456", email=other)
+    # Their own, different number still pays.
+    assert _claim_reward(client, "phone_number_added", "691999888", email=other).get_json()["awarded"] is True
+
+
+def test_the_university_email_bonus_can_be_claimed_once_by_a_verified_address(client):
+    assert _claim_reward(client, "university_email_verified").get_json()["awarded"] is True
+    assert _claim_reward(client, "university_email_verified").get_json()["reason"] == "already_awarded"
+    assert client.get("/api/rewards?email=student@uni.lu").get_json() == {"points": 3}
+
+
+def test_the_university_email_bonus_needs_a_verified_address(client):
+    assert _claim_reward(client, "university_email_verified", email="stranger@uni.lu").status_code == 403
+
+
+# One mailbox, many addresses: plus-tags and uni.lu / student.uni.lu are the
+# same person and must not earn (or order) twice.
+
+
+def test_plus_tagged_and_student_addresses_are_one_reward_identity(client):
+    store = client.application.config["EMAIL_VERIFICATION_STORE"]
+    for email, code in (("dupe@uni.lu", "111111"), ("dupe+2@uni.lu", "222222"), ("dupe@student.uni.lu", "333333")):
+        store.issue(email, code)
+        client.post("/api/email/verify-code", json={"email": email, "code": code})
+    assert client.get("/api/rewards?email=dupe@uni.lu").get_json() == {"points": 3}
+    assert client.get("/api/rewards?email=DUPE%2B9@student.uni.lu").get_json() == {"points": 3}
+
+
+def test_plus_tags_cannot_claim_the_contact_bonuses_again(client):
+    for email in ("dupe@uni.lu", "dupe+2@uni.lu", "dupe@student.uni.lu"):
+        client.application.config["VERIFIED_EMAIL_STORE"].mark_verified(email)
+    assert _claim_reward(client, "phone_number_added", "621111111", email="dupe@uni.lu").get_json()["awarded"] is True
+    resp = _claim_reward(client, "phone_number_added", "622222222", email="dupe+2@uni.lu").get_json()
+    assert resp["awarded"] is False and resp["reason"] == "already_awarded"
+
+
+def test_the_daily_order_limit_sees_through_plus_tags_and_the_student_domain(client):
+    payload = _order_payload([{"id": SALAD_BAR_ID, "quantity": 1}])
+    for email in ("student@uni.lu", "student+1@uni.lu"):
+        assert _post_order(client, dict(payload, reward_email=email)).status_code == 201
+    resp = _post_order(client, dict(payload, reward_email="student@student.uni.lu"))
+    assert resp.status_code == 409 and resp.get_json()["error"] == "daily_order_limit"
+
+
+def test_the_days_limit_sees_through_plus_tags(client):
+    _seed_order_on(client, "2026-09-30")
+    _seed_order_on(client, "2026-10-01")
+    resp = _post_order(client, dict(_order_payload([{"id": SALAD_BAR_ID, "quantity": 1}]), reward_email="student+x@uni.lu"))
+    assert resp.status_code == 409 and resp.get_json()["error"] == "order_days_limit"
+
+
+def test_a_courier_cannot_deliver_their_own_order_via_the_other_domain(client):
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("courier@student.uni.lu")
+    order_id = _create_basic_order(client, customer_email="courier@uni.lu")
+    _hand_off(client, order_id, courier_email="courier@student.uni.lu")
+    _mark_delivered(client, order_id, courier_email="courier@student.uni.lu")
+    assert _points(client, "courier@uni.lu") == 0
 
 
 def test_rewards_claim_rejects_an_unknown_action(client):
@@ -2584,10 +2693,7 @@ def test_quick_courier_registration_requires_a_verified_email(client):
 
 
 def test_rewards_claim_is_rate_limited(client):
-    codes = [
-        client.post("/api/rewards/claim", json={"email": "student@uni.lu", "action": "phone_number_added"}).status_code
-        for _ in range(31)
-    ]
+    codes = [_claim_reward(client, "phone_number_added", "621123456").status_code for _ in range(31)]
     assert codes == [200] * 30 + [429]
 
 

@@ -26,6 +26,7 @@ from orderability_engine.coming_soon_clicks import ComingSoonClickStore
 from orderability_engine.daily_report import DailyReportStore, start_daily_report_scheduler
 from orderability_engine.delivery_subscribers import DeliverySubscriberStore
 from orderability_engine.dish_photos import DishPhotoStore
+from orderability_engine.identity import canonical_identity, normalize_contact_email, normalize_phone
 from orderability_engine.email_verification import EmailVerificationStore
 from orderability_engine.feedback import FeedbackStore
 from orderability_engine.mailer import (
@@ -55,6 +56,8 @@ from orderability_engine.page_views import MAX_SOURCE_LENGTH, PageViewStore
 from orderability_engine.pending_dish_photos import PendingDishPhotoStore
 from orderability_engine.rate_limits import RateLimitStore
 from orderability_engine.rewards import (
+    CLAIM_ALREADY_AWARDED,
+    CLAIM_AWARDED,
     COMMUNICATION_EMAIL_ADDED,
     COURIER_NO_SHOW,
     DELIVERY_COMPLETED,
@@ -478,8 +481,8 @@ def create_app(
         # Case-insensitive only for the self-delivery check; the award keys
         # keep each address exactly as stored, matching how /api/rewards
         # and every other award look balances up.
-        customer_addresses = {(order.get(f) or "").strip().lower() for f in ("reward_email", "customer_email")}
-        if courier.lower() in customer_addresses:
+        customer_addresses = {canonical_identity(order.get(f)) for f in ("reward_email", "customer_email") if order.get(f)}
+        if canonical_identity(courier) in customer_addresses:
             return
         rewards().award_once(courier, f"{DELIVERY_COMPLETED}:{order['id']}", REWARD_POINTS[DELIVERY_COMPLETED])
         if customer:
@@ -799,10 +802,27 @@ def create_app(
     # "this one just happened", and award_once()'s per-(email, action)
     # uniqueness means the exact same request replayed any number of
     # times still only ever pays out once.
-    _CLAIMABLE_REWARD_ACTIONS = {COMMUNICATION_EMAIL_ADDED, PHONE_NUMBER_ADDED}
+    _CLAIMABLE_REWARD_ACTIONS = {UNIVERSITY_EMAIL_VERIFIED, COMMUNICATION_EMAIL_ADDED, PHONE_NUMBER_ADDED}
 
     @app.post("/api/rewards/claim")
     def api_rewards_claim():
+        """Idempotent "this just happened / is on file" claim, one action
+        per call. The client sends the actual value the action is about,
+        because Luni for a phone number or communication email must be
+        anchored to a real, unique value -- otherwise anyone could claim
+        both bonuses without ever entering either, or re-use one number
+        across many accounts:
+
+        - university_email_verified: no value; needs the address verified.
+          Also the catch-up for anyone verified before the rule existed.
+        - communication_email_added: `value` is the address (a University
+          address doesn't count -- that's the identity itself).
+        - phone_number_added: `value` is the number.
+
+        Each identity earns each action once (canonical_identity folds
+        plus-tags and uni.lu/student.uni.lu together), and a number or
+        address earns at most once ever, whoever presents it, compared
+        normalised (spaces, +352, gmail dots ...)."""
         if (limited := rate_limited_response("rewards_claim")) is not None:
             return limited
         body = request.get_json(force=True, silent=True) or {}
@@ -815,8 +835,29 @@ def create_app(
         if not verified_emails().is_verified(email):
             return jsonify({"error": "email_not_verified", "message": "Your University email must be verified first"}), 403
         _apply_expired_order_penalties()
-        newly_awarded = rewards().award_once(email, action, REWARD_POINTS[action])
-        return jsonify({"awarded": newly_awarded, "points": rewards().get_points(email)})
+
+        if action == UNIVERSITY_EMAIL_VERIFIED:
+            outcome = CLAIM_AWARDED if rewards().award_once(email, action, REWARD_POINTS[action]) else CLAIM_ALREADY_AWARDED
+        else:
+            raw_value = (body.get("value") or "").strip() if isinstance(body.get("value"), str) else ""
+            if action == COMMUNICATION_EMAIL_ADDED:
+                if not raw_value or not _is_valid_email_format(raw_value):
+                    abort(400, description="'value' must be a valid email address")
+                if _is_allowed_customer_email(raw_value):
+                    abort(400, description="'value' must be a communication address other than a University one")
+                value_key = normalize_contact_email(raw_value)
+            else:
+                value_key = normalize_phone(raw_value)
+                if value_key is None:
+                    abort(400, description="'value' must be a valid phone number")
+            outcome = rewards().claim_value(email, action, value_key, REWARD_POINTS[action])
+        return jsonify(
+            {
+                "awarded": outcome == CLAIM_AWARDED,
+                "reason": None if outcome == CLAIM_AWARDED else outcome,
+                "points": rewards().get_points(email),
+            }
+        )
 
     @app.post("/api/orderability/check")
     def api_orderability_check():
@@ -935,6 +976,9 @@ def create_app(
                 "error": "university_email_not_verified",
                 "message": "Your University email must be verified before placing an order",
             }), 403
+        # Stored as the canonical identity ("name+x@student.uni.lu" ->
+        # "name@uni.lu"): everything that limits or pays a person reads it.
+        reward_email = canonical_identity(reward_email)
         if customer_note is not None and len(customer_note) > MAX_CUSTOMER_NOTE_LENGTH:
             abort(400, description=f"'customer_note' must be at most {MAX_CUSTOMER_NOTE_LENGTH} characters")
 

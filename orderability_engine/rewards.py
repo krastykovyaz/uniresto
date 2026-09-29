@@ -24,6 +24,8 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
+from orderability_engine.identity import canonical_identity
+
 # Point values per rule (the whole rule set, as given): kept here, not
 # scattered as magic numbers through app.py, so the schedule is defined
 # in exactly one place. Action names double as award_once()'s dedup key
@@ -68,7 +70,22 @@ CREATE TABLE IF NOT EXISTS reward_awards (
     awarded_at TEXT NOT NULL,
     PRIMARY KEY (email, action)
 );
+-- A contact detail (a phone number, a communication email) that already
+-- paid out, and to whom. One row per (action, normalised value): the same
+-- number or address can never earn Luni twice, whichever identity presents it.
+CREATE TABLE IF NOT EXISTS reward_claim_values (
+    action TEXT NOT NULL,
+    value_key TEXT NOT NULL,
+    email TEXT NOT NULL,
+    claimed_at TEXT NOT NULL,
+    PRIMARY KEY (action, value_key)
+);
 """
+
+# claim_value() outcomes
+CLAIM_AWARDED = "awarded"
+CLAIM_ALREADY_AWARDED = "already_awarded"
+CLAIM_VALUE_ALREADY_USED = "value_already_used"
 
 
 class RewardStore:
@@ -91,6 +108,7 @@ class RewardStore:
             conn.close()
 
     def get_points(self, email: str) -> int:
+        email = canonical_identity(email)
         with self._connect() as conn:
             row = conn.execute("SELECT points FROM rewards WHERE email = ?", (email,)).fetchone()
         return row[0] if row else 0
@@ -110,7 +128,7 @@ class RewardStore:
         the new total. Test/maintenance helper -- app.py should never
         call this directly (see module docstring), only award_once()."""
         with self._connect() as conn:
-            return self._add_points(conn, email, delta)
+            return self._add_points(conn, canonical_identity(email), delta)
 
     def award_once(self, email: str, action: str, points: int) -> bool:
         """Credits `points` to `email` for `action`, but only the FIRST
@@ -120,7 +138,12 @@ class RewardStore:
         bookkeeping. Returns True iff this call actually just paid it.
         The dedup row and the balance change commit in ONE transaction,
         so a crash between them can never record an award that was
-        never paid (or pay one that was never recorded)."""
+        never paid (or pay one that was never recorded).
+
+        `email` is folded through canonical_identity() first, so
+        "name+x@uni.lu" and "name@student.uni.lu" all pay -- and read
+        back -- as the one person they are."""
+        email = canonical_identity(email)
         with self._connect() as conn:
             cur = conn.execute(
                 "INSERT OR IGNORE INTO reward_awards (email, action, points, awarded_at) VALUES (?, ?, ?, ?)",
@@ -130,3 +153,30 @@ class RewardStore:
                 return False
             self._add_points(conn, email, points)
             return True
+
+    def claim_value(self, email: str, action: str, value_key: str, points: int) -> str:
+        """award_once() for an action tied to a contact detail (a phone
+        number, a communication email): pays only if this identity hasn't
+        earned `action` yet AND `value_key` -- the NORMALISED value -- has
+        never earned it for anyone. Returns CLAIM_AWARDED,
+        CLAIM_ALREADY_AWARDED (this identity already has it) or
+        CLAIM_VALUE_ALREADY_USED (someone else's number/address). One
+        transaction, so the claim row and the payment stand or fall
+        together."""
+        email = canonical_identity(email)
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            if conn.execute("SELECT 1 FROM reward_awards WHERE email = ? AND action = ?", (email, action)).fetchone():
+                return CLAIM_ALREADY_AWARDED
+            cur = conn.execute(
+                "INSERT OR IGNORE INTO reward_claim_values (action, value_key, email, claimed_at) VALUES (?, ?, ?, ?)",
+                (action, value_key, email, now),
+            )
+            if cur.rowcount == 0:
+                return CLAIM_VALUE_ALREADY_USED
+            conn.execute(
+                "INSERT INTO reward_awards (email, action, points, awarded_at) VALUES (?, ?, ?, ?)",
+                (email, action, points, now),
+            )
+            self._add_points(conn, email, points)
+            return CLAIM_AWARDED

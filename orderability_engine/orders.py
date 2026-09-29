@@ -38,6 +38,7 @@ from contextlib import contextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
 
+from orderability_engine.identity import canonical_identity
 from orderability_engine.menu_service import requires_early_order
 from orderability_engine.pricing import compute_formula_total
 
@@ -386,8 +387,21 @@ class OrderStore:
         return order_id
 
     @staticmethod
+    def _identity_addresses(emails: list[str | None]) -> list[str]:
+        """Every form a client's address can be stored in: as typed
+        (lower-cased) AND its canonical identity, so "name+2@uni.lu" and
+        "name@student.uni.lu" count against the same person's limits (the
+        order's reward_email is stored canonical, see api_create_order)."""
+        found: set[str] = set()
+        for e in emails:
+            if e and e.strip():
+                found.add(e.strip().lower())
+                found.add(canonical_identity(e))
+        return sorted(found)
+
+    @staticmethod
     def _count_live_orders_for_day(conn: sqlite3.Connection, order_date: date, emails: list[str | None]) -> int:
-        addresses = sorted({e.strip().lower() for e in emails if e and e.strip()})
+        addresses = OrderStore._identity_addresses(emails)
         if not addresses:
             return 0
         marks = ",".join("?" * len(addresses))
@@ -402,7 +416,7 @@ class OrderStore:
         """Distinct order_dates (today onward) this client has non-cancelled
         orders for -- past days stop counting, or two old orders would
         block ordering forever."""
-        addresses = sorted({e.strip().lower() for e in emails if e and e.strip()})
+        addresses = OrderStore._identity_addresses(emails)
         if not addresses:
             return set()
         marks = ",".join("?" * len(addresses))
