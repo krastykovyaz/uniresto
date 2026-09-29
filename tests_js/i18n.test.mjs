@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { ALLERGEN_LABELS, CATEGORY_LABELS, DISH_NAME_LABELS, LANGUAGES, allergenLabel, categoryLabel, dishNameLabel, intlLocale, langInfo, t, translations, dishSize, dishTitle, dishTitleWithSize } from "../static/i18n.js";
 
 test("11 languages are configured: the 10 most-spoken plus Luxembourgish", () => {
@@ -410,4 +411,76 @@ test("no live menu item title still contains a size", async () => {
   for (const raw of names) {
     assert.ok(!/\d[\d.,]*\s*(g|kg|ml|cl|l)\b|\bbtl\b|Tétra|non[ -]consigné/i.test(dishTitle(raw, "fr")), `${raw} -> ${dishTitle(raw, "fr")}`);
   }
+});
+
+
+// ---------------------------------------------------------------------------
+// Dish-name translations: every fixed product is covered, in every language
+// ---------------------------------------------------------------------------
+
+const ALL_LANGS = ["en", "zh", "hi", "es", "fr", "ar", "bn", "pt", "ru", "ur", "lb"];
+const SIZE_RE = /\d[\d.,]*\s*(g|kg|ml|cl|l)\b|\bbtl\b|Tétra|non[ -]consign/i;
+
+// Brands / coined product names that are identical in every language, so they
+// have no entry on purpose (mirrors i18n.js's comment above DISH_NAME_LABELS).
+const BRAND_ONLY = new Set([
+  "Rosport Blue", "Viva", "Coca Cola", "Lët'z kola", "Rosport Pom's", "Rosport Wave",
+  "Ramborn Apple & Quince Juice", "Ramborn Apple Juice", "Ramborn Apple Soda", "Ramborn Pear Apple Juice",
+  "Nutchy", "Tasty Crunchy", "Crispy Apple", "myBento", "myBowl", "myCan", "myFrupstut", "myKit", "myMiniBowl", "myMug", "myNapkin",
+]);
+
+function fixedProductNames() {
+  const fs = readFileSync(new URL("../data/menus.json", import.meta.url), "utf-8");
+  const names = new Set();
+  (function walk(x) {
+    if (Array.isArray(x)) x.forEach(walk);
+    else if (x && typeof x === "object") {
+      if (typeof x.name === "string" && typeof x.category === "string" && /^\d\d/.test(x.category)) names.add(x.name);
+      Object.values(x).forEach(walk);
+    }
+  })(JSON.parse(fs));
+  return [...names];
+}
+
+test("every dish-name entry has all 11 languages, and French is the raw name", () => {
+  for (const [raw, labels] of Object.entries(DISH_NAME_LABELS)) {
+    assert.deepEqual(Object.keys(labels).sort(), [...ALL_LANGS].sort(), raw);
+    assert.equal(labels.fr, raw, raw);
+    for (const lang of ALL_LANGS) assert.ok(labels[lang] && labels[lang].trim().length > 0, `${raw} [${lang}]`);
+  }
+});
+
+test("every fixed product on the menu is translated, or is a brand that needs no translation", () => {
+  const missing = fixedProductNames().filter((raw) => {
+    if (DISH_NAME_LABELS[raw]) return false;
+    return !BRAND_ONLY.has(dishTitle(raw, "fr"));
+  });
+  assert.deepEqual(missing, []);
+});
+
+test("a translated title never carries the size, in any language", () => {
+  for (const raw of Object.keys(DISH_NAME_LABELS)) {
+    if (!SIZE_RE.test(raw)) continue;
+    for (const lang of ALL_LANGS) {
+      assert.ok(!SIZE_RE.test(dishTitle(raw, lang)), `${raw} [${lang}] -> ${dishTitle(raw, lang)}`);
+      assert.ok(dishTitle(raw, lang).length > 2, `${raw} [${lang}]`);
+    }
+  }
+});
+
+test("translated titles read as real words in the user's language", () => {
+  assert.equal(dishTitle("Croissant fourré 70 g", "en"), "Filled croissant");
+  assert.equal(dishTitle("Lait Luxlait BIO 0,25 l Tétra Pack (gratuit)", "ru"), "Органическое молоко Luxlait");
+  assert.equal(dishTitle("Rosport mat Menthe 0,50 l non consigné", "es"), "Rosport con menta");
+  assert.equal(dishTitle("Consigne ECOBOX (500 ml)", "fr"), "Consigne ECOBOX");
+  assert.equal(dishTitle("Consigne ECOBOX (500 ml)", "ar"), "وديعة ECOBOX");
+  assert.equal(dishTitle("Espresso double", "zh"), "双份意式浓缩");
+  // a brand-only product keeps its name in every language
+  assert.equal(dishTitle("Rosport Blue 0,50 l btl", "zh"), "Rosport Blue");
+  assert.equal(dishTitle("Coca Cola 0,20 l btl", "ar"), "Coca Cola");
+});
+
+test("the size stays available for the card body even when the title is translated", () => {
+  assert.equal(dishSize("Lait Luxlait BIO 0,25 l Tétra Pack (gratuit)"), "0,25 l Tétra Pack (gratuit)");
+  assert.equal(dishSize("Consigne ECOBOX (500 ml)"), "500 ml");
 });
