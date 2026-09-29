@@ -86,7 +86,7 @@ def test_award_once_is_scoped_per_email(tmp_path):
 
 def test_balances_read_and_write_through_the_canonical_identity(tmp_path):
     store = RewardStore(tmp_path / "orders.db")
-    store.add_points("Name+1@student.uni.lu", 4)
+    store.add_points("Name+1@uni.lu", 4)
     assert store.get_points("name@uni.lu") == 4
     assert store.award_once("NAME@uni.lu", "x", 2) is True
     assert store.award_once("name+2@uni.lu", "x", 2) is False

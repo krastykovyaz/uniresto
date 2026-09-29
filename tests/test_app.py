@@ -822,29 +822,32 @@ def test_the_university_email_bonus_needs_a_verified_address(client):
 # same person and must not earn (or order) twice.
 
 
-def test_plus_tagged_and_student_addresses_are_one_reward_identity(client):
+def test_plus_tagged_addresses_are_one_reward_identity_but_the_student_domain_is_its_own(client):
     store = client.application.config["EMAIL_VERIFICATION_STORE"]
     for email, code in (("dupe@uni.lu", "111111"), ("dupe+2@uni.lu", "222222"), ("dupe@student.uni.lu", "333333")):
         store.issue(email, code)
         client.post("/api/email/verify-code", json={"email": email, "code": code})
     assert client.get("/api/rewards?email=dupe@uni.lu").get_json() == {"points": 3}
-    assert client.get("/api/rewards?email=dupe@student.uni.lu").get_json() == {"points": 3}
     assert client.get("/api/rewards?email=dupe%2B2@uni.lu").get_json() == {"points": 3}
+    # same local part on the other domain can be a different person: its own balance
+    assert client.get("/api/rewards?email=dupe@student.uni.lu").get_json() == {"points": 3}
+    assert client.application.config["REWARD_STORE"].get_points("dupe@student.uni.lu") == 3
+    assert client.application.config["REWARD_STORE"].get_points("dupe@uni.lu") == 3
 
 
 def test_plus_tags_cannot_claim_the_contact_bonuses_again(client):
-    for email in ("dupe@uni.lu", "dupe+2@uni.lu", "dupe@student.uni.lu"):
+    for email in ("dupe@uni.lu", "dupe+2@uni.lu"):
         client.application.config["VERIFIED_EMAIL_STORE"].mark_verified(email)
     assert _claim_reward(client, "phone_number_added", "621111111", email="dupe@uni.lu").get_json()["awarded"] is True
     resp = _claim_reward(client, "phone_number_added", "622222222", email="dupe+2@uni.lu").get_json()
     assert resp["awarded"] is False and resp["reason"] == "already_awarded"
 
 
-def test_the_daily_order_limit_sees_through_plus_tags_and_the_student_domain(client):
+def test_the_daily_order_limit_sees_through_plus_tags(client):
     payload = _order_payload([{"id": SALAD_BAR_ID, "quantity": 1}])
     for email in ("student@uni.lu", "student+1@uni.lu"):
         assert _post_order(client, dict(payload, reward_email=email)).status_code == 201
-    resp = _post_order(client, dict(payload, reward_email="student@student.uni.lu"))
+    resp = _post_order(client, dict(payload, customer_email="other@gmail.com", reward_email="student+2@uni.lu"))
     assert resp.status_code == 409 and resp.get_json()["error"] == "daily_order_limit"
 
 
@@ -855,12 +858,14 @@ def test_the_days_limit_sees_through_plus_tags(client):
     assert resp.status_code == 409 and resp.get_json()["error"] == "order_days_limit"
 
 
-def test_a_courier_cannot_deliver_their_own_order_via_the_other_domain(client):
+def test_the_two_university_domains_are_different_people(client):
+    # courier@student.uni.lu is not courier@uni.lu: same local part, other mailbox
+    # (possibly another person), so delivering that order is a real delivery.
     client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("courier@student.uni.lu")
     order_id = _create_basic_order(client, customer_email="courier@uni.lu")
     _hand_off(client, order_id, courier_email="courier@student.uni.lu")
     _mark_delivered(client, order_id, courier_email="courier@student.uni.lu")
-    assert _points(client, "courier@uni.lu") == 0
+    assert _points(client, "courier@student.uni.lu") == 1
 
 
 def test_rewards_claim_rejects_an_unknown_action(client):
@@ -3709,3 +3714,63 @@ def test_an_attacker_cannot_act_as_a_verified_courier(client):
     assert resp.status_code == 403 and resp.get_json()["error"] == "email_not_verified"
     # ...and the browser that did verify it still can.
     assert client.post(f"/api/orders/{order_id}/claim", json={"courier_email": "courier@uni.lu"}).status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Medium hardening: order detail is owner-only, votes and share cards are rate limited
+# ---------------------------------------------------------------------------
+
+
+def test_an_order_can_only_be_read_by_the_browser_that_owns_it(client):
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    assert client.get(f"/api/orders/{order_id}").status_code == 200
+    stranger = client.application.test_client()
+    stranger.held_tokens_for = []
+    other = client.application.test_client()
+    other.held_tokens_for = ["courier@uni.lu"]
+    for browser in (stranger, other):
+        assert browser.get(f"/api/orders/{order_id}").status_code == 404
+    # indistinguishable from an id that doesn't exist
+    assert stranger.get(f"/api/orders/{order_id}").get_json() == stranger.get("/api/orders/99999").get_json()
+
+
+def test_belval_votes_are_rate_limited_per_client(client):
+    codes = [client.post("/api/coming-soon/click", json={"location": "Food Lab"}).status_code for _ in range(32)]
+    assert codes[:30] == [200] * 30 and codes[30:] == [429, 429]
+
+
+def test_share_card_renders_are_rate_limited_but_cached_cards_are_not(client, tmp_path):
+    main = _item(client, "Végétarien")
+    url = f"/og/dish.jpg?dish=altius&date=2026-09-24&cat={quote(main['category'])}&name={quote(main['name'])}"
+    cache = tmp_path / "og_cache"
+    for _ in range(29):  # 29 renders, each forced by emptying the cache
+        assert client.get(url).status_code == 200
+        for f in cache.glob("*.jpg"):
+            f.unlink()
+    assert client.get(url).status_code == 200  # the 30th render, left in the cache
+    assert client.get(url).status_code == 200  # a cache hit costs nothing, even with the budget spent
+    for f in cache.glob("*.jpg"):
+        f.unlink()
+    assert client.get(url).status_code == 429  # a 31st render is refused
+
+
+def test_the_share_card_cache_is_capped(client, tmp_path, monkeypatch):
+    import os
+    import time
+
+    import app as app_module
+
+    monkeypatch.setattr(app_module, "OG_CACHE_MAX_FILES", 3)
+    cache = tmp_path / "og_cache"
+    cache.mkdir()
+    for n in range(6):
+        f = cache / f"old{n}.jpg"
+        f.write_bytes(b"x")
+        recent = time.time() - 600 + n  # inside the 2-week sweep, oldest first
+        os.utime(f, (recent, recent))
+    main = _item(client, "Végétarien")
+    resp = client.get(f"/og/dish.jpg?dish=altius&date=2026-09-24&cat={quote(main['category'])}&name={quote(main['name'])}")
+    assert resp.status_code == 200
+    files = sorted(f.name for f in cache.glob("*.jpg"))
+    assert len(files) == 3
+    assert "old0.jpg" not in files and "old1.jpg" not in files and "old2.jpg" not in files

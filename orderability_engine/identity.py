@@ -6,14 +6,17 @@ smarter than string equality -- one mailbox can be several addresses:
 
 - "name+anything@uni.lu" lands in the same inbox as "name@uni.lu", so every
   plus-tagged variant passes email verification as a "new" address;
-- the University's two domains (uni.lu for staff, student.uni.lu for
-  students) share the same local part for one person.
 
-canonical_identity() folds those together; the reward balances, the
+canonical_identity() folds that together; the reward balances, the
 per-day / per-date order limits and the courier-is-not-the-customer check
 all compare on it. It can't see through genuinely different aliases
 ("first.last" vs "f.last") -- nothing here can -- but it closes the free,
 unlimited ones.
+
+uni.lu and student.uni.lu are deliberately NOT folded together: they are
+different mailboxes on different domains, and the same local part there
+can be two different people ("john.smith") -- merging them would let one
+person's orders and Luni be limited by, or paid to, somebody else.
 
 The same goes for the two contact details that earn Luni. A phone number or
 communication email may pay out once EVER, across all identities, so
@@ -23,9 +26,6 @@ remembered.
 
 from __future__ import annotations
 
-# Domains that are aliases of one another: everything on the left is the
-# same University identity as the same local part on the right.
-_DOMAIN_ALIASES = {"student.uni.lu": "uni.lu"}
 _GMAIL_DOMAINS = {"gmail.com", "googlemail.com"}
 _LUXEMBOURG_PREFIX = "352"
 MIN_PHONE_DIGITS = 6
@@ -33,14 +33,13 @@ MAX_PHONE_DIGITS = 15
 
 
 def canonical_identity(email: str | None) -> str:
-    """Lower-cased, plus-tag removed, University domains folded together.
-    Anything that isn't a plain local@domain comes back just lower-cased."""
+    """Lower-cased, plus-tag removed. Anything that isn't a plain local@domain comes back just lower-cased."""
     value = (email or "").strip().lower()
     if value.count("@") != 1:
         return value
     local, domain = value.split("@")
     local = local.split("+", 1)[0]
-    return f"{local}@{_DOMAIN_ALIASES.get(domain, domain)}"
+    return f"{local}@{domain}"
 
 
 def normalize_contact_email(email: str | None) -> str:

@@ -20,7 +20,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
-from flask import Flask, abort, jsonify, redirect, render_template, request, send_from_directory, url_for
+from flask import Flask, abort, jsonify, make_response, redirect, render_template, request, send_from_directory, url_for
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from orderability_engine.cache import OrderabilityCache
@@ -112,6 +112,8 @@ ADMIN_LOOKAHEAD_DAYS = 10
 # scoped to (student and staff/general uni.lu accounts) -- not derived
 # from any Restopolis data, this is OUR OWN validation rule.
 ALLOWED_EMAIL_DOMAINS = ("@uni.lu", "@student.uni.lu")
+# Most cached dish share cards kept on disk (see _og_image_file).
+OG_CACHE_MAX_FILES = 1000
 
 # Open Graph / Twitter Card preview text (Part 70), one per language static/
 # i18n.js's LANGUAGES list offers. The title reuses that file's own
@@ -408,6 +410,14 @@ def create_app(
             return {}
         return {str(k).strip().lower(): v for k, v in data.items()}
 
+    def _proven_identities() -> set:
+        """Canonical identities this request holds a valid token for."""
+        return {
+            canonical_identity(email)
+            for email, token in _presented_tokens().items()
+            if verified_emails().token_valid(email, token)
+        }
+
     def _token_payload(verified: bool, email: str) -> dict:
         return {"token": verified_emails().issue_token(email)} if verified else {}
 
@@ -460,6 +470,12 @@ def create_app(
         "send_code": (20, 3600),
         "rewards_read": (300, 3600),  # Profile re-reads the balance on every visit
         "rewards_claim": (30, 3600),
+        # Belval "which restaurant first" votes: a person taps once, so this
+        # is generous even for a shared campus NAT, yet stops a script
+        # from stuffing the count.
+        "coming_soon_click": (30, 3600),
+        # Only cache MISSES cost anything (a 1200x630 render); a hit is a file read.
+        "og_render": (30, 3600),
     }
 
     def within_rate_limit(bucket: str, suffix: str = "") -> tuple[bool, int]:
@@ -1120,12 +1136,13 @@ def create_app(
         re-fetches each order's current, authoritative record from here
         rather than trusting anything cached in the browser."""
         order = store().get_order(order_id)
-        if order is None:
+        # Order ids are sequential, so only the person the order belongs to
+        # (a browser holding the token for its University address) may read
+        # it; anyone else gets the same 404 as for an id that doesn't exist.
+        if order is None or not order.get("reward_email") or canonical_identity(order["reward_email"]) not in _proven_identities():
             abort(404, description=f"No order with id {order_id}")
-        # Unauthenticated, and order ids are sequential -- anyone could
-        # walk /api/orders/1..N. Order History never reads these fields
-        # (the customer already knows their own email/phone), so strip
-        # every contact detail, same treatment as api_delivery_orders.
+        # Even the owner never needs the contact details back (they know
+        # their own email/phone), so strip them, same as api_delivery_orders.
         for field in PRIVATE_ORDER_FIELDS:
             order.pop(field, None)
         return jsonify(order)
@@ -1497,6 +1514,8 @@ def create_app(
         either way -- this is a best-effort signal, not something that
         should ever block or error out the "opening soon" toast it fires
         alongside."""
+        if (limited := rate_limited_response("coming_soon_click")) is not None:
+            return limited
         body = request.get_json(force=True, silent=True) or {}
         location = (body.get("location") or "").strip()
         if location not in COMING_SOON_LOCATIONS:
@@ -2154,6 +2173,8 @@ def create_app(
         target = cache_dir / f"{key}.jpg"
         if target.is_file():
             return target
+        if (limited := rate_limited_response("og_render")) is not None:
+            abort(make_response(*limited))
         cache_dir.mkdir(parents=True, exist_ok=True)
         english_title = split_dish_size(dish_name_label(name, "en"))[0]
         png = render_dish_card(
@@ -2169,10 +2190,21 @@ def create_app(
         tmp.write_bytes(png)
         tmp.replace(target)
         cutoff = time.time() - 14 * 86400
+        cards = []
         for old in cache_dir.glob("*.jpg"):
             try:
-                if old.stat().st_mtime < cutoff:
+                mtime = old.stat().st_mtime
+                if mtime < cutoff:
                     old.unlink()
+                else:
+                    cards.append((mtime, old))
+            except OSError:
+                pass
+        # Hard cap on top of the age sweep, so the folder can't grow without
+        # bound between sweeps: oldest cards go first.
+        for _, old in sorted(cards)[: max(0, len(cards) - OG_CACHE_MAX_FILES)]:
+            try:
+                old.unlink()
             except OSError:
                 pass
         return target
