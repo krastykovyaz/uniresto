@@ -915,6 +915,7 @@ def test_create_order_success_recalculates_server_side(client):
             "items": [{"id": BRETZEL_ID, "quantity": 2}],
             "delivery_location": "Office 4.150",
             "customer_email": "student@uni.lu",
+            "reward_email": _uni_email_for("student@uni.lu"),
         },
     )
     assert resp.status_code == 201
@@ -933,7 +934,7 @@ def test_create_order_ignores_any_price_client_tries_to_send(client):
     resp = client.post(
         "/api/orders",
         json={
-            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu"},
+            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu", "reward_email": _uni_email_for("student@uni.lu")},
     )
     body = resp.get_json()
     assert body["items"][0]["price"] is None
@@ -949,6 +950,7 @@ def test_create_order_with_uni_lu_email_sends_confirmation(client):
                 "date": "2026-09-24",
                 "items": [{"id": SALAD_BAR_ID, "quantity": 1}],
                 "customer_email": "student@uni.lu",
+                "reward_email": _uni_email_for("student@uni.lu"),
             },
         )
     assert resp.status_code == 201
@@ -970,6 +972,7 @@ def test_create_order_with_student_uni_lu_email_is_also_allowed(client):
                 "date": "2026-09-24",
                 "items": [{"id": SALAD_BAR_ID, "quantity": 1}],
                 "customer_email": "student@student.uni.lu",
+                "reward_email": _uni_email_for("student@student.uni.lu"),
             },
         )
     assert resp.status_code == 201
@@ -990,6 +993,7 @@ def test_create_order_with_non_uni_lu_email_is_allowed(client):
                 "date": "2026-09-24",
                 "items": [{"id": SALAD_BAR_ID, "quantity": 1}],
                 "customer_email": "student@gmail.com",
+                "reward_email": _uni_email_for("student@gmail.com"),
             },
         )
     assert resp.status_code == 201
@@ -1006,6 +1010,7 @@ def test_create_order_with_malformed_email_is_400(client):
             "date": "2026-09-24",
             "items": [{"id": SALAD_BAR_ID, "quantity": 1}],
             "customer_email": "not-an-email@uni.lu@uni.lu",
+            "reward_email": _uni_email_for("not-an-email@uni.lu@uni.lu"),
         },
     )
     assert resp.status_code == 400
@@ -1021,6 +1026,7 @@ def test_create_order_persists_customer_note(client):
             "items": [{"id": SALAD_BAR_ID, "quantity": 1}],
             "customer_note": "no onion, please",
             "customer_email": "student@uni.lu",
+            "reward_email": _uni_email_for("student@uni.lu"),
         },
     )
     assert resp.status_code == 201
@@ -1037,8 +1043,9 @@ def test_create_order_with_overly_long_note_is_400(client):
             "restaurant": "altius",
             "date": "2026-09-24",
             "items": [{"id": SALAD_BAR_ID, "quantity": 1}],
-            "customer_note": "x" * 501,
+            "customer_note": "x" * 201,
             "customer_email": "student@uni.lu",
+            "reward_email": "student@uni.lu",
         },
     )
     assert resp.status_code == 400
@@ -1070,6 +1077,7 @@ def test_create_order_still_succeeds_even_when_sending_the_email_fails(client):
                 "date": "2026-09-24",
                 "items": [{"id": SALAD_BAR_ID, "quantity": 1}],
                 "customer_email": "student@uni.lu",
+                "reward_email": _uni_email_for("student@uni.lu"),
             },
         )
     assert resp.status_code == 201
@@ -1082,7 +1090,7 @@ def test_create_order_for_unavailable_date_is_409(client):
     resp = client.post(
         "/api/orders",
         json={
-            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-26", "items": [{"id": 0, "quantity": 1}], "customer_email": "student@uni.lu"},  # no_menu
+            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-26", "items": [{"id": 0, "quantity": 1}], "customer_email": "student@uni.lu", "reward_email": _uni_email_for("student@uni.lu")},  # no_menu
     )
     assert resp.status_code == 409
 
@@ -1107,6 +1115,7 @@ def test_create_order_after_our_deadline_is_409_even_though_restopolis_still_say
                 "date": "2026-09-24",
                 "items": [{"id": SALAD_BAR_ID, "quantity": 1}],
                 "customer_email": "student@uni.lu",
+                "reward_email": _uni_email_for("student@uni.lu"),
             },
         )
     assert resp.status_code == 409
@@ -1170,7 +1179,7 @@ def test_create_order_rejects_early_cutoff_item_once_0800_has_passed(tmp_path, a
             resp = late_client.post(
                 "/api/orders",
                 json={
-            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu"},
+            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu", "reward_email": _uni_email_for("student@uni.lu")},
             )
     assert resp.status_code == 409
     assert resp.get_json()["error"] == "early_cutoff_passed"
@@ -1183,7 +1192,7 @@ def test_create_order_allows_early_cutoff_item_before_0800(tmp_path, altius_html
             resp = early_client.post(
                 "/api/orders",
                 json={
-            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu"},
+            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu", "reward_email": _uni_email_for("student@uni.lu")},
             )
     assert resp.status_code == 201
 
@@ -1194,7 +1203,7 @@ def test_quote_rejects_early_cutoff_item_once_0800_has_passed(tmp_path, altius_h
         with patch("orderability_engine.menu_service.requires_early_order", return_value=True):
             resp = late_client.post(
                 "/api/orders/quote",
-                json={"restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu"},
+                json={"restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu", "reward_email": _uni_email_for("student@uni.lu")},
             )
     assert resp.status_code == 409
     assert resp.get_json()["error"] == "early_cutoff_passed"
@@ -1219,6 +1228,7 @@ def test_create_order_without_delivery_location_is_400(client):
             "date": "2026-09-24",
             "items": [{"id": SALAD_BAR_ID, "quantity": 1}],
             "customer_email": "student@uni.lu",
+            "reward_email": _uni_email_for("student@uni.lu"),
         },
     )
     assert resp.status_code == 400
@@ -1233,6 +1243,7 @@ def test_create_order_with_blank_delivery_location_is_400(client):
             "date": "2026-09-24",
             "items": [{"id": SALAD_BAR_ID, "quantity": 1}],
             "customer_email": "student@uni.lu",
+            "reward_email": _uni_email_for("student@uni.lu"),
             "delivery_location": "   ",
         },
     )
@@ -1243,7 +1254,7 @@ def test_create_order_with_invalid_item_id_is_400(client):
     resp = client.post(
         "/api/orders",
         json={
-            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": 999999, "quantity": 1}], "customer_email": "student@uni.lu"},
+            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": 999999, "quantity": 1}], "customer_email": "student@uni.lu", "reward_email": _uni_email_for("student@uni.lu")},
     )
     assert resp.status_code == 400
 
@@ -1252,7 +1263,7 @@ def test_get_order_by_id_returns_the_confirmed_order(client):
     create_resp = client.post(
         "/api/orders",
         json={
-            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": BRETZEL_ID, "quantity": 2}], "customer_email": "student@uni.lu"},
+            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": BRETZEL_ID, "quantity": 2}], "customer_email": "student@uni.lu", "reward_email": _uni_email_for("student@uni.lu")},
     )
     order_id = create_resp.get_json()["id"]
 
@@ -2038,7 +2049,7 @@ def test_create_order_notifies_every_registered_courier(client):
         resp = client.post(
             "/api/orders",
             json={
-            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu"},
+            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu", "reward_email": _uni_email_for("student@uni.lu")},
         )
     assert resp.status_code == 201
     mock_notify.assert_called_once()
@@ -2053,7 +2064,7 @@ def test_create_order_with_no_registered_couriers_notifies_no_one(client):
         client.post(
             "/api/orders",
             json={
-            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu"},
+            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu", "reward_email": _uni_email_for("student@uni.lu")},
         )
     mock_notify.assert_not_called()
 
@@ -2071,7 +2082,7 @@ def test_create_order_still_succeeds_when_courier_notification_fails(client):
         resp = client.post(
             "/api/orders",
             json={
-            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu"},
+            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu", "reward_email": _uni_email_for("student@uni.lu")},
         )
     assert resp.status_code == 201
 
@@ -2081,7 +2092,14 @@ def test_create_order_still_succeeds_when_courier_notification_fails(client):
 # ---------------------------------------------------------------------------
 
 
-def _create_basic_order(client, customer_email="student@uni.lu", customer_note=None, delivery_location="Building A — Room 1.01"):
+def _uni_email_for(customer_email):
+    """Orders now belong to a verified University email (reward_email).
+    Tests that order with a uni.lu customer_email are their own student;
+    anything else (a personal address) belongs to student@uni.lu."""
+    return customer_email if customer_email and customer_email.lower().endswith("uni.lu") else "student@uni.lu"
+
+
+def _create_basic_order(client, customer_email="student@uni.lu", customer_note=None, delivery_location="Building A — Room 1.01", reward_email=None):
     payload = {"restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}]}
     if delivery_location:
         payload["delivery_location"] = delivery_location
@@ -2095,6 +2113,9 @@ def _create_basic_order(client, customer_email="student@uni.lu", customer_note=N
         # verification itself (see test_order_creation_requires_a_
         # verified_email below for that).
         client.application.config["VERIFIED_EMAIL_STORE"].mark_verified(customer_email)
+    reward_email = reward_email or _uni_email_for(customer_email)
+    payload["reward_email"] = reward_email
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified(reward_email)
     if customer_note:
         payload["customer_note"] = customer_note
     with patch("app.send_admin_notification", return_value=(True, None)):
@@ -2121,7 +2142,7 @@ def test_create_order_pings_the_admin_via_telegram(client):
         resp = client.post(
             "/api/orders",
             json={
-            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu"},
+            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu", "reward_email": _uni_email_for("student@uni.lu")},
         )
     assert resp.status_code == 201
     mock_notify.assert_called_once()
@@ -2135,7 +2156,7 @@ def test_create_order_passes_a_mark_reviewing_url_when_admin_token_is_set(client
         resp = client.post(
             "/api/orders",
             json={
-            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu"},
+            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu", "reward_email": _uni_email_for("student@uni.lu")},
         )
     order_id = resp.get_json()["id"]
     mark_reviewing_url = mock_notify.call_args.kwargs["mark_reviewing_url"]
@@ -2151,7 +2172,7 @@ def test_create_order_passes_a_restopolis_url_for_the_ordered_restaurant(client)
         client.post(
             "/api/orders",
             json={
-            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu"},
+            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu", "reward_email": _uni_email_for("student@uni.lu")},
         )
     restopolis_url = mock_notify.call_args.kwargs["restopolis_url"]
     assert restopolis_url is not None
@@ -2165,7 +2186,7 @@ def test_create_order_mark_reviewing_url_is_none_without_admin_token(client):
         client.post(
             "/api/orders",
             json={
-            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu"},
+            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu", "reward_email": _uni_email_for("student@uni.lu")},
         )
     assert mock_notify.call_args.kwargs["mark_reviewing_url"] is None
 
@@ -2177,7 +2198,7 @@ def test_create_order_still_succeeds_when_telegram_notify_fails(client):
         resp = client.post(
             "/api/orders",
             json={
-            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu"},
+            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24", "items": [{"id": SALAD_BAR_ID, "quantity": 1}], "customer_email": "student@uni.lu", "reward_email": _uni_email_for("student@uni.lu")},
         )
     assert resp.status_code == 201
 
@@ -2517,6 +2538,7 @@ def _create_order_with_reward_email(client, customer_email, reward_email):
         "customer_email": customer_email,
         "reward_email": reward_email,
     }
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified(reward_email)
     with patch("app.send_admin_notification", return_value=(True, None)):
         return client.post("/api/orders", json=payload).get_json()["id"]
 
@@ -2527,14 +2549,6 @@ def test_order_luni_goes_to_the_university_email_not_the_communication_email(cli
     _mark_delivered(client, order_id)
     assert _points(client, "student@uni.lu") == 1
     assert client.application.config["REWARD_STORE"].get_points("me@gmail.com") == 0
-
-
-def test_an_unverified_reward_email_is_ignored(client):
-    order_id = _create_order_with_reward_email(client, "me@gmail.com", "stranger@uni.lu")
-    _hand_off(client, order_id)
-    _mark_delivered(client, order_id)
-    assert _points(client, "stranger@uni.lu") == 0
-    assert client.application.config["REWARD_STORE"].get_points("me@gmail.com") == 1
 
 
 def test_courier_delivering_to_their_own_reward_email_earns_nothing(client):
@@ -2697,12 +2711,14 @@ def _order_payload(items, customer_email="student@uni.lu", date="2026-09-24", **
         "items": items,
         "delivery_location": "Building A — Room 1.01",
         "customer_email": customer_email,
+        "reward_email": _uni_email_for(customer_email),
         **extra,
     }
 
 
 def _post_order(client, payload):
     client.application.config["VERIFIED_EMAIL_STORE"].mark_verified(payload["customer_email"])
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified(payload["reward_email"])
     with patch("app.send_admin_notification", return_value=(True, None)):
         return client.post("/api/orders", json=payload)
 
@@ -2743,7 +2759,7 @@ def test_the_daily_limit_is_per_client_not_global(client):
     payload = _order_payload([{"id": SALAD_BAR_ID, "quantity": 1}])
     for _ in range(2):
         _post_order(client, payload)
-    other = dict(payload, customer_email="courier@uni.lu")
+    other = dict(payload, customer_email="courier@uni.lu", reward_email="courier@uni.lu")
     assert _post_order(client, other).status_code == 201
 
 
@@ -2790,7 +2806,6 @@ def test_a_refused_order_sends_no_notifications(client):
     payload = _order_payload([{"id": SALAD_BAR_ID, "quantity": 1}])
     for _ in range(2):
         _post_order(client, payload)
-    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified(payload["customer_email"])
     with patch("app.send_admin_notification") as admin, patch("app.send_order_confirmation") as confirmation:
         assert client.post("/api/orders", json=payload).status_code == 409
     admin.assert_not_called()
@@ -2801,3 +2816,66 @@ def _order_count(client, order_date):
     return client.application.config["ORDER_STORE"].count_live_orders_for_day(
         datetime.date.fromisoformat(order_date), ["student@uni.lu"]
     )
+
+
+# ---------------------------------------------------------------------------
+# Ordering needs a verified University email; note/feedback length caps
+# ---------------------------------------------------------------------------
+
+
+def _bare_order(**overrides):
+    payload = {
+        "restaurant": "altius",
+        "date": "2026-09-24",
+        "items": [{"id": SALAD_BAR_ID, "quantity": 1}],
+        "delivery_location": "Building A — Room 1.01",
+        "customer_email": "student@uni.lu",
+        "reward_email": "student@uni.lu",
+    }
+    payload.update(overrides)
+    return {k: v for k, v in payload.items() if v is not None}
+
+
+def test_order_without_a_university_email_is_refused(client):
+    with patch("app.send_admin_notification") as admin:
+        resp = client.post("/api/orders", json=_bare_order(reward_email=None))
+    assert resp.status_code == 403
+    assert resp.get_json()["error"] == "university_email_required"
+    admin.assert_not_called()
+
+
+def test_order_with_an_unverified_university_email_is_refused(client):
+    resp = client.post("/api/orders", json=_bare_order(reward_email="never-verified@uni.lu"))
+    assert resp.status_code == 403
+    assert resp.get_json()["error"] == "university_email_not_verified"
+
+
+def test_order_with_a_non_university_reward_email_is_refused(client):
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("me@gmail.com")
+    resp = client.post("/api/orders", json=_bare_order(reward_email="me@gmail.com"))
+    assert resp.status_code == 400
+
+
+def test_a_verified_personal_customer_email_alone_is_not_enough(client):
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("throwaway@passinbox.com")
+    resp = client.post("/api/orders", json=_bare_order(customer_email="throwaway@passinbox.com", reward_email=None))
+    assert resp.status_code == 403
+
+
+def test_personal_notification_email_still_works_with_a_university_email(client):
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("me@gmail.com")
+    with patch("app.send_admin_notification", return_value=(True, None)):
+        resp = client.post("/api/orders", json=_bare_order(customer_email="me@gmail.com"))
+    assert resp.status_code == 201
+
+
+def test_customer_note_of_200_characters_is_allowed_and_201_is_not(client):
+    with patch("app.send_admin_notification", return_value=(True, None)):
+        assert client.post("/api/orders", json=_bare_order(customer_note="x" * 200)).status_code == 201
+    assert client.post("/api/orders", json=_bare_order(customer_note="x" * 201)).status_code == 400
+
+
+def test_feedback_of_500_characters_is_allowed_and_501_is_not(client):
+    with patch("app.send_feedback_notification"):
+        assert client.post("/api/feedback", json={"message": "x" * 500}).status_code == 200
+        assert client.post("/api/feedback", json={"message": "x" * 501}).status_code == 400

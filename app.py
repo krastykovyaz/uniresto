@@ -190,6 +190,8 @@ def _is_valid_email_format(email: str) -> bool:
 PRIVATE_ORDER_FIELDS = ("customer_email", "customer_phone", "courier_email", "courier_lang", "reward_email")
 
 
+MAX_CUSTOMER_NOTE_LENGTH = 200
+MAX_FEEDBACK_LENGTH = 500
 DELIVERY_LIST_DAYS = 14
 
 
@@ -859,15 +861,12 @@ def create_app(
         # missing/unrecognized, so mailer.py can tell "genuinely unknown"
         # apart from "really is English".
         customer_lang = _normalize_lang_arg(body.get("lang"))
-        # Optional: the student's verified University email (Profile's
-        # state.registeredEmail). customer_email defaults to the
-        # Communication Email, often a personal address, but Luni balances
-        # are only ever read by University email -- so this is where the
-        # order's delivery-time Luni goes. Silently dropped unless it's a
-        # verified uni.lu address; it never affects the order itself.
+        # Required: the student's own verified University email (Profile's
+        # state.registeredEmail). This is who the order belongs to -- it's
+        # what the daily order limit, the Luni credit and the abuse trail
+        # all key on -- because customer_email above is only where mail is
+        # sent, and can be any throwaway address that can receive a code.
         reward_email = (body.get("reward_email") or "").strip() or None
-        if reward_email and not (_is_allowed_customer_email(reward_email) and verified_emails().is_verified(reward_email)):
-            reward_email = None
 
         if not slug or not date_str or not selection:
             abort(400, description="Body must include 'restaurant', 'date', and a non-empty 'items' list of {id, quantity}")
@@ -886,8 +885,20 @@ def create_app(
         # a customer is worthless if it was never real to begin with.
         if not verified_emails().is_verified(customer_email):
             return jsonify({"error": "email_not_verified", "message": "'customer_email' must be verified first"}), 403
-        if customer_note is not None and len(customer_note) > 500:
-            abort(400, description="'customer_note' must be at most 500 characters")
+        if not reward_email:
+            return jsonify({
+                "error": "university_email_required",
+                "message": "Verify your University email in Profile before placing an order",
+            }), 403
+        if not _is_allowed_customer_email(reward_email):
+            abort(400, description=f"'reward_email' must be a valid address ending in {' or '.join(ALLOWED_EMAIL_DOMAINS)}")
+        if not verified_emails().is_verified(reward_email):
+            return jsonify({
+                "error": "university_email_not_verified",
+                "message": "Your University email must be verified before placing an order",
+            }), 403
+        if customer_note is not None and len(customer_note) > MAX_CUSTOMER_NOTE_LENGTH:
+            abort(400, description=f"'customer_note' must be at most {MAX_CUSTOMER_NOTE_LENGTH} characters")
 
         restaurant = get_restaurant_or_404(slug)
         d = parse_date_arg(date_str)
@@ -1422,8 +1433,8 @@ def create_app(
         contact_email = (body.get("email") or "").strip() or None
         if not message:
             abort(400, description="'message' must not be empty")
-        if len(message) > 2000:
-            abort(400, description="'message' must be at most 2000 characters")
+        if len(message) > MAX_FEEDBACK_LENGTH:
+            abort(400, description=f"'message' must be at most {MAX_FEEDBACK_LENGTH} characters")
         if contact_email is not None and not _is_valid_email_format(contact_email):
             abort(400, description="'email' is not a valid email address")
         feedback().record(message, contact_email)

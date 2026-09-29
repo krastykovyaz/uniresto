@@ -522,6 +522,8 @@ async function api(path, options) {
     const message =
       resp.status === 429 && body && body.error === "rate_limited"
         ? tr("tooManyRequests")
+        : body && (body.error === "university_email_required" || body.error === "university_email_not_verified")
+        ? tr("orderNeedsUniversityEmail")
         : body && body.error === "daily_order_limit"
         ? tr("dailyOrderLimit", { n: body.max_orders })
         : (body && (body.message || body.reason || body.error)) || `Request failed (${resp.status})`;
@@ -2933,7 +2935,7 @@ function openFeedbackSheet(trigger) {
         <button type="button" class="filter-close" aria-label="${escapeHtml(tr("back"))}">${icon("close", 20)}</button>
       </div>
       <div class="field-block">
-        <textarea class="feedback-sheet-input" rows="4" maxlength="2000" placeholder="${escapeHtml(tr("feedbackPlaceholder"))}"></textarea>
+        <textarea class="feedback-sheet-input" rows="4" maxlength="500" placeholder="${escapeHtml(tr("feedbackPlaceholder"))}"></textarea>
       </div>
       <button type="button" class="primary-button feedback-sheet-send" disabled>${escapeHtml(tr("feedbackSend"))}</button>
     </div>
@@ -4512,7 +4514,7 @@ function buildOrderCommentField() {
   const block = el(`
     <div class="field-block">
       <label for="order-comment">${escapeHtml(tr("orderComment"))}</label>
-      <textarea id="order-comment" rows="2" maxlength="500" placeholder="${escapeHtml(tr("orderCommentPlaceholder"))}">${escapeHtml(state.orderComment)}</textarea>
+      <textarea id="order-comment" rows="2" maxlength="200" placeholder="${escapeHtml(tr("orderCommentPlaceholder"))}">${escapeHtml(state.orderComment)}</textarea>
     </div>
   `);
   block.querySelector("textarea").addEventListener("input", (e) => {
@@ -4692,6 +4694,14 @@ async function confirmOrder(triggerBtn) {
     showToast(tr("invalidPhoneNumber"));
     return;
   }
+  // The order belongs to the student's verified University email -- the
+  // email above is only where notifications go. Nothing to send without
+  // one, so send them to Profile to verify it (the cart is saved).
+  if (!state.registeredEmail) {
+    showToast(tr("orderNeedsUniversityEmail"));
+    goTo("profile");
+    return;
+  }
   // Part 89: Building and Delivery location are no longer optional -- a
   // courier with no idea which building (let alone which office/room)
   // to bring food to is exactly the ambiguity that left real couriers
@@ -4733,9 +4743,9 @@ async function submitOrder(email, phone) {
         items: state.selection.map((s) => ({ id: s.menuItemId, quantity: s.quantity })),
         delivery_location: combinedDeliveryLocation() || null,
         customer_email: email,
-        // Luni balances are read by University email, and customer_email
-        // above is usually the Communication Email -- see api_create_order.
-        reward_email: state.registeredEmail || null,
+        // Who the order belongs to (limits, Luni) -- customer_email above
+        // is only where mail goes. Required, see api_create_order.
+        reward_email: state.registeredEmail,
         customer_phone: phone || null,
         customer_note: state.orderComment.trim() || null,
         // Part 72: shown alongside the courier's own language on each
@@ -4758,7 +4768,8 @@ async function submitOrder(email, phone) {
     goTo("confirmation");
   } catch (err) {
     showToast(err.message);
-    goTo("review");
+    const needsUniEmail = err.body && (err.body.error === "university_email_required" || err.body.error === "university_email_not_verified");
+    goTo(needsUniEmail ? "profile" : "review");
   }
 }
 
