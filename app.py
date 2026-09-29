@@ -1021,8 +1021,13 @@ def create_app(
         # telegram_notify.py's send_admin_notification docstring for why
         # it can only go this far, not to the exact date/items).
         restopolis_url = _restopolis_url_for(restaurant.code)
+        cancel_url = f"{request.host_url}admin/orders/{order['id']}/cancel?token={admin_token}" if admin_token else None
         send_admin_notification(
-            order, admin_url=admin_url, mark_reviewing_url=mark_reviewing_url, restopolis_url=restopolis_url
+            order,
+            admin_url=admin_url,
+            mark_reviewing_url=mark_reviewing_url,
+            restopolis_url=restopolis_url,
+            cancel_url=cancel_url,
         )
 
         # Part 52+: emails every registered courier the moment the order
@@ -1842,6 +1847,33 @@ def create_app(
             abort(404)
         store().mark_reviewing(order_id)
         return redirect(f"/admin/orders?token={request.args.get('token', '')}")
+
+    @app.get("/admin/orders/<int:order_id>/cancel")
+    def admin_cancel_order_page(order_id):
+        """The Telegram "Remove this order" button (a plain URL, so it can
+        only GET): asks first instead of cancelling, so a link preview or
+        a stray tap never removes an order -- the button on this page is
+        what POSTs."""
+        if not _is_admin_authorized():
+            abort(404)
+        order = store().get_order(order_id)
+        if order is None or order["status"] not in ("pending", "reviewing", "awaiting_confirmation"):
+            return render_template(
+                "order_action.html",
+                icon="⚠️",
+                title="This order can't be removed anymore",
+                message="It doesn't exist, or it's already confirmed or cancelled.",
+            )
+        return render_template(
+            "order_action.html",
+            icon="🗑",
+            title=f"Remove order #{order_id}?",
+            message=f"{order['restaurant_name']} · {order['order_date']} · {sum(i['quantity'] for i in order['items'])} portions. This can't be undone.",
+            form_action=f"/admin/orders/{order_id}/cancel",
+            form_fields={"token": request.args.get("token", "")},
+            form_button="Remove order",
+            form_danger=True,
+        )
 
     @app.post("/admin/orders/<int:order_id>/cancel")
     def admin_cancel_order(order_id):

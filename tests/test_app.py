@@ -3096,12 +3096,45 @@ def test_admin_cancel_needs_the_token(client, monkeypatch):
     assert _admin_status(client, order_id) == "pending"
 
 
-def test_admin_cancel_is_post_only(client, monkeypatch):
-    # A link that merely gets opened (a preview, a scanner) must not cancel.
+def test_opening_the_cancel_link_only_asks_it_does_not_cancel(client, monkeypatch):
+    # The Telegram button is a plain URL (GET): a preview or stray tap must
+    # not remove the order -- only the page's own POST button does.
     monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
     order_id = _create_basic_order(client)
-    assert client.get(f"/admin/orders/{order_id}/cancel?token=correct-token").status_code == 405
+    resp = client.get(f"/admin/orders/{order_id}/cancel?token=correct-token")
+    assert resp.status_code == 200
+    assert b'method="post"' in resp.data and b"Remove order" in resp.data
     assert _admin_status(client, order_id) == "pending"
+
+
+def test_the_cancel_page_needs_the_token(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    order_id = _create_basic_order(client)
+    assert client.get(f"/admin/orders/{order_id}/cancel").status_code == 404
+    assert client.get(f"/admin/orders/{order_id}/cancel?token=wrong").status_code == 404
+
+
+def test_the_cancel_page_for_a_finished_order_says_so(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    order_id = _create_basic_order(client)
+    _confirm(client, order_id)
+    resp = client.get(f"/admin/orders/{order_id}/cancel?token=correct-token")
+    assert b"can&#39;t be removed anymore" in resp.data or b"can't be removed anymore" in resp.data
+    assert b'method="post"' not in resp.data
+
+
+def test_the_new_order_telegram_ping_carries_a_cancel_link(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    with patch("app.send_admin_notification", return_value=(True, None)) as mock_notify:
+        order_id = client.post("/api/orders", json=_bare_order()).get_json()["id"]
+    cancel_url = mock_notify.call_args.kwargs["cancel_url"]
+    assert f"/admin/orders/{order_id}/cancel?token=correct-token" in cancel_url
+
+
+def test_no_cancel_link_without_an_admin_token(client):
+    with patch("app.send_admin_notification", return_value=(True, None)) as mock_notify:
+        client.post("/api/orders", json=_bare_order())
+    assert mock_notify.call_args.kwargs["cancel_url"] is None
 
 
 def test_admin_cancel_of_a_missing_order_is_404(client, monkeypatch):

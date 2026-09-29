@@ -97,6 +97,7 @@ def send_admin_notification(
     admin_url: str | None = None,
     mark_reviewing_url: str | None = None,
     restopolis_url: str | None = None,
+    cancel_url: str | None = None,
 ) -> tuple[bool, str | None]:
     """Best-effort send. Returns (sent, error) -- `sent` is False (never
     raises) for both "not configured" and any real API/network failure.
@@ -129,13 +130,20 @@ def send_admin_notification(
     Viennoiseries"), the same taxonomy both the website and the app
     group dishes by -- claiming this link jumps straight to the exact
     order would be a promise this app can't back with real data, so it
-    doesn't."""
+    doesn't.
+
+    `cancel_url` attaches a third button that opens a confirmation page
+    for removing the order (spam, a test, something that can't be
+    fulfilled) -- still a plain URL button, so the page it opens asks
+    first and only a POST from its own button actually cancels."""
     text = _format_order_message(order, admin_url, restopolis_url)
     buttons = []
     if restopolis_url:
         buttons.append([{"text": "Open on Restopolis", "url": restopolis_url}])
     if mark_reviewing_url:
         buttons.append([{"text": "I'm checking this order", "url": mark_reviewing_url}])
+    if cancel_url:
+        buttons.append([{"text": "🗑 Remove this order", "url": cancel_url}])
     return _send_message(text, buttons, log_context=f"order #{order.get('id')}")
 
 
