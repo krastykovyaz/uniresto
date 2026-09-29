@@ -524,6 +524,8 @@ async function api(path, options) {
         ? tr("tooManyRequests")
         : body && (body.error === "university_email_required" || body.error === "university_email_not_verified")
         ? tr("orderNeedsUniversityEmail")
+        : body && body.error === "date_too_far"
+        ? tr("orderDateTooFar", { n: body.max_days })
         : body && body.error === "daily_order_limit"
         ? tr("dailyOrderLimit", { n: body.max_orders })
         : (body && (body.message || body.reason || body.error)) || `Request failed (${resp.status})`;
@@ -2214,7 +2216,16 @@ function shortName(fullName) {
 // Part 11). A shorter window (this used to be 10) hid real, orderable
 // days purely because of the picker's own arbitrary cutoff, not because
 // Restopolis had nothing for them.
-const DATE_PICKER_DAYS = 42;
+// YYYY-MM-DD for `offset` days from now in the DEVICE's own calendar --
+// not toISOString(), which is UTC and names yesterday for the first
+// couple of hours after local midnight.
+function localDateString(offset = 0) {
+  const d = new Date();
+  d.setDate(d.getDate() + offset);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+const DATE_PICKER_DAYS = 2; // today + tomorrow -- the server's MAX_ORDER_DAYS
 
 // ------------------------------------------------------ Menu prefetch cache
 //
@@ -2289,12 +2300,7 @@ async function selectRestaurant(restaurant) {
   // hide it, explain why" requirement -- so this fetches each day's
   // status individually rather than only the pre-filtered available-dates
   // list (which is still exercised directly by the API tests/CLI).
-  const today = new Date();
-  const dates = Array.from({ length: DATE_PICKER_DAYS }, (_, i) => {
-    const d = new Date(today);
-    d.setDate(d.getDate() + i);
-    return d.toISOString().slice(0, 10);
-  });
+  const dates = Array.from({ length: DATE_PICKER_DAYS }, (_, i) => localDateString(i));
   try {
     state.availableDates = await Promise.all(
       dates.map((d) => api(`/api/restaurants/${restaurant.slug}/status?date=${d}`))
@@ -3006,11 +3012,8 @@ function openFeedbackSheet(trigger) {
 // date's request failing doesn't abort the whole search -- it just
 // isn't a candidate.
 async function findNextOrderableDate(slug) {
-  const today = new Date();
   for (let i = 0; i < DATE_PICKER_DAYS; i++) {
-    const d = new Date(today);
-    d.setDate(d.getDate() + i);
-    const dateStr = d.toISOString().slice(0, 10);
+    const dateStr = localDateString(i);
     let dateInfo;
     try {
       dateInfo = await api(`/api/restaurants/${slug}/status?date=${dateStr}`);

@@ -2879,3 +2879,38 @@ def test_feedback_of_500_characters_is_allowed_and_501_is_not(client):
     with patch("app.send_feedback_notification"):
         assert client.post("/api/feedback", json={"message": "x" * 500}).status_code == 200
         assert client.post("/api/feedback", json={"message": "x" * 501}).status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Order window: today and tomorrow only
+# ---------------------------------------------------------------------------
+
+
+def test_order_for_a_date_beyond_tomorrow_is_refused(client):
+    # The fixture pins "today" to 2026-09-23 (see conftest.fixture_today),
+    # so the 25th is day three.
+    with patch("app.send_admin_notification") as admin:
+        resp = client.post("/api/orders", json=_bare_order(date="2026-09-25"))
+    assert resp.status_code == 409
+    assert resp.get_json() == {
+        "error": "date_too_far",
+        "message": "Orders can only be placed for the next 2 days, today included",
+        "max_days": 2,
+    }
+    admin.assert_not_called()
+
+
+def test_order_for_a_date_weeks_away_is_refused(client):
+    assert client.post("/api/orders", json=_bare_order(date="2026-10-15")).get_json()["error"] == "date_too_far"
+
+
+def test_tomorrow_is_the_last_day_inside_the_order_window(client):
+    # The 24th is tomorrow relative to the fixture's 23rd, and is the date
+    # every order test in this file uses.
+    with patch("app.send_admin_notification", return_value=(True, None)):
+        assert client.post("/api/orders", json=_bare_order(date="2026-09-24")).status_code == 201
+
+
+def test_today_is_inside_the_order_window(client):
+    resp = client.post("/api/orders", json=_bare_order(date="2026-09-23"))
+    assert (resp.get_json() or {}).get("error") != "date_too_far"

@@ -190,6 +190,9 @@ def _is_valid_email_format(email: str) -> bool:
 PRIVATE_ORDER_FIELDS = ("customer_email", "customer_phone", "courier_email", "courier_lang", "reward_email")
 
 
+# An order can only be for today or tomorrow -- MAX_ORDER_DAYS calendar
+# days counting today. Keep in step with DATE_PICKER_DAYS in static/app.js.
+MAX_ORDER_DAYS = 2
 MAX_CUSTOMER_NOTE_LENGTH = 200
 MAX_FEEDBACK_LENGTH = 500
 DELIVERY_LIST_DAYS = 14
@@ -902,6 +905,12 @@ def create_app(
 
         restaurant = get_restaurant_or_404(slug)
         d = parse_date_arg(date_str)
+        if d > svc().today() + timedelta(days=MAX_ORDER_DAYS - 1):
+            return jsonify({
+                "error": "date_too_far",
+                "message": f"Orders can only be placed for the next {MAX_ORDER_DAYS} days, today included",
+                "max_days": MAX_ORDER_DAYS,
+            }), 409
 
         # Re-check orderability AND re-fetch the live menu at confirm time,
         # not just at page-load time -- both can have changed since.
