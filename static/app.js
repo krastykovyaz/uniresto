@@ -2230,6 +2230,10 @@ function localDateString(offset = 0) {
 }
 
 const DATE_PICKER_DAYS = 42;
+// Yesterday stays in the picker (greyed out as CLOSED, since its 13:00
+// deadline is long gone) so it's clear it exists and why it can't be
+// ordered, rather than the list just starting at today.
+const DATE_PICKER_PAST_DAYS = 1;
 // ------------------------------------------------------ Menu prefetch cache
 //
 // renderDates() fires these off in the background the moment the date
@@ -2303,7 +2307,7 @@ async function selectRestaurant(restaurant) {
   // hide it, explain why" requirement -- so this fetches each day's
   // status individually rather than only the pre-filtered available-dates
   // list (which is still exercised directly by the API tests/CLI).
-  const dates = Array.from({ length: DATE_PICKER_DAYS }, (_, i) => localDateString(i));
+  const dates = Array.from({ length: DATE_PICKER_PAST_DAYS + DATE_PICKER_DAYS }, (_, i) => localDateString(i - DATE_PICKER_PAST_DAYS));
   try {
     state.availableDates = await Promise.all(
       dates.map((d) => api(`/api/restaurants/${restaurant.slug}/status?date=${d}`))
