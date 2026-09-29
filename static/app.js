@@ -3606,7 +3606,6 @@ function foodCard(item) {
   const sel = selectionFor(item.id);
   const isSelected = !!sel;
   const isFav = isFavorite(state.slug, item.category, item.name);
-  const metaParts = [weightText(item), caloriesText(item)].filter(Boolean);
   // Grill/BBQ mains and salmon (Part 59) -- confirmed real kitchen
   // practice, not Restopolis data -- need to be ordered by 08:00, well
   // before the general 13:00 cutoff (see delivery_rules.py). Checked
@@ -3626,6 +3625,12 @@ function foodCard(item) {
   // photo is untouched -- the whole card stays the add/remove toggle it's
   // always been, and "+" stays purely decorative there.
   const hasPhoto = Boolean(storedPhotoPath);
+  // A card with a real photo drops the weight line ("150 g") under the
+  // title -- the photo does the talking and the line is just noise there.
+  // Weight is never gone: openDishDetailSheet() reads it straight from the
+  // item, same as the allergens hidden below (Part 91), and a card with no
+  // photo keeps it.
+  const metaParts = [hasPhoto ? null : weightText(item), caloriesText(item)].filter(Boolean);
   const card = el(`
     <article class="food-card ${isSelected ? "is-selected" : ""} ${earlyCutoffPassed ? "is-early-cutoff-passed" : ""}" data-item-id="${item.id}">
       <div class="food-card-photo icon-avatar ${categoryIconClass(item)} ${storedPhotoPath ? "has-custom-photo" : ""}">
