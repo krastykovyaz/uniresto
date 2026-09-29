@@ -1790,3 +1790,15 @@ svg { display: block; }
 @media (prefers-reduced-motion: reduce) {
   .dish-detail-sheet { animation: none; }
 }
+
+/* The dish a shared link pointed at: a soft green ring that fades out. */
+@keyframes shared-dish-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(30, 126, 52, 0.55); }
+  60%  { box-shadow: 0 0 0 12px rgba(30, 126, 52, 0.18); }
+  100% { box-shadow: 0 0 0 0 rgba(30, 126, 52, 0); }
+}
+.food-card.is-shared-highlight {
+  animation: shared-dish-pulse 1.4s ease-out 3;
+  outline: 2px solid var(--color-available, #1e7e34);
+  outline-offset: 2px;
+}

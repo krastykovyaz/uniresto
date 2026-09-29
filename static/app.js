@@ -3910,6 +3910,97 @@ function foodCard(item) {
 // only ever produces a total-dish calorie estimate, never a macro
 // breakdown, and this view follows that module's own "never invent a
 // number with no basis" rule just as strictly as the card does.
+// ------------------------------------------------------- Sharing one dish
+//
+// The link carries the whole dish (restaurant, day, category, name) and the
+// sharer's language. app.py's GET / reads the same params to build that
+// dish's own link preview -- its photo, name and price -- instead of the
+// generic app banner (see _dish_share_context/og_dish_image there), and
+// openSharedDish() below opens the dish for whoever follows the link.
+function dishShareUrl(item) {
+  const url = new URL("/", window.location.origin);
+  url.searchParams.set("lang", state.lang);
+  url.searchParams.set("dish", state.slug);
+  url.searchParams.set("date", state.targetDate);
+  url.searchParams.set("cat", item.category);
+  url.searchParams.set("name", item.name);
+  return url.toString();
+}
+
+async function shareDish(item, title) {
+  const url = dishShareUrl(item);
+  if (typeof navigator.share === "function") {
+    try {
+      await navigator.share({ title, text: title, url });
+    } catch {
+      /* dismissed the share sheet -- nothing to do */
+    }
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+    showToast(tr("linkCopied"));
+  } catch {
+    showToast(url, 6000);
+  }
+}
+
+// Opens the dish a shared link points at, if this page load was opened from
+// one: the menu of that restaurant and day, with the dish's card already open.
+// Returns true when it took over the load. The params are stripped from the
+// address bar first so a refresh (or sharing the address again) doesn't
+// replay it.
+async function openSharedDish() {
+  const params = new URLSearchParams(window.location.search);
+  const [slug, date, category, name] = ["dish", "date", "cat", "name"].map((k) => params.get(k));
+  if (!slug || !date || !category || !name) return false;
+  try {
+    const url = new URL(window.location.href);
+    for (const key of ["dish", "date", "cat", "name"]) url.searchParams.delete(key);
+    window.history.replaceState(null, "", url);
+  } catch {
+    /* history unavailable -- worst case a refresh reopens the dish */
+  }
+  const restaurant = state.restaurants.find((r) => r.slug === slug);
+  if (!restaurant) return false;
+  let dateInfo;
+  try {
+    dateInfo = await api(`/api/restaurants/${restaurant.slug}/status?date=${encodeURIComponent(date)}`);
+  } catch {
+    return false;
+  }
+  state.slug = restaurant.slug;
+  state.restaurantName = restaurant.name;
+  await selectDate(dateInfo);
+  const item = state.menu && state.menu.items.find((it) => it.category === category && it.name === name);
+  if (!item) {
+    showToast(tr("sharedDishUnavailable"));
+    return true;
+  }
+  const hasPhoto = Boolean(state.dishPhotos && state.dishPhotos[item.category] && state.dishPhotos[item.category][item.name]);
+  if (hasPhoto) {
+    // Cards with a photo have a detail sheet -- that IS the dish's card.
+    openDishDetailSheet(item, null, Boolean(item.requires_early_order && dateInfo.early_cutoff && dateInfo.early_cutoff.available === false));
+  } else {
+    // A card with no photo has no sheet (the whole card is the add button),
+    // so bring that card into view and flash it instead.
+    const card = document.querySelector(`.food-card[data-item-id="${item.id}"]`);
+    if (card) {
+      card.scrollIntoView({ block: "center", behavior: "smooth" });
+      card.classList.add("is-shared-highlight");
+      // Stays until the person touches anything (or 10 s pass), so a slow
+      // phone still shows it once the smooth scroll has arrived.
+      const clear = () => {
+        card.classList.remove("is-shared-highlight");
+        document.removeEventListener("pointerdown", clear, true);
+      };
+      document.addEventListener("pointerdown", clear, true);
+      setTimeout(clear, 10000);
+    }
+  }
+  return true;
+}
+
 function openDishDetailSheet(item, trigger, earlyCutoffPassed = false) {
   // Reassigned after toggleSelection()/changeQuantity() below -- both
   // call refreshMenuScreen(), which replaceWith()s every .food-card
@@ -3919,7 +4010,7 @@ function openDishDetailSheet(item, trigger, earlyCutoffPassed = false) {
   let activeTrigger = trigger;
   const photoPath =
     (state.dishPhotos && state.dishPhotos[item.category] && state.dishPhotos[item.category][item.name]) ||
-    trigger.querySelector(".food-card-custom-photo")?.src ||
+    trigger?.querySelector(".food-card-custom-photo")?.src ||
     "";
   const name = dishTitle(item.name, state.lang);
 
@@ -3941,7 +4032,7 @@ function openDishDetailSheet(item, trigger, earlyCutoffPassed = false) {
         <div class="dish-detail-photo">
           <img src="${escapeHtml(photoPath)}" alt="">
           <div class="dish-detail-photo-actions">
-            ${typeof navigator.share === "function" ? `<button type="button" class="dish-detail-action dish-detail-share" aria-label="${escapeHtml(tr("shareDish", { name }))}">${icon("share", 18)}</button>` : ""}
+            <button type="button" class="dish-detail-action dish-detail-share" aria-label="${escapeHtml(tr("shareDish", { name }))}">${icon("share", 18)}</button>
             <button type="button" class="dish-detail-action dish-detail-heart" aria-label="${escapeHtml(tr(isFavorite(state.slug, item.category, item.name) ? "removeFavorite" : "addFavorite", { name }))}" aria-pressed="${isFavorite(state.slug, item.category, item.name)}">${icon(isFavorite(state.slug, item.category, item.name) ? "heartFilled" : "heart", 18)}</button>
             <button type="button" class="dish-detail-action dish-detail-close" aria-label="${escapeHtml(tr("back"))}">${icon("close", 18)}</button>
           </div>
@@ -4044,9 +4135,7 @@ function openDishDetailSheet(item, trigger, earlyCutoffPassed = false) {
     close();
     activeTrigger?.focus();
   });
-  sheet.querySelector(".dish-detail-share")?.addEventListener("click", () => {
-    navigator.share({ title: name, text: name, url: location.href }).catch(() => {});
-  });
+  sheet.querySelector(".dish-detail-share")?.addEventListener("click", () => shareDish(item, name));
   sheet.querySelector(".dish-detail-heart").addEventListener("click", () => {
     toggleFavorite(state.slug, state.restaurantName, item.category, item.name);
     const heartBtn = sheet.querySelector(".dish-detail-heart");
@@ -5112,6 +5201,7 @@ async function init() {
     return;
   }
 
+  if (await openSharedDish()) return;
   const restored = await restoreLocation();
   if (!restored) goTo("role");
 }

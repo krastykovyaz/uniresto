@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import time
 import logging
 import os
 import re
@@ -25,6 +26,9 @@ from orderability_engine.cache import OrderabilityCache
 from orderability_engine.coming_soon_clicks import ComingSoonClickStore
 from orderability_engine.daily_report import DailyReportStore, start_daily_report_scheduler
 from orderability_engine.delivery_subscribers import DeliverySubscriberStore
+from orderability_engine.dish_card import render_dish_card
+from orderability_engine.dish_name_labels import dish_name_label
+from orderability_engine.dish_names import split_dish_size
 from orderability_engine.dish_photos import DishPhotoStore
 from orderability_engine.identity import canonical_identity, normalize_contact_email, normalize_phone
 from orderability_engine.email_verification import EmailVerificationStore
@@ -54,6 +58,7 @@ from orderability_engine.orders import (
 )
 from orderability_engine.page_views import MAX_SOURCE_LENGTH, PageViewStore
 from orderability_engine.pending_dish_photos import PendingDishPhotoStore
+from orderability_engine.pricing import INCLUDED_SIDE_CATEGORIES, compute_formula_total
 from orderability_engine.rate_limits import RateLimitStore
 from orderability_engine.rewards import (
     CLAIM_ALREADY_AWARDED,
@@ -260,6 +265,7 @@ def create_app(
     verified_email_store: VerifiedEmailStore | None = None,
     dish_photo_store: DishPhotoStore | None = None,
     dish_photo_dir: str | Path | None = None,
+    og_cache_dir: str | Path | None = None,
     pending_dish_photo_store: PendingDishPhotoStore | None = None,
     reward_store: RewardStore | None = None,
     delivery_subscriber_store: DeliverySubscriberStore | None = None,
@@ -336,6 +342,9 @@ def create_app(
     app.config["DAILY_REPORT_STORE"] = daily_report_store or DailyReportStore("orders.db")
     app.config["RATE_LIMIT_STORE"] = rate_limit_store or RateLimitStore("orders.db")
     app.config["RESTAURANTS_BY_SLUG"] = by_slug
+    # Rendered link-preview cards (see /og/dish.png below). Overridable so
+    # tests never write into the repo.
+    app.config["OG_CACHE_DIR"] = Path(og_cache_dir) if og_cache_dir else Path("og_cache")
 
     @app.after_request
     def security_headers(response):
@@ -2049,6 +2058,108 @@ def create_app(
     # above (never fetches Restopolis directly -- see README.md Part 3).
     # One shell route serves it for every restaurant/date/order state.
 
+    # ---------------------------------------------------- Shared dish previews
+    #
+    # Sharing a dish from the app links to  /?dish=<slug>&date=<date>&cat=<category>&name=<raw name>
+    # (&lang=..). The same URL is what a chat app's crawler fetches to build
+    # the link preview, so GET / answers a dish link with THAT dish's Open
+    # Graph tags and a picture of its card (/og/dish.png), instead of the
+    # generic app banner; a person's browser runs the app, which opens the
+    # dish (static/app.js's openSharedDish()).
+
+    def _short_restaurant_name(full_name: str) -> str:
+        """"UDL-CKB - Altius - Restaurant" -> "Altius" (what the app's own
+        shortName() shows)."""
+        parts = [p.strip() for p in full_name.split(" - ")]
+        return parts[1] if len(parts) >= 3 else full_name
+
+    def _dish_share_context(slug: str, date_str: str, category: str, name: str):
+        """Everything a preview of one dish needs, or None when any part of
+        the link doesn't check out (unknown restaurant, bad date, no such
+        dish on that day's menu, no menu at all)."""
+        restaurant = by_slug.get(slug)
+        if restaurant is None or not category or not name:
+            return None
+        try:
+            d = datetime.strptime(date_str, "%Y-%m-%d").date()
+            flat_items, _ = _load_flat_menu(restaurant, d)
+        except Exception:  # noqa: BLE001 -- any of these just means "no dish preview", never a 500 for a crawler
+            return None
+        item = next((it for it in flat_items if it["category"] == category and it["name"] == name), None)
+        if item is None:
+            return None
+        title, size = split_dish_size(name)
+        if INCLUDED_SIDE_CATEGORIES and category in INCLUDED_SIDE_CATEGORIES:
+            price_text = "Included with a main dish"
+        else:
+            total = compute_formula_total([{"category": category, "name": name, "quantity": 1}], tier="adulte")["total"]
+            price_text = f"€{total:.2f}" if total is not None else "Canteen Price"
+        photo_path = dish_photos().photos_for_restaurant(slug).get(category, {}).get(name)
+        photo_file = None
+        if photo_path:
+            candidate = app.config["DISH_PHOTO_DIR"] / Path(photo_path).name
+            photo_file = candidate if candidate.is_file() else None
+        return {
+            "restaurant": restaurant,
+            "date": d,
+            "item": item,
+            "title": title,
+            "size": size,
+            "price_text": price_text,
+            "photo_file": photo_file,
+        }
+
+    def _og_image_file(ctx: dict, category: str, name: str) -> Path:
+        """The rendered card for this dish, from the on-disk cache when it's
+        still valid. The key covers everything drawn on it (and the photo's
+        mtime), so a new price, photo or menu change makes a new file; old
+        ones are swept after two weeks."""
+        photo = ctx["photo_file"]
+        badge = "VEGAN" if ctx["item"].get("vegan") else "VEGETARIAN" if ctx["item"].get("vegetarian") else None
+        footer = f"{_short_restaurant_name(ctx['restaurant'].name)} · {ctx['date'].strftime('%a %d %b')} · UniResto"
+        fields = [
+            "v1", ctx["restaurant"].code, ctx["date"].isoformat(), category, name, ctx["price_text"], badge or "", footer,
+            str(photo.stat().st_mtime_ns) if photo else "",
+        ]
+        key = hashlib.sha1("|".join(fields).encode("utf-8")).hexdigest()
+        cache_dir = app.config["OG_CACHE_DIR"]
+        target = cache_dir / f"{key}.png"
+        if target.is_file():
+            return target
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        english_title = split_dish_size(dish_name_label(name, "en"))[0]
+        png = render_dish_card(
+            title=english_title,
+            size=ctx["size"],
+            category=category,
+            price_text=ctx["price_text"],
+            badge=badge,
+            footer=footer,
+            photo_path=photo,
+        )
+        tmp = target.with_suffix(f".{os.getpid()}.tmp")
+        tmp.write_bytes(png)
+        tmp.replace(target)
+        cutoff = time.time() - 14 * 86400
+        for old in cache_dir.glob("*.png"):
+            try:
+                if old.stat().st_mtime < cutoff:
+                    old.unlink()
+            except OSError:
+                pass
+        return target
+
+    @app.get("/og/dish.png")
+    def og_dish_image():
+        ctx = _dish_share_context(
+            request.args.get("dish", ""), request.args.get("date", ""), request.args.get("cat", ""), request.args.get("name", "")
+        )
+        if ctx is None:
+            abort(404)
+        response = send_from_directory(app.config["OG_CACHE_DIR"], _og_image_file(ctx, request.args["cat"], request.args["name"]).name)
+        response.headers["Cache-Control"] = "public, max-age=3600"
+        return response
+
     @app.get("/")
     def mobile_app():
         # ?lang=<code> reflects whichever language the SHARER's app was in
@@ -2062,7 +2173,27 @@ def create_app(
         if og_lang not in OG_PREVIEW_TEXT:
             og_lang = "en"
         og = OG_PREVIEW_TEXT[og_lang]
-        return render_template("mobile.html", og_lang=og_lang, og_title=og["title"], og_description=og["description"])
+        og_title, og_description = og["title"], og["description"]
+        og_image = url_for("static", filename="og-image.png", _external=True)
+
+        slug, date_str = request.args.get("dish", ""), request.args.get("date", "")
+        category, name = request.args.get("cat", ""), request.args.get("name", "")
+        ctx = _dish_share_context(slug, date_str, category, name) if slug else None
+        if ctx is not None:
+            label = split_dish_size(dish_name_label(name, og_lang))[0]
+            og_title = f"{label} · {ctx['price_text']}"
+            details = [_short_restaurant_name(ctx["restaurant"].name), ctx["date"].strftime("%a %d %b")]
+            if ctx["size"]:
+                details.append(ctx["size"])
+            if ctx["item"].get("vegan"):
+                details.append("Vegan")
+            elif ctx["item"].get("vegetarian"):
+                details.append("Vegetarian")
+            og_description = " · ".join(details) + " — order on UniResto"
+            og_image = url_for("og_dish_image", dish=slug, date=date_str, cat=category, name=name, _external=True)
+        return render_template(
+            "mobile.html", og_lang=og_lang, og_title=og_title, og_description=og_description, og_image=og_image
+        )
 
     # Browsers/crawlers request this path directly regardless of the
     # <link rel="icon"> tags in <head> -- without this it 404s even

@@ -88,6 +88,7 @@ def _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, 
         verified_email_store=verified_email_store,
         dish_photo_store=dish_photo_store,
         dish_photo_dir=tmp_path / "dish_photos",
+        og_cache_dir=tmp_path / "og_cache",
         pending_dish_photo_store=pending_dish_photo_store,
         reward_store=reward_store,
         delivery_subscriber_store=delivery_subscriber_store,
@@ -3329,3 +3330,133 @@ def test_cancelling_frees_the_customers_daily_slot_and_closes_it_for_couriers(cl
     assert _create_basic_order(client)  # a third would have been refused without the cancel
     listed = next(o for o in client.get("/api/delivery/orders").get_json() if o["id"] == ids[0])
     assert listed["status"] == "cancelled"
+
+
+# ---------------------------------------------------------------------------
+# Sharing a dish: the link preview is THAT dish's card, not the app banner
+# ---------------------------------------------------------------------------
+
+from urllib.parse import quote  # noqa: E402
+
+
+def _menu_items(client, date="2026-09-24"):
+    return client.get(f"/api/restaurants/altius/menu/{date}").get_json()["items"]
+
+
+def _share_url(item, date="2026-09-24", lang=None, slug="altius"):
+    url = f"/?dish={slug}&date={date}&cat={quote(item['category'])}&name={quote(item['name'])}"
+    return url + (f"&lang={lang}" if lang else "")
+
+
+def _meta(html, prop):
+    import re
+
+    m = re.search(rf'<meta (?:property|name)="{re.escape(prop)}" content="([^"]*)"', html)
+    return m.group(1) if m else None
+
+
+def _item(client, category_startswith, name_contains=""):
+    return next(i for i in _menu_items(client) if i["category"].startswith(category_startswith) and name_contains in i["name"])
+
+
+def test_the_plain_link_keeps_the_generic_preview(client):
+    html = client.get("/").data.decode()
+    assert _meta(html, "og:title") == "UniResto · Campus Kirchberg"
+    assert _meta(html, "og:image").endswith("/static/og-image.png")
+
+
+def test_a_dish_link_previews_that_dish(client):
+    main = _item(client, "Végétarien")
+    html = client.get(_share_url(main)).data.decode()
+    assert main["name"].replace("'", "&#39;") in _meta(html, "og:title") or main["name"] in _meta(html, "og:title")
+    assert "€6.70" in _meta(html, "og:title")  # a main dish alone: the Formule 3 price
+    assert "Altius" in _meta(html, "og:description") and "order on UniResto" in _meta(html, "og:description")
+    image = _meta(html, "og:image")
+    assert "/og/dish.png?" in image and "dish=altius" in image and "date=2026-09-24" in image
+    assert _meta(html, "twitter:image") == image and _meta(html, "twitter:card") == "summary_large_image"
+
+
+def test_a_sized_dish_shows_its_size_in_the_description_not_the_title(client):
+    drink = _item(client, "10.1", "Rosport Blue")
+    html = client.get(_share_url(drink)).data.decode()
+    title = _meta(html, "og:title")
+    assert "Rosport Blue" in title and "l btl" not in title and "non consign" not in title
+    assert drink["name"].split("Rosport Blue ")[1] in _meta(html, "og:description")
+
+
+def test_a_dish_with_no_price_says_canteen_price(client):
+    starter = _item(client, "Entrée")
+    assert "Canteen Price" in _meta(client.get(_share_url(starter)).data.decode(), "og:title")
+
+
+def test_the_dish_title_follows_the_sharers_language(client):
+    salad = next((i for i in _menu_items(client) if i["name"] == "Mini salades 150 g"), None)
+    if salad is None:
+        pytest.skip("fixture menu has no Mini salades")
+    assert _meta(client.get(_share_url(salad, lang="en")).data.decode(), "og:title").startswith("Mini salads")
+    assert _meta(client.get(_share_url(salad, lang="fr")).data.decode(), "og:title").startswith("Mini salades")
+
+
+@pytest.mark.parametrize(
+    "query",
+    [
+        "?dish=nowhere&date=2026-09-24&cat=X&name=Y",
+        "?dish=altius&date=not-a-date&cat=X&name=Y",
+        "?dish=altius&date=2026-09-24&cat=Entr%C3%A9e&name=A%20dish%20that%20does%20not%20exist",
+        "?dish=altius&date=2026-09-24",
+        '?dish=altius&date=2026-09-24&cat="><script>alert(1)</script>&name=x',
+    ],
+)
+def test_a_broken_dish_link_falls_back_to_the_generic_preview(client, query):
+    resp = client.get("/" + query)
+    assert resp.status_code == 200
+    html = resp.data.decode()
+    assert _meta(html, "og:title") == "UniResto · Campus Kirchberg"
+    assert "<script>alert(1)" not in html
+
+
+def test_the_card_image_is_a_1200_by_630_png(client):
+    main = _item(client, "Végétarien")
+    resp = client.get(f"/og/dish.png?dish=altius&date=2026-09-24&cat={quote(main['category'])}&name={quote(main['name'])}")
+    assert resp.status_code == 200 and resp.mimetype == "image/png"
+    assert "max-age" in resp.headers["Cache-Control"]
+    image = Image.open(io.BytesIO(resp.data))
+    assert image.size == (1200, 630)
+
+
+def test_the_card_image_is_cached_between_requests(client, tmp_path):
+    main = _item(client, "Végétarien")
+    url = f"/og/dish.png?dish=altius&date=2026-09-24&cat={quote(main['category'])}&name={quote(main['name'])}"
+    client.get(url)
+    files = list((tmp_path / "og_cache").glob("*.png"))
+    assert len(files) == 1
+    mtime = files[0].stat().st_mtime_ns
+    client.get(url)
+    assert [f.stat().st_mtime_ns for f in (tmp_path / "og_cache").glob("*.png")] == [mtime]
+
+
+def test_the_card_image_404s_for_a_dish_that_is_not_on_the_menu(client):
+    assert client.get("/og/dish.png?dish=altius&date=2026-09-24&cat=Entr%C3%A9e&name=Nope").status_code == 404
+    assert client.get("/og/dish.png").status_code == 404
+
+
+def test_an_approved_photo_changes_the_card(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    dish = _item(client, "Entrée", "Salad'bar")
+    url = f"/og/dish.png?dish=altius&date=2026-09-24&cat={quote(dish['category'])}&name={quote(dish['name'])}"
+    placeholder = client.get(url).data
+    upload = client.post(
+        "/api/restaurants/altius/dish-photos",
+        data={
+            "email": "student@uni.lu",
+            "category": dish["category"],
+            "name": dish["name"],
+            "photo": (io.BytesIO(_image_bytes((200, 40, 40), size=(64, 48))), "dish.png"),
+        },
+        content_type="multipart/form-data",
+    ).get_json()
+    client.post(f"/admin/dish-photos/{upload['id']}/approve", data={"token": "correct-token"})
+    with_photo = Image.open(io.BytesIO(client.get(url).data)).convert("RGB")
+    assert client.get(url).data != placeholder
+    r, g, b = with_photo.getpixel((200, 300))  # inside the photo panel: the red image, not the pale placeholder
+    assert r > 150 and g < 120 and b < 120
