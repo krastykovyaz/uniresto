@@ -2,6 +2,7 @@ import datetime
 
 from orderability_engine.cache import OrderabilityCache
 from orderability_engine.menu_refresh import (
+    REFRESH_PAST_DAYS,
     REFRESH_TIMES,
     REFRESH_WINDOW_DAYS,
     _next_refresh_time,
@@ -55,6 +56,34 @@ def test_refresh_all_once_covers_every_date_in_the_window(
             continue  # no fixture for this week -- correctly "unknown", not this test's concern
         result = service.check_orderability(altius_config, target_date)
         assert result.status != "unknown", f"{target_date} was never warmed"
+
+
+def test_refresh_all_once_also_keeps_yesterday_warm(
+    tmp_path, altius_html, altius_closed_week_html, altius_config, fixture_today
+):
+    # The date picker shows yesterday too (static/app.js's
+    # DATE_PICKER_PAST_DAYS), and its menu still opens -- so the sweep
+    # must refresh it on the same schedule, not only from today onward.
+    service, _ = make_service(tmp_path, altius_html, altius_closed_week_html, altius_config, fixture_today)
+    refresh_all_once(service, [altius_config])
+
+    yesterday = fixture_today - datetime.timedelta(days=REFRESH_PAST_DAYS)
+    assert service.cache.get_raw(altius_config.code, yesterday) is not None
+
+
+def test_a_monday_sweep_skips_the_unreachable_sunday_quietly(
+    tmp_path, altius_html, altius_closed_week_html, altius_config, caplog
+):
+    # Yesterday (Sunday) is in the previous week, which Restopolis's
+    # clamped PreviousWeek can never reach -- that's expected, not a
+    # failure to log a warning + traceback about on every Monday sweep.
+    monday = datetime.date(2026, 9, 21)
+    service, _ = make_service(tmp_path, altius_html, altius_closed_week_html, altius_config, monday)
+    with caplog.at_level("WARNING", logger="orderability.menu_refresh"):
+        refresh_all_once(service, [altius_config])
+
+    assert not [r for r in caplog.records if r.name == "orderability.menu_refresh"]
+    assert service.check_orderability(altius_config, monday).status != "unknown"
 
 
 def test_refresh_all_once_forces_a_live_fetch_even_if_something_is_already_cached(
@@ -112,7 +141,7 @@ def test_refresh_all_once_survives_one_restaurant_raising(
 
     refresh_all_once(service, [broken_restaurant, altius_config])
 
-    assert len(checked) == REFRESH_WINDOW_DAYS
+    assert len(checked) == REFRESH_WINDOW_DAYS + REFRESH_PAST_DAYS
     assert all(code == altius_config.code for code, _ in checked)
 
 

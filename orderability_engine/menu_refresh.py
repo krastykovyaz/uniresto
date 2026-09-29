@@ -36,7 +36,7 @@ import threading
 import time
 from datetime import datetime, time as dt_time, timedelta, timezone
 
-from orderability_engine.detector import weeks_ahead_for
+from orderability_engine.detector import PastDateError, weeks_ahead_for
 from orderability_engine.models import TZINFO
 from orderability_engine.service import OrderabilityService
 from restopolis.models import RestaurantConfig
@@ -57,8 +57,16 @@ REFRESH_TIMES = [dt_time(6, 0), dt_time(9, 0), dt_time(14, 0), dt_time(18, 0), d
 # them. This drifted once already (the OLD cache_warmer.py's
 # WARM_WINDOW_DAYS stayed at 10 after DATE_PICKER_DAYS grew to 42,
 # silently leaving days 11-42 never proactively warmed) -- that's part
-# of why real requests were slow before this module existed.
+# of why real requests were slow before this module existed -- and again
+# when yesterday was added to the picker (DATE_PICKER_PAST_DAYS) without
+# being added here.
 REFRESH_WINDOW_DAYS = 42
+# Mirrors static/app.js's DATE_PICKER_PAST_DAYS: the picker also shows
+# yesterday (greyed out as CLOSED, its menu still opens read-only), so the
+# sweep keeps yesterday's status warm on the same schedule as everything
+# else. On a Monday yesterday is Sunday, which is in a week Restopolis's
+# clamped PreviousWeek can never reach -- refresh_all_once() skips it then.
+REFRESH_PAST_DAYS = 1
 
 
 def refresh_all_once(service: OrderabilityService, restaurants: list[RestaurantConfig]) -> None:
@@ -76,13 +84,15 @@ def refresh_all_once(service: OrderabilityService, restaurants: list[RestaurantC
     today = service.today()
     for restaurant in restaurants:
         refreshed_weeks: set[int] = set()
-        for offset in range(REFRESH_WINDOW_DAYS):
+        for offset in range(-REFRESH_PAST_DAYS, REFRESH_WINDOW_DAYS):
             target_date = today + timedelta(days=offset)
             try:
                 weeks_ahead = weeks_ahead_for(target_date, today)
                 force = weeks_ahead not in refreshed_weeks
                 refreshed_weeks.add(weeks_ahead)
                 service.check_orderability(restaurant, target_date, refresh=force)
+            except PastDateError:
+                continue  # yesterday, when it falls in a week before the current one -- unreachable, not a failure
             except Exception:  # noqa: BLE001 -- a refresh sweep must never crash the background thread
                 logger.warning("[MENU-REFRESH] failed to refresh %s %s", restaurant.code, target_date, exc_info=True)
 

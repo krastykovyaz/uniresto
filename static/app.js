@@ -2424,10 +2424,13 @@ function renderDates() {
     // never just hidden -- tapping an unavailable day still opens the
     // menu screen, which shows the specific empty state for it.
     card.addEventListener("click", () => selectDate(d));
-    // Only orderable days: an unavailable one's menu is never shown
-    // anyway (see the empty state selectDate()/renderMenu() render for
-    // it instead), so prefetching it would just waste a request.
-    if (isAvailable) prefetchMenu(state.slug, d.date);
+    // Every day that HAS a menu, orderable or not: a day whose own 13:00
+    // deadline already passed (yesterday, or today after 13:00) still opens
+    // its menu read-only, so it needs the same head start -- prefetching
+    // only the orderable ones left those days fetching on the tap, every
+    // time the picker was loaded. Days with no menu at all (no_menu,
+    // closed, past_date ...) show an empty state instead, nothing to fetch.
+    if (d.status === "available") prefetchMenu(state.slug, d.date);
     scroller.append(card);
   }
   app.append(scroller);
