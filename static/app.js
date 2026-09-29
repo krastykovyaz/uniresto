@@ -2399,6 +2399,9 @@ function renderDates() {
     return;
   }
 
+  // Same head start for the dish photos the menu screen also needs.
+  getDishPhotos(state.slug);
+
   const scroller = el(`<div class="date-scroller"></div>`);
   for (const d of state.availableDates) {
     const { dow, dom } = fmtShort(d.date);
@@ -2455,7 +2458,11 @@ async function selectDate(dateInfo) {
   // miss (a disabled/unavailable day, an in-flight prefetch that hasn't
   // resolved yet, or reorderPastOrder()/goToFavoriteToday() jumping
   // straight here without ever visiting the date picker at all).
-  if (!menuCache.has(menuCacheKey(state.slug, state.targetDate))) goTo("menu-loading");
+  // The dish photos count too: they're a second request this screen waits
+  // for, and when the menu was prefetched but the photos weren't back yet
+  // the tap used to sit there doing nothing -- no loading screen, no
+  // feedback -- until they arrived (most noticeable on a phone connection).
+  if (!menuCache.has(menuCacheKey(state.slug, state.targetDate)) || !dishPhotosCache.has(state.slug)) goTo("menu-loading");
   try {
     const dishPhotosPromise = getDishPhotos(state.slug);
     state.menu = await getMenu(state.slug, state.targetDate);
