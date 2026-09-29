@@ -502,7 +502,7 @@ svg { display: block; }
 .status-chip.closed, .status-chip.no_menu, .status-chip.ordering_closed, .status-chip.past_date {
   color: var(--color-closed); background: var(--color-closed-bg);
 }
-.status-chip.unknown { color: var(--color-unknown); background: var(--color-unknown-bg); }
+.status-chip.unknown, .status-chip.not_open { color: var(--color-unknown); background: var(--color-unknown-bg); }
 
 /* ----------------------------------------------------------- Date picker */
 

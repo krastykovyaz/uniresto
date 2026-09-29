@@ -2216,16 +2216,37 @@ function shortName(fullName) {
 // Part 11). A shorter window (this used to be 10) hid real, orderable
 // days purely because of the picker's own arbitrary cutoff, not because
 // Restopolis had nothing for them.
-// YYYY-MM-DD for `offset` days from now in the DEVICE's own calendar --
-// not toISOString(), which is UTC and names yesterday for the first
-// couple of hours after local midnight.
-function localDateString(offset = 0) {
-  const d = new Date();
-  d.setDate(d.getDate() + offset);
+// YYYY-MM-DD in the DEVICE's own calendar -- not toISOString(), which is
+// UTC and names yesterday for the first couple of hours after local
+// midnight.
+function dateToLocalString(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-const DATE_PICKER_DAYS = 2; // today + tomorrow -- the server's MAX_ORDER_DAYS
+function localDateString(offset = 0) {
+  const d = new Date();
+  d.setDate(d.getDate() + offset);
+  return dateToLocalString(d);
+}
+
+// The picker still SHOWS every day in this window (so a student can see
+// what's coming), but only the first ORDER_WINDOW_DAYS of them -- today and
+// tomorrow -- can be ordered; the server's MAX_ORDER_DAYS enforces it.
+const DATE_PICKER_DAYS = 42;
+const ORDER_WINDOW_DAYS = 2;
+
+function isWithinOrderWindow(dateStr) {
+  // ISO dates compare correctly as plain strings; past dates are the
+  // status API's business (past_date), not the window's.
+  return dateStr <= localDateString(ORDER_WINDOW_DAYS - 1);
+}
+
+// The first day this date can be ordered on (the day it enters the window).
+function orderOpensOn(dateStr) {
+  const d = parseISODate(dateStr);
+  d.setDate(d.getDate() - (ORDER_WINDOW_DAYS - 1));
+  return dateToLocalString(d);
+}
 
 // ------------------------------------------------------ Menu prefetch cache
 //
@@ -2327,12 +2348,19 @@ async function selectRestaurant(restaurant) {
 // below, checked per-item, never here.
 function isDateOrderable(dateInfo) {
   const ourDeadlinePassed = dateInfo.status === "available" && dateInfo.our_delivery && dateInfo.our_delivery.available === false;
-  return dateInfo.status === "available" && !ourDeadlinePassed;
+  return dateInfo.status === "available" && !ourDeadlinePassed && isWithinOrderWindow(dateInfo.date);
+}
+
+// Open on Restopolis's side and before our own deadline, but further out
+// than the 2-day order window -- shown, just not orderable yet.
+function isBeyondOrderWindow(dateInfo) {
+  const ourDeadlinePassed = dateInfo.status === "available" && dateInfo.our_delivery && dateInfo.our_delivery.available === false;
+  return dateInfo.status === "available" && !ourDeadlinePassed && !isWithinOrderWindow(dateInfo.date);
 }
 
 function dateStatusLabel(status) {
   const key = { available: "statusOpen", no_menu: "statusNoMenu", closed: "statusClosed",
-    ordering_closed: "statusOrderingClosed", past_date: "statusPast", unknown: "statusUnknown" }[status];
+    ordering_closed: "statusOrderingClosed", past_date: "statusPast", unknown: "statusUnknown", not_open: "statusNotOpenYet" }[status];
   return key ? tr(key) : status.toUpperCase();
 }
 
@@ -2353,9 +2381,11 @@ function renderDates() {
     // menu stays reachable either way (every card stays tappable below),
     // matching that api_menu itself never gates on our_delivery.
     const isAvailable = isDateOrderable(d);
-    // Restopolis's own status is "available" but our deadline passed --
-    // the only case isDateOrderable disagrees with d.status.
-    const displayStatus = !isAvailable && d.status === "available" ? "closed" : d.status;
+    const notOpenYet = isBeyondOrderWindow(d);
+    // Restopolis's own status is "available" but either our deadline
+    // passed or the day is beyond the 2-day order window -- the only cases
+    // isDateOrderable disagrees with d.status.
+    const displayStatus = notOpenYet ? "not_open" : !isAvailable && d.status === "available" ? "closed" : d.status;
     const deadline = fmtDeadline(d.our_delivery && d.our_delivery.deadline);
     const ariaPrefix = isAvailable ? tr("select") : `${tr("unavailable")}:`;
     const card = el(`
@@ -2364,12 +2394,17 @@ function renderDates() {
         <div class="dom">${dom}</div>
         <span class="status-chip ${displayStatus}">${escapeHtml(dateStatusLabel(displayStatus))}</span>
         ${isAvailable && deadline ? `<div class="deadline">${escapeHtml(tr("orderBefore"))}<br>${deadline}</div>` : ""}
+        ${notOpenYet ? `<div class="deadline">${escapeHtml(tr("orderOpensOn", { date: fmtShort(orderOpensOn(d.date)).dom }))}</div>` : ""}
       </button>
     `);
     // Every day stays tappable (even when disabled) so the reason is
     // never just hidden -- tapping an unavailable day still opens the
     // menu screen, which shows the specific empty state for it.
-    card.addEventListener("click", () => selectDate(d));
+    // A day that's open but not orderable YET has nothing to show a
+    // reason for on the menu screen -- just say when it opens instead.
+    card.addEventListener("click", () =>
+      notOpenYet ? showToast(tr("orderOpensOn", { date: fmtLong(orderOpensOn(d.date)) })) : selectDate(d)
+    );
     // Only orderable days: an unavailable one's menu is never shown
     // anyway (see the empty state selectDate()/renderMenu() render for
     // it instead), so prefetching it would just waste a request.
@@ -3006,15 +3041,15 @@ function openFeedbackSheet(trigger) {
 // drops anything no longer on today's menu with a clear explanation,
 // and lands on the cart screen (Part 46) with a fresh, server-verifiable
 // selection -- it never re-creates the order directly.
-// Scans forward through the SAME window the date picker itself shows
-// (DATE_PICKER_DAYS), using the SAME orderability rule (isDateOrderable)
+// Scans forward through the days that can actually be ordered
+// (ORDER_WINDOW_DAYS), using the SAME orderability rule (isDateOrderable)
 // -- reordering must never land on a date the picker itself would show
 // as "Closed". Returns the first orderable date's status response, or
-// null if none of the next DATE_PICKER_DAYS days are orderable. A single
+// null if none of the next ORDER_WINDOW_DAYS days are orderable. A single
 // date's request failing doesn't abort the whole search -- it just
 // isn't a candidate.
 async function findNextOrderableDate(slug) {
-  for (let i = 0; i < DATE_PICKER_DAYS; i++) {
+  for (let i = 0; i < ORDER_WINDOW_DAYS; i++) {
     const dateStr = localDateString(i);
     let dateInfo;
     try {
