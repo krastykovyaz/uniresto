@@ -1,6 +1,9 @@
+import pytest
+
 from orderability_engine.pricing import (
     COLD_DRINK_PRICES,
     HOT_DRINK_PRICES,
+    LAITAGES_PRICES_APPRENANT,
     MEAL_TIER_PRICES,
     MEAL_TIER_PRICES_APPRENANT,
     REUSABLE_PACKAGING_PRICES,
@@ -152,14 +155,70 @@ def test_all_four_sandwich_categories_have_at_least_one_real_priced_item():
     assert len(SANDWICH_PRICES) >= 20
 
 
-def test_dairy_and_ice_cream_stay_unpriced():
-    # Laitages/Glaces: real official prices likely exist for these too,
-    # but the available source material wasn't clear/complete enough to
-    # transcribe confidently for this pass -- this module deliberately
-    # doesn't guess at them in the meantime.
-    result = compute_formula_total([_line("05. Laitages", name="Yaourt nature Luxlait 125 g")])
-    assert result["formula_count"] == 0
+def test_ice_cream_stays_unpriced():
+    # The official 2026/27 price list has no ice cream section at all, so
+    # there is no real number to use -- never guessed.
+    for name in (
+        "Cornet Luxlait 130 ml (Chocolat, Fraise, Vanille, Praliné, Mocca-vanille)",
+        "Dame Blanche Luxlait 200 ml",
+        "Glace miniature Luxlait 100 ml (Framboise, Praliné, Vanille)",
+    ):
+        result = compute_formula_total([_line("07. Glaces", name=name)])
+        assert result["formula_count"] == 0
+        assert result["total"] is None
+
+
+@pytest.mark.parametrize(
+    "name, adulte",
+    [
+        ("Mini fromage frais avec coulis de fruits de saison 150 g", 3.50),
+        ("Mini muesli maison 150 g", 3.50),
+        ("Lait chocolaté Luxlait 0,25 l Tétra Pack", 1.10),
+        ("Lait Luxlait BIO 0,25 l Tétra Pack", 0.95),
+        ("Yaourt aux fruits Luxlait 125 g", 1.35),
+        ("Yaourt nature Luxlait 125 g", 1.15),
+    ],
+)
+def test_dairy_is_priced_at_the_official_adultes_tariff(name, adulte):
+    assert compute_formula_total([_line("05. Laitages", name=name)])["total"] == adulte
+
+
+def test_dairy_apprenants_tariff_and_its_gaps():
+    def total(name):
+        return compute_formula_total([_line("05. Laitages", name=name)], tier="apprenant")["total"]
+
+    assert total("Mini muesli maison 150 g") == 2.50
+    assert total("Yaourt nature Luxlait 125 g") == 1.05
+    # The free school milk really is 0.00 on the list (an all-free cart
+    # reports no total at all, like any cart whose total is 0).
+    assert LAITAGES_PRICES_APPRENANT["Lait Luxlait BIO 0,25 l Tétra Pack (gratuit)"] == 0.00
+    assert total("Lait Luxlait BIO 0,25 l Tétra Pack (gratuit)") is None
+    assert total("Yaourt nature Luxlait 125 g") + 0 == 1.05
+    # "*" (school-programme price, no number) and "/" on the official list:
+    # unpriced at this tier, not guessed.
+    assert total("Lait chocolaté Luxlait 0,25 l Tétra Pack") is None
+    assert total("Lait Luxlait BIO 0,25 l Tétra Pack") is None
+
+
+def test_the_free_school_milk_is_not_sold_to_adultes():
+    result = compute_formula_total([_line("05. Laitages", name="Lait Luxlait BIO 0,25 l Tétra Pack (gratuit)")])
     assert result["total"] is None
+
+
+def test_a_seasonal_name_in_quotes_still_matches_the_official_line():
+    seasonal = 'Mini muesli maison "Douceur d\'automne" 150 g'
+    assert compute_formula_total([_line("05. Laitages", name=seasonal)])["total"] == 3.50
+    assert compute_formula_total([_line("05. Laitages", name='Mini muesli maison "Hiver" 150 g')])["total"] == 3.50
+
+
+def test_names_that_really_contain_quotes_still_match_exactly():
+    banana = 'Banane "commerce équitable"'
+    assert compute_formula_total([_line("06. Fruits", name=banana)])["total"] == 1.40
+
+
+def test_dairy_shows_up_in_the_category_breakdown():
+    rows = category_breakdown([_line("05. Laitages", 2, "Yaourt nature Luxlait 125 g")])
+    assert rows == [{"category": "05. Laitages", "adulte_total": 2.30, "apprenant_total": 2.10}]
 
 
 def test_two_full_meals_price_each_at_the_full_tier():

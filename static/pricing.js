@@ -29,6 +29,7 @@ export const HOMEMADE_CAKE_CATEGORIES = new Set(["03. Gâteaux et cookies maison
 export const TAKEAWAY_VITAMIN_CATEGORIES = new Set(["04. Vitamines à emporter"]);
 export const FRUIT_CATEGORIES = new Set(["06. Fruits"]);
 export const PASTRY_CATEGORIES = new Set(["08. Pâtisserie"]);
+export const LAITAGES_CATEGORIES = new Set(["05. Laitages"]);
 // The 3 real Restopolis "Boissons froides" (cold drinks) categories --
 // water, juice and soda are split into separate raw categories, but all
 // priced from the same combined official table below.
@@ -50,6 +51,7 @@ export const OTHER_NAME_PRICED_CATEGORIES = new Set([
   ...HOMEMADE_CAKE_CATEGORIES,
   ...TAKEAWAY_VITAMIN_CATEGORIES,
   ...FRUIT_CATEGORIES,
+  ...LAITAGES_CATEGORIES,
   ...PASTRY_CATEGORIES,
   ...COLD_DRINK_CATEGORIES,
   ...HOT_DRINK_CATEGORIES,
@@ -132,6 +134,18 @@ export const FRUIT_PRICES = {
   'Banane "commerce équitable"': 1.4,
   "Fruit frais entier": 1.4,
   "Mini fruits découpés mélangés/non-mélangés 150 g": 3.5,
+};
+
+// Official 2026/27 Cafétéria list, "LAITAGES" block, adultes column -- the
+// same numbers as orderability_engine/pricing.py's LAITAGES_PRICES. The free
+// school milk ("gratuit") is "/" at this tier, so it has no entry.
+export const LAITAGES_PRICES = {
+  "Mini fromage frais avec coulis de fruits de saison 150 g": 3.5,
+  "Mini muesli maison 150 g": 3.5,
+  "Lait chocolaté Luxlait 0,25 l Tétra Pack": 1.1,
+  "Lait Luxlait BIO 0,25 l Tétra Pack": 0.95,
+  "Yaourt aux fruits Luxlait 125 g": 1.35,
+  "Yaourt nature Luxlait 125 g": 1.15,
 };
 
 export const PASTRY_PRICES = {
@@ -229,6 +243,7 @@ const NAME_PRICED_GROUPS = [
   [HOMEMADE_CAKE_CATEGORIES, HOMEMADE_CAKE_PRICES],
   [TAKEAWAY_VITAMIN_CATEGORIES, TAKEAWAY_VITAMIN_PRICES],
   [FRUIT_CATEGORIES, FRUIT_PRICES],
+  [LAITAGES_CATEGORIES, LAITAGES_PRICES],
   [PASTRY_CATEGORIES, PASTRY_PRICES],
   [COLD_DRINK_CATEGORIES, COLD_DRINK_PRICES],
   [HOT_DRINK_CATEGORIES, HOT_DRINK_PRICES],
@@ -253,12 +268,24 @@ const NAME_PRICED_GROUPS = [
  * cart/review totals (computeFormulaTotal(), never this function) work
  * out correctly regardless of what a single card showed beforehand.
  */
+// Restopolis sometimes slots a seasonal name into a dish ('Mini muesli maison
+// "Douceur d'automne" 150 g') where the official price list has the plain
+// 'Mini muesli maison 150 g'. Tries the exact name first (so names that
+// legitimately contain quotes, like 'Banane "commerce équitable"', still
+// match as written), then the name with any quoted segment removed.
+// Mirrors price_for_name() in orderability_engine/pricing.py.
+export function priceForName(prices, name) {
+  if (prices[name] !== undefined) return prices[name];
+  const plain = name.replace(/\s*[«“"][^»”"]*[»”"]/g, "");
+  return prices[plain];
+}
+
 export function priceForItem(item) {
   if (MAIN_CATEGORIES.has(item.category)) return MEAL_TIER_PRICES.main;
   if (SNACK_CATEGORIES.has(item.category)) return SNACK_PRICE;
   for (const [categories, prices] of NAME_PRICED_GROUPS) {
-    if (categories.has(item.category) && prices[item.name] !== undefined) {
-      return prices[item.name];
+    if (categories.has(item.category) && priceForName(prices, item.name) !== undefined) {
+      return priceForName(prices, item.name);
     }
   }
   return null;
@@ -335,8 +362,8 @@ export function computeFormulaTotal(lines) {
     (sum, [categories, prices]) =>
       sum +
       lines
-        .filter((l) => categories.has(l.category) && prices[l.name] !== undefined)
-        .reduce((s, l) => s + prices[l.name] * l.quantity, 0),
+        .filter((l) => categories.has(l.category) && priceForName(prices, l.name) !== undefined)
+        .reduce((s, l) => s + priceForName(prices, l.name) * l.quantity, 0),
     0
   );
 

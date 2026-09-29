@@ -130,10 +130,46 @@ test("all four sandwich categories have at least one real priced item", () => {
   assert.ok(Object.keys(SANDWICH_PRICES).length >= 20);
 });
 
-test("dairy and ice cream stay unpriced", () => {
-  const r = computeFormulaTotal([line("05. Laitages", 1, "Yaourt nature Luxlait 125 g")]);
-  assert.equal(r.formulaCount, 0);
-  assert.equal(r.total, null);
+test("ice cream stays unpriced -- the official 2026/27 list has no ice cream section", () => {
+  for (const name of [
+    "Cornet Luxlait 130 ml (Chocolat, Fraise, Vanille, Praliné, Mocca-vanille)",
+    "Dame Blanche Luxlait 200 ml",
+    "Glace miniature Luxlait 100 ml (Framboise, Praliné, Vanille)",
+  ]) {
+    const r = computeFormulaTotal([line("07. Glaces", 1, name)]);
+    assert.equal(r.formulaCount, 0);
+    assert.equal(r.total, null);
+    assert.equal(priceForItem({ category: "07. Glaces", name }), null);
+  }
+});
+
+test("dairy is priced at the official adultes tariff", () => {
+  const expected = {
+    "Mini fromage frais avec coulis de fruits de saison 150 g": 3.5,
+    "Mini muesli maison 150 g": 3.5,
+    "Lait chocolaté Luxlait 0,25 l Tétra Pack": 1.1,
+    "Lait Luxlait BIO 0,25 l Tétra Pack": 0.95,
+    "Yaourt aux fruits Luxlait 125 g": 1.35,
+    "Yaourt nature Luxlait 125 g": 1.15,
+  };
+  for (const [name, price] of Object.entries(expected)) {
+    assert.equal(priceForItem({ category: "05. Laitages", name }), price, name);
+    assert.equal(computeFormulaTotal([line("05. Laitages", 1, name)]).total, price, name);
+  }
+});
+
+test("the free school milk has no adultes price", () => {
+  assert.equal(priceForItem({ category: "05. Laitages", name: "Lait Luxlait BIO 0,25 l Tétra Pack (gratuit)" }), null);
+});
+
+test("a seasonal name in quotes still matches the official dairy line", () => {
+  const seasonal = 'Mini muesli maison "Douceur d\'automne" 150 g';
+  assert.equal(priceForItem({ category: "05. Laitages", name: seasonal }), 3.5);
+  assert.equal(computeFormulaTotal([line("05. Laitages", 2, seasonal)]).total, 7);
+});
+
+test("names that really contain quotes still match exactly", () => {
+  assert.equal(priceForItem({ category: "06. Fruits", name: 'Banane "commerce équitable"' }), 1.4);
 });
 
 test("two full meals price each at the full tier", () => {

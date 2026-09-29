@@ -58,16 +58,35 @@ total rather than guessed at -- same "never invent a price" rule as
 everywhere else in this module.
 
 Two categories (Féculents/starches, Légumes/vegetables) still ride
-along free with any main dish -- see INCLUDED_SIDE_CATEGORIES -- and
-Laitages (dairy -- some lines are subsidy-priced per a "Schoulmëttchprogramm"
-notation the source price list doesn't fully spell out) and Glaces
-(ice cream -- no price list photo of this section was available) are
-still not priced by this module -- real official prices likely exist
-for those too, but transcribing them needs a clearer source than what
-was available for this pass, not a guess rushed into this one.
+along free with any main dish -- see INCLUDED_SIDE_CATEGORIES. Laitages
+(dairy) are priced from the official 2026/27 "LISTE DE PRIX" (Cafétéria,
+apprenants / adultes / visiteurs columns): the two lines the list leaves
+blank for a tier ("/" -- the adultes column of the free school milk, the
+apprenants column of the organic milk) or only marks "*" (the official
+"Schoulmëllechprogramm" price, no number given -- chocolate milk for
+apprenants) are simply absent from that tier's table, i.e. unpriced there,
+never guessed. Glaces (ice cream) still have NO price: that official list
+has no ice cream section at all.
 """
 
 from __future__ import annotations
+
+import re
+
+# Restopolis sometimes slots a seasonal name into a dish ('Mini muesli maison
+# "Douceur d'automne" 150 g') where the official price list has the plain
+# 'Mini muesli maison 150 g'. Price lookups try the exact name first (so
+# names that legitimately contain quotes, like 'Banane "commerce
+# équitable"', still match as written), then the name with any quoted
+# segment removed.
+_QUOTED_SEGMENT = re.compile(r'\s*[«“"][^»”"]*[»”"]')
+
+
+def price_for_name(prices: dict, name: str) -> float | None:
+    if name in prices:
+        return prices[name]
+    return prices.get(_QUOTED_SEGMENT.sub("", name))
+
 
 MAIN_CATEGORIES = {"Non-végétarien", "Végétarien", "Végan"}
 STARTER_CATEGORIES = {"Entrée"}
@@ -90,6 +109,7 @@ HOMEMADE_CAKE_CATEGORIES = {"03. Gâteaux et cookies maison"}
 TAKEAWAY_VITAMIN_CATEGORIES = {"04. Vitamines à emporter"}
 FRUIT_CATEGORIES = {"06. Fruits"}
 PASTRY_CATEGORIES = {"08. Pâtisserie"}
+LAITAGES_CATEGORIES = {"05. Laitages"}
 # The 3 real Restopolis "Boissons froides" (cold drinks) categories --
 # water, juice and soda are split into separate raw categories, but all
 # priced from the same combined official table below.
@@ -233,6 +253,27 @@ FRUIT_PRICES_APPRENANT = {
     'Banane "commerce équitable"': 1.25,
     "Fruit frais entier": 1.25,
     "Mini fruits découpés mélangés/non-mélangés 150 g": 2.50,
+}
+
+# Official 2026/27 Cafétéria list, "LAITAGES" block. Adultes column; the
+# free school milk ("gratuit") is "/" there, i.e. not sold at this tier.
+LAITAGES_PRICES = {
+    "Mini fromage frais avec coulis de fruits de saison 150 g": 3.50,
+    "Mini muesli maison 150 g": 3.50,
+    "Lait chocolaté Luxlait 0,25 l Tétra Pack": 1.10,
+    "Lait Luxlait BIO 0,25 l Tétra Pack": 0.95,
+    "Yaourt aux fruits Luxlait 125 g": 1.35,
+    "Yaourt nature Luxlait 125 g": 1.15,
+}
+# Apprenants column. Absent on purpose: the chocolate milk (list says only
+# "*" = the official Schoulmëllechprogramm price, no number) and the
+# organic milk ("/").
+LAITAGES_PRICES_APPRENANT = {
+    "Mini fromage frais avec coulis de fruits de saison 150 g": 2.50,
+    "Mini muesli maison 150 g": 2.50,
+    "Lait Luxlait BIO 0,25 l Tétra Pack (gratuit)": 0.00,
+    "Yaourt aux fruits Luxlait 125 g": 1.25,
+    "Yaourt nature Luxlait 125 g": 1.05,
 }
 
 PASTRY_PRICES = {
@@ -388,6 +429,7 @@ NAME_PRICED_GROUPS = [
     ("homemade cakes", HOMEMADE_CAKE_CATEGORIES, HOMEMADE_CAKE_PRICES),
     ("takeaway vitamins", TAKEAWAY_VITAMIN_CATEGORIES, TAKEAWAY_VITAMIN_PRICES),
     ("fruit", FRUIT_CATEGORIES, FRUIT_PRICES),
+    ("dairy", LAITAGES_CATEGORIES, LAITAGES_PRICES),
     ("pastry", PASTRY_CATEGORIES, PASTRY_PRICES),
     ("cold drinks", COLD_DRINK_CATEGORIES, COLD_DRINK_PRICES),
     ("hot drinks", HOT_DRINK_CATEGORIES, HOT_DRINK_PRICES),
@@ -400,6 +442,7 @@ NAME_PRICED_GROUPS_APPRENANT = [
     ("homemade cakes", HOMEMADE_CAKE_CATEGORIES, HOMEMADE_CAKE_PRICES),
     ("takeaway vitamins", TAKEAWAY_VITAMIN_CATEGORIES, TAKEAWAY_VITAMIN_PRICES_APPRENANT),
     ("fruit", FRUIT_CATEGORIES, FRUIT_PRICES_APPRENANT),
+    ("dairy", LAITAGES_CATEGORIES, LAITAGES_PRICES_APPRENANT),
     ("pastry", PASTRY_CATEGORIES, PASTRY_PRICES_APPRENANT),
     ("cold drinks", COLD_DRINK_CATEGORIES, COLD_DRINK_PRICES_APPRENANT),
     ("hot drinks", HOT_DRINK_CATEGORIES, HOT_DRINK_PRICES_APPRENANT),
@@ -497,10 +540,10 @@ def compute_formula_total(line_items: list[dict], tier: str = "adulte") -> dict:
     )
     snack_total = snack_qty * snack_price
     name_priced_total = sum(
-        prices[it["name"]] * it["quantity"]
+        price_for_name(prices, it["name"]) * it["quantity"]
         for _, categories, prices in name_priced_groups
         for it in line_items
-        if it["category"] in categories and it["name"] in prices
+        if it["category"] in categories and price_for_name(prices, it["name"]) is not None
     )
 
     grand_total = meal_total + snack_total + name_priced_total
@@ -571,10 +614,10 @@ def _non_meal_total(line_items: list[dict], tier: str) -> float:
     _, snack_price, name_priced_groups = _tier_tables(tier)
     snack_qty = sum(it["quantity"] for it in line_items if it["category"] in SNACK_CATEGORIES)
     name_priced_total = sum(
-        prices[it["name"]] * it["quantity"]
+        price_for_name(prices, it["name"]) * it["quantity"]
         for _, categories, prices in name_priced_groups
         for it in line_items
-        if it["category"] in categories and it["name"] in prices
+        if it["category"] in categories and price_for_name(prices, it["name"]) is not None
     )
     return snack_qty * snack_price + name_priced_total
 
@@ -586,6 +629,6 @@ def _name_priced_total_for(category_items: list[dict], tier: str) -> float:
     total = 0.0
     for _, categories, prices in name_priced_groups:
         for it in category_items:
-            if it["category"] in categories and it["name"] in prices:
-                total += prices[it["name"]] * it["quantity"]
+            if it["category"] in categories and price_for_name(prices, it["name"]) is not None:
+                total += price_for_name(prices, it["name"]) * it["quantity"]
     return total
