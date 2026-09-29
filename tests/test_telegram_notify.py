@@ -444,3 +444,95 @@ def test_dish_photo_review_no_buttons_when_no_admin_token(monkeypatch):
     with patch("orderability_engine.telegram_notify.requests.post", return_value=mock_resp) as mock_post:
         send_dish_photo_review("Altius", "Végétarien", "Salad'bar", "https://x/photo.jpg", None, None, None)
     assert "reply_markup" not in mock_post.call_args.kwargs["json"]
+
+
+# ---------------------------------------------------------------------------
+# The admin's "📊 Stats" button
+# ---------------------------------------------------------------------------
+
+from orderability_engine.telegram_notify import (  # noqa: E402
+    STATS_BUTTON_TEXT,
+    is_admin_chat,
+    is_stats_request,
+    send_admin_text,
+    set_webhook,
+    stats_keyboard,
+    webhook_secret,
+)
+
+
+def _configure(monkeypatch, token="123:abc", chat="999"):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", token)
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", chat)
+
+
+def test_the_keyboard_is_one_persistent_stats_button():
+    kb = stats_keyboard()
+    assert kb["keyboard"] == [[{"text": STATS_BUTTON_TEXT}]]
+    assert kb["is_persistent"] is True and kb["resize_keyboard"] is True
+
+
+@pytest.mark.parametrize("text", [STATS_BUTTON_TEXT, "/stats", "/STATS", "/start", "/stats@UniRestoBot", " /stats ", "/stats now"])
+def test_these_count_as_a_stats_request(text):
+    assert is_stats_request(text)
+
+
+@pytest.mark.parametrize("text", ["hello", "", None, "stats", "/statistics", "/help", "📊"])
+def test_everything_else_does_not(text):
+    assert not is_stats_request(text)
+
+
+def test_only_the_admin_chat_is_the_admin(monkeypatch):
+    _configure(monkeypatch)
+    assert is_admin_chat(999) and is_admin_chat("999")
+    assert not is_admin_chat(1000)
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN")
+    assert not is_admin_chat(999)
+
+
+def test_the_webhook_secret_comes_from_the_token(monkeypatch):
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
+    assert webhook_secret() is None
+    _configure(monkeypatch, token="123:abc")
+    first = webhook_secret()
+    assert first and len(first) == 64 and all(c in "0123456789abcdef" for c in first)
+    assert webhook_secret() == first  # stable
+    _configure(monkeypatch, token="123:rotated")
+    assert webhook_secret() != first  # rotating the token rotates the secret
+    assert "123:abc" not in first
+
+
+def test_send_admin_text_attaches_the_button_only_when_asked(monkeypatch):
+    _configure(monkeypatch)
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"ok": True}
+    with patch("orderability_engine.telegram_notify.requests.post", return_value=mock_resp) as mock_post:
+        send_admin_text("plain")
+        assert "reply_markup" not in mock_post.call_args.kwargs["json"]
+        send_admin_text("with button", with_stats_button=True)
+        assert mock_post.call_args.kwargs["json"]["reply_markup"] == stats_keyboard()
+        assert mock_post.call_args.kwargs["json"]["chat_id"] == "999"
+
+
+def test_set_webhook_registers_the_url_with_the_secret(monkeypatch):
+    _configure(monkeypatch)
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"ok": True}
+    with patch("orderability_engine.telegram_notify.requests.post", return_value=mock_resp) as mock_post:
+        assert set_webhook("https://example.test/telegram/webhook") == (True, None)
+    assert mock_post.call_args.args[0].endswith("/bot123:abc/setWebhook")
+    body = mock_post.call_args.kwargs["json"]
+    assert body["url"] == "https://example.test/telegram/webhook"
+    assert body["secret_token"] == webhook_secret()
+    assert body["allowed_updates"] == ["message"]
+
+
+def test_set_webhook_reports_telegrams_refusal_and_missing_config(monkeypatch):
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    assert set_webhook("https://x")[0] is False
+    _configure(monkeypatch)
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = {"ok": False, "description": "bad webhook: HTTPS url must be provided"}
+    with patch("orderability_engine.telegram_notify.requests.post", return_value=mock_resp):
+        assert set_webhook("http://x") == (False, "bad webhook: HTTPS url must be provided")

@@ -77,12 +77,17 @@ from orderability_engine.rewards import (
 from orderability_engine.service import OrderabilityService
 from orderability_engine.smart_lunch import TIER_ORDER, find_smart_lunch
 from orderability_engine.verified_emails import VerifiedEmailStore
+from orderability_engine.admin_stats import build_stats_message
 from orderability_engine.telegram_notify import (
+    is_admin_chat,
+    is_stats_request,
     send_admin_notification,
+    send_admin_text,
     send_dish_photo_review,
     send_feedback_notification,
     send_order_claimed_notification,
     send_order_released_notification,
+    webhook_secret,
 )
 from restopolis.client import BASE_URL as RESTOPOLIS_BASE_URL
 from restopolis.config import load_restaurants
@@ -2050,6 +2055,27 @@ def create_app(
                 message="Your order has been cancelled. No charge was made.",
             )
         return _order_link_not_valid()
+
+    # ----------------------------------------------------------- Telegram bot
+    #
+    # The admin's "📊 Stats" button: Telegram POSTs every message sent to the
+    # bot here (registered once by scripts/telegram_setup.py). Only Telegram
+    # itself (the secret header) and only the admin's own chat get anywhere.
+
+    @app.post("/telegram/webhook")
+    def telegram_webhook():
+        expected = webhook_secret()
+        given = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+        if expected is None or not secrets.compare_digest(given, expected):
+            abort(404)
+        update = request.get_json(force=True, silent=True) or {}
+        message = update.get("message") or {}
+        chat_id = (message.get("chat") or {}).get("id")
+        # Always 200 for a valid Telegram call, even when there's nothing to
+        # do: any other status makes Telegram retry the same update.
+        if chat_id is not None and is_admin_chat(chat_id) and is_stats_request(message.get("text")):
+            send_admin_text(build_stats_message(page_views(), store()), with_stats_button=True)
+        return jsonify({"ok": True})
 
     # ----------------------------------------------------------- Customer
     #

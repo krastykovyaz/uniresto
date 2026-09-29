@@ -3466,3 +3466,79 @@ def test_an_approved_photo_changes_the_card(client, monkeypatch):
     assert client.get(url).data != placeholder
     r, g, b = with_photo.getpixel((200, 300))  # inside the photo panel: the red image, not the pale placeholder
     assert r > 150 and g < 120 and b < 120
+
+
+# ---------------------------------------------------------------------------
+# Telegram: the admin's "📊 Stats" button (POST /telegram/webhook)
+# ---------------------------------------------------------------------------
+
+from orderability_engine.telegram_notify import STATS_BUTTON_TEXT, webhook_secret  # noqa: E402
+
+
+@pytest.fixture
+def telegram(monkeypatch):
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "999")
+    return {"X-Telegram-Bot-Api-Secret-Token": webhook_secret()}
+
+
+def _update(text, chat_id=999):
+    return {"update_id": 1, "message": {"message_id": 5, "chat": {"id": chat_id}, "text": text}}
+
+
+def test_tapping_the_stats_button_sends_the_stats_with_the_button(client, telegram):
+    client.application.config["PAGE_VIEW_STORE"].record("home", source="flyer-a")
+    with patch("app.send_admin_text", return_value=(True, None)) as send:
+        resp = client.post("/telegram/webhook", json=_update(STATS_BUTTON_TEXT), headers=telegram)
+    assert resp.status_code == 200 and resp.get_json() == {"ok": True}
+    text = send.call_args.args[0]
+    assert text.startswith("UniResto stats") and "flyer-a: 1" in text and "(today, so far)" in text
+    assert send.call_args.kwargs["with_stats_button"] is True
+
+
+@pytest.mark.parametrize("text", ["/stats", "/start", "/stats@UniRestoBot"])
+def test_the_commands_work_too(client, telegram, text):
+    with patch("app.send_admin_text", return_value=(True, None)) as send:
+        client.post("/telegram/webhook", json=_update(text), headers=telegram)
+    send.assert_called_once()
+
+
+def test_a_new_qr_source_shows_up_in_the_reply(client, telegram):
+    views = client.application.config["PAGE_VIEW_STORE"]
+    views.record("home", source="flyer-a")
+    views.record("home", source="brand-new-qr")
+    with patch("app.send_admin_text", return_value=(True, None)) as send:
+        client.post("/telegram/webhook", json=_update("/stats"), headers=telegram)
+    assert "brand-new-qr: 1" in send.call_args.args[0]
+
+
+def test_the_webhook_needs_the_secret_header(client, telegram):
+    with patch("app.send_admin_text") as send:
+        assert client.post("/telegram/webhook", json=_update("/stats")).status_code == 404
+        assert client.post("/telegram/webhook", json=_update("/stats"), headers={"X-Telegram-Bot-Api-Secret-Token": "guess"}).status_code == 404
+    send.assert_not_called()
+
+
+def test_the_webhook_is_off_without_a_bot(client, monkeypatch):
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
+    assert client.post("/telegram/webhook", json=_update("/stats"), headers={"X-Telegram-Bot-Api-Secret-Token": ""}).status_code == 404
+
+
+def test_anyone_but_the_admin_gets_no_answer(client, telegram):
+    with patch("app.send_admin_text") as send:
+        resp = client.post("/telegram/webhook", json=_update(STATS_BUTTON_TEXT, chat_id=12345), headers=telegram)
+    assert resp.status_code == 200  # still 200, or Telegram would retry
+    send.assert_not_called()
+
+
+def test_other_messages_and_odd_updates_are_ignored(client, telegram):
+    with patch("app.send_admin_text") as send:
+        for body in (_update("hello"), {"update_id": 2}, {"message": {}}, {"edited_message": {"chat": {"id": 999}, "text": "/stats"}}, []):
+            assert client.post("/telegram/webhook", json=body, headers=telegram).status_code == 200
+        assert client.post("/telegram/webhook", data="not json", headers=telegram).status_code == 200
+    send.assert_not_called()
+
+
+def test_the_webhook_only_accepts_post(client, telegram):
+    assert client.get("/telegram/webhook", headers=telegram).status_code == 405

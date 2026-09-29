@@ -16,6 +16,8 @@ sends the bot any message) -- there's no way to derive it otherwise.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import logging
 import os
 
@@ -147,7 +149,7 @@ def send_admin_notification(
     return _send_message(text, buttons, log_context=f"order #{order.get('id')}")
 
 
-def _send_message(text: str, buttons: list | None, log_context: str) -> tuple[bool, str | None]:
+def _send_message(text: str, buttons: list | None, log_context: str, reply_markup: dict | None = None) -> tuple[bool, str | None]:
     """Shared by send_admin_notification and send_feedback_notification
     below -- the one thing that actually differs between admin
     notifications is what text/buttons they send, not how the Telegram
@@ -159,6 +161,8 @@ def _send_message(text: str, buttons: list | None, log_context: str) -> tuple[bo
     payload = {"chat_id": config["chat_id"], "text": text}
     if buttons:
         payload["reply_markup"] = {"inline_keyboard": buttons}
+    elif reply_markup:
+        payload["reply_markup"] = reply_markup
     try:
         resp = requests.post(
             f"{TELEGRAM_API_BASE}/bot{config['token']}/sendMessage",
@@ -307,3 +311,82 @@ def send_daily_report(counts: dict, report_date) -> tuple[bool, str | None]:
         f"Opened deliveries: {counts['delivery']}",
     ]
     return _send_message("\n".join(lines), buttons=None, log_context=f"daily report {report_date}")
+
+
+# ---------------------------------------------------------------------------
+# The admin's own "📊 Stats" button (an incoming-message bot feature)
+#
+# Everything above only SENDS. A button the admin taps and gets an answer to
+# needs the bot to RECEIVE that tap, so this uses Telegram's webhook: the bot
+# is told once (scripts/telegram_setup.py -> setWebhook) to POST every message
+# to /telegram/webhook on this app, and the tap arrives as a plain message
+# with the button's text. The button itself is a persistent reply keyboard, so
+# it stays at the bottom of the chat until removed.
+# ---------------------------------------------------------------------------
+
+STATS_BUTTON_TEXT = "📊 Stats"
+STATS_COMMANDS = {"/stats", "/start"}
+
+
+def stats_keyboard() -> dict:
+    """A one-button keyboard that stays put (is_persistent) and fits the
+    screen (resize_keyboard) -- attached to every stats reply, so it can
+    never go missing."""
+    return {"keyboard": [[{"text": STATS_BUTTON_TEXT}]], "resize_keyboard": True, "is_persistent": True}
+
+
+def webhook_secret() -> str | None:
+    """The secret Telegram echoes back in X-Telegram-Bot-Api-Secret-Token on
+    every webhook call, so /telegram/webhook can tell the real Telegram from
+    anyone who merely found the URL. Derived from the bot token (which only
+    this server and Telegram know) rather than stored: nothing extra to put
+    in .env, and it changes if the token is rotated. 64 hex chars, within
+    Telegram's allowed alphabet."""
+    config = _bot_config()
+    if config is None:
+        return None
+    return hmac.new(config["token"].encode(), b"uniresto-telegram-webhook", hashlib.sha256).hexdigest()
+
+
+def is_admin_chat(chat_id) -> bool:
+    """Only the admin's own chat may ask for stats -- anyone else who finds
+    the bot and taps or types the same thing gets no answer."""
+    config = _bot_config()
+    return config is not None and str(chat_id) == str(config["chat_id"])
+
+
+def is_stats_request(text: str | None) -> bool:
+    """The button's text, /stats, /start, or either command addressed to
+    the bot by name ("/stats@UniRestoBot", how Telegram sends them in a group)."""
+    value = (text or "").strip()
+    if value == STATS_BUTTON_TEXT:
+        return True
+    command = value.split("@", 1)[0].split(" ", 1)[0].lower()
+    return command in STATS_COMMANDS
+
+
+def send_admin_text(text: str, with_stats_button: bool = False) -> tuple[bool, str | None]:
+    """A plain message to the admin, optionally re-attaching the Stats
+    button. Best-effort, same contract as every function here."""
+    return _send_message(text, buttons=None, log_context="admin stats", reply_markup=stats_keyboard() if with_stats_button else None)
+
+
+def set_webhook(url: str) -> tuple[bool, str | None]:
+    """Points the bot's incoming messages at `url` (must be https and
+    reachable by Telegram), with the secret above, asking for messages only.
+    Called once by scripts/telegram_setup.py; safe to call again."""
+    config = _bot_config()
+    if config is None:
+        return False, "Telegram not configured (TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID unset)"
+    try:
+        resp = requests.post(
+            f"{TELEGRAM_API_BASE}/bot{config['token']}/setWebhook",
+            json={"url": url, "secret_token": webhook_secret(), "allowed_updates": ["message"], "drop_pending_updates": True},
+            timeout=10,
+        )
+        body = resp.json()
+        if not body.get("ok"):
+            return False, body.get("description") or f"HTTP {resp.status_code}"
+        return True, None
+    except Exception as exc:  # noqa: BLE001 -- setup script reports it, never crashes
+        return False, str(exc)
