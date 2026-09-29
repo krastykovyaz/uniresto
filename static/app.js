@@ -3927,22 +3927,111 @@ function dishShareUrl(item) {
   return url.toString();
 }
 
-async function shareDish(item, title) {
-  const url = dishShareUrl(item);
-  if (typeof navigator.share === "function") {
-    try {
-      await navigator.share({ title, text: title, url });
-    } catch {
-      /* dismissed the share sheet -- nothing to do */
-    }
-    return;
-  }
+// A native share sheet (navigator.share) is the best experience on a phone,
+// but on a Mac it lists AirDrop / Mail / Notes ... with no "Copy link", and it
+// can't be asked to add one. So the share button opens THIS small menu first:
+// copy the link, Telegram, WhatsApp, and -- where the browser has it -- the
+// native sheet as "More".
+async function copyToClipboard(text) {
   try {
-    await navigator.clipboard.writeText(url);
-    showToast(tr("linkCopied"));
+    await navigator.clipboard.writeText(text);
+    return true;
   } catch {
-    showToast(url, 6000);
+    // navigator.clipboard needs a secure context / permission; the old
+    // select-and-copy still works almost everywhere else.
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.cssText = "position:fixed;top:0;left:0;opacity:0";
+      document.body.append(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      ta.remove();
+      return ok;
+    } catch {
+      return false;
+    }
   }
+}
+
+function openShareSheet(item, title) {
+  const url = dishShareUrl(item);
+  const enc = encodeURIComponent;
+  const overlay = el(`<div class="sheet-overlay"></div>`);
+  const sheet = el(`
+    <div class="lang-sheet" role="dialog" aria-modal="true" aria-label="${escapeHtml(tr("shareDish", { name: title }))}">
+      <div class="sheet-grabber" aria-hidden="true"></div>
+      <div class="lang-sheet-header">
+        <p class="screen-title">${escapeHtml(tr("shareDish", { name: title }))}</p>
+        <button type="button" class="filter-close" aria-label="${escapeHtml(tr("back"))}">${icon("close", 20)}</button>
+      </div>
+      <div class="lang-list"></div>
+    </div>
+  `);
+  const list = sheet.querySelector(".lang-list");
+
+  function close() {
+    document.removeEventListener("keydown", onKey, true);
+    overlay.remove();
+  }
+  // Capture phase + stopPropagation: Escape closes THIS menu only, not the
+  // dish card underneath (whose own Escape handler is a bubble-phase one).
+  function onKey(e) {
+    if (e.key === "Escape") {
+      e.stopPropagation();
+      close();
+    }
+  }
+
+  const options = [
+    {
+      badge: "🔗",
+      label: tr("copyLink"),
+      run: async () => {
+        close();
+        showToast((await copyToClipboard(url)) ? tr("linkCopied") : url, 6000);
+      },
+    },
+    { badge: "TG", label: "Telegram", run: () => window.open(`https://t.me/share/url?url=${enc(url)}&text=${enc(title)}`, "_blank", "noopener") },
+    { badge: "WA", label: "WhatsApp", run: () => window.open(`https://wa.me/?text=${enc(`${title}\n${url}`)}`, "_blank", "noopener") },
+  ];
+  if (typeof navigator.share === "function") {
+    options.push({
+      badge: "⋯",
+      label: tr("shareMore"),
+      run: async () => {
+        close();
+        try {
+          await navigator.share({ title, text: title, url });
+        } catch {
+          /* dismissed the native sheet -- nothing to do */
+        }
+      },
+    });
+  }
+  for (const opt of options) {
+    const row = el(`
+      <button type="button" class="lang-option">
+        <span class="lang-badge">${escapeHtml(opt.badge)}</span>
+        <span class="lang-names"><span class="lang-native">${escapeHtml(opt.label)}</span></span>
+      </button>
+    `);
+    row.addEventListener("click", async () => {
+      await opt.run();
+      if (opt.badge === "TG" || opt.badge === "WA") close();
+    });
+    list.append(row);
+  }
+
+  sheet.querySelector(".filter-close").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close();
+  });
+  document.addEventListener("keydown", onKey, true);
+  overlay.append(sheet);
+  deviceScreen.append(overlay);
+  list.querySelector(".lang-option")?.focus();
 }
 
 // Opens the dish a shared link points at, if this page load was opened from
@@ -4135,7 +4224,7 @@ function openDishDetailSheet(item, trigger, earlyCutoffPassed = false) {
     close();
     activeTrigger?.focus();
   });
-  sheet.querySelector(".dish-detail-share")?.addEventListener("click", () => shareDish(item, name));
+  sheet.querySelector(".dish-detail-share")?.addEventListener("click", () => openShareSheet(item, name));
   sheet.querySelector(".dish-detail-heart").addEventListener("click", () => {
     toggleFavorite(state.slug, state.restaurantName, item.category, item.name);
     const heartBtn = sheet.querySelector(".dish-detail-heart");
