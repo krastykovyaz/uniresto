@@ -1362,6 +1362,26 @@ def create_app(
         delivery_subscribers().add(email, _normalize_lang_arg(body.get("lang")) or "en")
         return jsonify({"registered": True})
 
+    @app.get("/api/courier/orders")
+    def api_courier_orders():
+        """The orders THIS courier took: the one(s) in hand and the ones
+        already delivered, for Order History's "My deliveries" tab. Only
+        for the browser that proved the address (same token as every
+        courier action), and answered like any other unverified address
+        otherwise. Contact details are stripped, as on the Delivery list."""
+        if (limited := rate_limited_response("rewards_read")) is not None:
+            return limited
+        email = (request.args.get("email") or "").strip()
+        if not email or not _is_allowed_customer_email(email):
+            abort(400, description=f"'email' must be a valid address ending in {' or '.join(ALLOWED_EMAIL_DOMAINS)}")
+        if not _is_proven(email):
+            return jsonify({"error": "email_not_verified", "message": "Your University email must be verified first"}), 403
+        orders = store().list_orders_for_courier(email)
+        for order in orders:
+            for field in PRIVATE_ORDER_FIELDS:
+                order.pop(field, None)
+        return jsonify(orders)
+
     @app.get("/api/delivery/orders")
     def api_delivery_orders():
         """Real orders for the in-app Delivery screen (Part 52+) -- every

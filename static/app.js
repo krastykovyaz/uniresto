@@ -938,7 +938,10 @@ function openLanguageSheet(trigger) {
 // clearing local state, not asserting ownership of anything. Same
 // bottom-sheet shell as openLanguageSheet() above, but its content is
 // swapped in place between the two steps rather than closing/reopening.
-function openEmailSheet(trigger) {
+// `onVerified(email)`, when given, is for callers outside Profile (e.g. a
+// courier tapping "Take this delivery"): it runs after a successful
+// verification INSTEAD of redrawing Profile, so the person stays where they were.
+function openEmailSheet(trigger, onVerified) {
   const overlay = el(`<div class="sheet-overlay"></div>`);
   const sheet = el(`<div class="lang-sheet" role="dialog" aria-modal="true" aria-label="${escapeHtml(tr("registeredEmail"))}"></div>`);
   let step = "enter";
@@ -962,6 +965,10 @@ function openEmailSheet(trigger) {
     if (email) saveRegisteredEmail(email);
     else clearRegisteredEmail();
     close();
+    if (onVerified && email) {
+      onVerified(email);
+      return;
+    }
     document.querySelector(".profile-row-email")?.focus();
     renderProfile();
   }
@@ -1768,13 +1775,25 @@ function saveDeliveryRegisteredEmail(email) {
 // explicit instruction this was built from. Inline on the page rather
 // than a bottom sheet: this is the primary reason to be on this screen
 // at all, not a secondary settings action.
-function deliveryRegisterCard() {
+function deliveryRegisterCard(onRegistered, sheet, closeSheet) {
   const registeredEmail = loadDeliveryRegisteredEmail();
   if (registeredEmail) {
     return el(`<p class="info-banner">${escapeHtml(tr("deliveryRegisteredAs", { email: registeredEmail }))}</p>`);
   }
 
-  const card = el(`<div class="delivery-register-card"></div>`);
+  // Inline card by default. With `sheet` (the bottom sheet's own element) the
+  // form is drawn straight into it, header included, exactly like
+  // openEmailSheet() does -- so it gets that sheet's spacing and look.
+  const card = sheet || el(`<div class="delivery-register-card"></div>`);
+  const sheetHead = (titleText) =>
+    sheet
+      ? `<div class="sheet-grabber" aria-hidden="true"></div>
+        <div class="lang-sheet-header">
+          <p class="screen-title">${escapeHtml(titleText)}</p>
+          <button type="button" class="filter-close" aria-label="${escapeHtml(tr("back"))}">${icon("close", 20)}</button>
+        </div>`
+      : "";
+  const wireSheetClose = () => card.querySelector(".filter-close")?.addEventListener("click", () => closeSheet && closeSheet());
   let step = "enter";
   let pendingEmail = "";
 
@@ -1783,7 +1802,8 @@ function deliveryRegisterCard() {
   // and swaps this card out for the "You'll get emails at..." banner.
   function finishRegistering(email) {
     saveDeliveryRegisteredEmail(email);
-    card.replaceWith(deliveryRegisterCard());
+    if (onRegistered) onRegistered(email);
+    else card.replaceWith(deliveryRegisterCard());
   }
 
   // The University Email already verified on this device (Profile, Part
@@ -1809,9 +1829,10 @@ function deliveryRegisterCard() {
   function renderStep() {
     if (step === "enter") {
       card.innerHTML = `
-        <p class="delivery-register-hint">${escapeHtml(tr("deliveryRegisterHint"))}</p>
+        ${sheetHead(hx("orderEmailsTitle"))}
+        <p class="delivery-register-hint email-sheet-hint">${escapeHtml(tr("deliveryRegisterHint"))}</p>
         <div class="field-block">
-          <input type="email" inputmode="email" class="delivery-register-input" placeholder="${escapeHtml(tr("communicationEmailPlaceholder"))}">
+          <input type="email" inputmode="email" class="delivery-register-input email-sheet-input" placeholder="${escapeHtml(tr("communicationEmailPlaceholder"))}">
         </div>
         <button type="button" class="primary-button delivery-register-send">${escapeHtml(tr("sendCode"))}</button>
         ${
@@ -1826,15 +1847,24 @@ function deliveryRegisterCard() {
         if (e.key === "Enter") requestCode(input.value.trim());
       });
       card.querySelector(".delivery-register-use-uni")?.addEventListener("click", useUniEmailInstead);
+      wireSheetClose();
+      if (sheet) input.focus(); // in the bottom sheet: ready to type, like the University email sheet
     } else {
       card.innerHTML = `
-        <p class="delivery-register-hint">${escapeHtml(tr("codeSentHint", { email: pendingEmail }))}</p>
+        ${sheetHead(tr("verifyEmailTitle"))}
+        <p class="delivery-register-hint email-sheet-hint">${escapeHtml(tr("codeSentHint", { email: pendingEmail }))}</p>
         <div class="field-block">
-          <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" class="delivery-register-code" placeholder="000000">
+          <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" class="delivery-register-code email-sheet-code" placeholder="000000">
         </div>
         <button type="button" class="primary-button delivery-register-confirm">${escapeHtml(tr("confirmCode"))}</button>
         <button type="button" class="secondary-button delivery-register-resend">${escapeHtml(tr("resendCode"))}</button>
+        <button type="button" class="email-sheet-change-email delivery-register-change">${escapeHtml(tr("changeEmail"))}</button>
       `;
+      card.querySelector(".delivery-register-change").addEventListener("click", () => {
+        step = "enter";
+        renderStep();
+      });
+      wireSheetClose();
       const codeInput = card.querySelector(".delivery-register-code");
       card.querySelector(".delivery-register-confirm").addEventListener("click", () => submitCode(codeInput.value.trim()));
       codeInput.addEventListener("keydown", (e) => {
@@ -1905,6 +1935,38 @@ function deliveryRegisterCard() {
   return card;
 }
 
+// The same form as a bottom sheet, like every other place this app asks for
+// an email. Opened when a courier goes Online without an address registered;
+// closes itself (with a confirmation toast) once the code is verified.
+function openDeliveryRegisterSheet() {
+  if (loadDeliveryRegisteredEmail() || document.querySelector(".delivery-register-sheet")) return;
+  const overlay = el(`<div class="sheet-overlay"></div>`);
+  const sheet = el(`<div class="lang-sheet delivery-register-sheet" role="dialog" aria-modal="true" aria-label="${escapeHtml(hx("orderEmailsTitle"))}"></div>`);
+  function close() {
+    document.removeEventListener("keydown", onKey);
+    overlay.remove();
+  }
+  function onKey(e) {
+    if (e.key === "Escape") close();
+  }
+  // The sheet element itself is the form's host, so it is built exactly like
+  // the University-email sheet (same header, hint, input and button layout).
+  deliveryRegisterCard(
+    (email) => {
+      close();
+      showToast(tr("deliveryRegisteredAs", { email }));
+    },
+    sheet,
+    close
+  );
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close();
+  });
+  document.addEventListener("keydown", onKey);
+  overlay.append(sheet);
+  deviceScreen.append(overlay);
+}
+
 // Shared one-row campus filter (Part 67/68) -- used on both the
 // restaurant list and the Delivery screen, each with its OWN state key
 // (they filter different things and don't need to stay in sync with
@@ -1973,10 +2035,11 @@ function fmtDateTime(isoString) {
 // so someone without one is sent straight to Profile instead of a
 // request just getting refused; returns the email to send as
 // `courier_email`, or null (having already redirected) if there isn't one.
-function verifiedCourierEmailOrRedirect() {
+function verifiedCourierEmailOrRedirect(retryBtn) {
   if (state.registeredEmail) return state.registeredEmail;
-  showToast(tr("courierNeedsUniversityEmail"));
-  goTo("profile");
+  // No verified University email yet: ask for it right here in the same bottom
+  // sheet Profile uses (no jump to Profile), then repeat the tap that needed it.
+  openEmailSheet(retryBtn, () => retryBtn?.click());
   return null;
 }
 
@@ -2001,7 +2064,7 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
         <div class="icon-avatar is-other">${icon("receipt", 20)}</div>
         <div>
           <h2>${escapeHtml(order.delivery_location || tr("deliveryLocationNotGiven"))}</h2>
-          <p class="kind">${escapeHtml(itemsSummary)}</p>
+          <p class="kind">${escapeHtml(shortName(order.restaurant_name))} · ${escapeHtml(itemsSummary)}</p>
           <p class="kind">${escapeHtml(fmtLong(order.order_date))} · ${escapeHtml(orderStatusLabel(order.status))}</p>
           ${hasEarlyOrderItem ? `<p class="kind delivery-early-order-note">${escapeHtml(tr("deliveryEarlyOrderNote"))}</p>` : ""}
           ${(sectionKey === "pending" || sectionKey === "expired") && order.claimed_at ? `<p class="kind delivery-claimed-note">${escapeHtml(tr("deliveryClaimedAt", { time: fmtDateTime(order.claimed_at) }))}</p>` : ""}
@@ -2026,7 +2089,7 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
     if (!order.claimed_at) {
       const claimBtn = el(`<button type="button" class="secondary-button delivery-claim-btn">${escapeHtml(tr("deliveryClaimJob"))}</button>`);
       claimBtn.addEventListener("click", async () => {
-        const courierEmail = verifiedCourierEmailOrRedirect();
+        const courierEmail = verifiedCourierEmailOrRedirect(claimBtn);
         if (!courierEmail) return;
         claimBtn.disabled = true;
         try {
@@ -2050,7 +2113,7 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
       // OrderStore.mark_unclaimed()'s own docstring).
       const pickupBtn = el(`<button type="button" class="secondary-button delivery-pickup-btn">${escapeHtml(tr("deliveryConfirmPickup"))}</button>`);
       pickupBtn.addEventListener("click", async () => {
-        const courierEmail = verifiedCourierEmailOrRedirect();
+        const courierEmail = verifiedCourierEmailOrRedirect(pickupBtn);
         if (!courierEmail) return;
         pickupBtn.disabled = true;
         try {
@@ -2071,7 +2134,7 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
       // server-side.
       const releaseBtn = el(`<button type="button" class="secondary-button delivery-release-btn">${escapeHtml(tr("deliveryReleaseClaim"))}</button>`);
       releaseBtn.addEventListener("click", async () => {
-        const courierEmail = verifiedCourierEmailOrRedirect();
+        const courierEmail = verifiedCourierEmailOrRedirect(releaseBtn);
         if (!courierEmail) return;
         releaseBtn.disabled = true;
         try {
@@ -2088,7 +2151,7 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
     }
     const btn = el(`<button type="button" class="secondary-button delivery-mark-delivered">${escapeHtml(tr("deliveryMarkDelivered"))}</button>`);
     btn.addEventListener("click", async () => {
-      const courierEmail = verifiedCourierEmailOrRedirect();
+      const courierEmail = verifiedCourierEmailOrRedirect(btn);
       if (!courierEmail) return;
       btn.disabled = true;
       try {
@@ -2101,12 +2164,13 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
         btn.disabled = false;
       }
     });
-    actions.append(btn);
+    // Only someone who took the order can hand it over: an open offer just offers "Take this delivery".
+    if (order.claimed_at) actions.append(btn);
     card.append(actions);
   } else if (sectionKey === "delivered") {
     const btn = el(`<button type="button" class="secondary-button delivery-mark-delivered">${escapeHtml(tr("deliveryMarkNotDelivered"))}</button>`);
     btn.addEventListener("click", async () => {
-      const courierEmail = verifiedCourierEmailOrRedirect();
+      const courierEmail = verifiedCourierEmailOrRedirect(btn);
       if (!courierEmail) return;
       btn.disabled = true;
       try {
@@ -2167,36 +2231,123 @@ function deliverySection(section, orders, onChanged) {
   return wrap;
 }
 
-function deliveryOrderListContent(orders, onChanged) {
+// The courier's screen works like a ride app: the delivery you hold is pinned
+// on top with its steps, open orders below it as offers (most urgent first),
+// and everything finished or called off tucked away underneath.
+const COURIER_ONLINE_KEY = "uniresto.courierOnline.v1";
+
+function loadCourierOnline() {
+  try {
+    return localStorage.getItem(COURIER_ONLINE_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+
+function saveCourierOnline(on) {
+  try {
+    localStorage.setItem(COURIER_ONLINE_KEY, on ? "1" : "0");
+  } catch {
+    /* localStorage unavailable -- just won't persist */
+  }
+}
+
+// Accepted -> Picked up -> Delivered, for one order the courier holds.
+function courierStepsRow(order) {
+  const current = order.picked_up_at ? 1 : 0;
+  const names = [hx("stepAccepted"), hx("stepPickedUp"), hx("delivered")];
+  const parts = names.map((name, i) => {
+    const cls = i < current ? "is-done" : i === current ? "is-now" : "";
+    return `${i > 0 ? `<span class="courier-step-bar ${i <= current ? "is-done" : ""}"></span>` : ""}<span class="courier-step ${cls}"><i></i>${escapeHtml(name)}</span>`;
+  });
+  return el(`<div class="courier-steps">${parts.join("")}</div>`);
+}
+
+function courierActiveBlock(active, onChanged) {
+  const wrap = el(`<div class="courier-active"></div>`);
+  for (const order of active) {
+    const job = el(`<div class="courier-job"><p class="courier-job-title">${escapeHtml(hx("yourDelivery"))}</p></div>`);
+    job.append(courierStepsRow(order));
+    job.append(deliveryOrderCard(order, "pending", onChanged));
+    wrap.append(job);
+  }
+  return wrap;
+}
+
+function courierOnlineRow(onChanged, onTurnedOn) {
+  const on = loadCourierOnline();
+  const row = el(`
+    <button type="button" class="courier-online ${on ? "is-on" : ""}" role="switch" aria-checked="${on}">
+      <span>${escapeHtml(hx(on ? "online" : "offline"))}</span><span class="courier-online-switch"></span>
+    </button>
+  `);
+  row.addEventListener("click", () => {
+    saveCourierOnline(!on);
+    onChanged();
+    if (!on && onTurnedOn) onTurnedOn();
+  });
+  return row;
+}
+
+function deliveryOrderListContent(data, onChanged) {
   const wrap = el(`<div></div>`);
   if (state.deliveryCampusFilter === "belval") {
     wrap.append(emptyState("receipt", tr("deliveryBelvalComingSoonTitle"), tr("deliveryBelvalComingSoonBody")));
     return wrap;
   }
-  if (orders.length === 0) {
-    wrap.append(emptyState("receipt", tr("deliveryOrdersEmptyTitle"), tr("deliveryOrdersEmptyBody")));
-    return wrap;
-  }
+  const { orders, mine } = data;
+  const online = loadCourierOnline();
+
+  // 1) what I'm carrying right now
+  const active = mine.filter((o) => !o.delivered_at && o.status !== "cancelled");
+  if (active.length > 0) wrap.append(courierActiveBlock(active, onChanged));
+
+  // 2) open orders as offers, most urgent first
   const buckets = { pending: [], expired: [], closed: [], delivered: [] };
   for (const order of orders) buckets[classifyDeliveryOrder(order)].push(order);
-
-  for (const section of DELIVERY_SECTIONS) {
-    const sectionOrders = buckets[section.key];
-    if (sectionOrders.length === 0) continue;
-    wrap.append(deliverySection(section, sectionOrders, onChanged));
+  if (!online) {
+    wrap.append(emptyState("receipt", hx("offline"), hx("offlineMessage")));
+  } else {
+    const offers = buckets.pending
+      .filter((o) => !o.claimed_at)
+      .sort((a, b) => a.order_date.localeCompare(b.order_date) || a.created_at.localeCompare(b.created_at));
+    if (offers.length === 0) {
+      wrap.append(emptyState("receipt", tr("deliveryOrdersEmptyTitle"), hx("noOffers")));
+    } else {
+      const list = el(`<div class="order-list courier-offers"></div>`);
+      for (const order of offers) list.append(deliveryOrderCard(order, "pending", onChanged));
+      wrap.append(list);
+    }
   }
+
+  // Expired / Closed / Delivered orders are deliberately not listed here any
+  // more: what you delivered is under Profile -> Order History -> My deliveries.
   return wrap;
+}
+
+async function loadDeliveryData() {
+  const [orders, mine] = await Promise.all([
+    api("/api/delivery/orders"),
+    state.registeredEmail
+      ? api(`/api/courier/orders?email=${encodeURIComponent(state.registeredEmail)}`).catch(() => [])
+      : Promise.resolve([]),
+  ]);
+  return { orders, mine: mine || [] };
 }
 
 async function renderDelivery() {
   app.innerHTML = "";
-  app.append(header({ title: tr("deliveryOrdersTitle"), back: () => goTo("role") }));
-  app.append(deliveryRegisterCard());
+  const screenHeader = header({ title: tr("deliveryOrdersTitle"), back: () => goTo("role") });
+  app.append(screenHeader);
+  // The Online switch sits on the title's own line, at the right; filled in
+  // by paint() below (not shown for Belval, which has no orders yet).
+  const onlineSlot = el(`<div class="courier-online-slot"></div>`);
+  screenHeader.append(onlineSlot);
   app.append(loadingState(tr("loadingOrders")));
 
-  let orders;
+  let data;
   try {
-    orders = await api("/api/delivery/orders");
+    data = await loadDeliveryData();
   } catch {
     if (state.screen !== "delivery") return; // navigated away while this was in flight
     app.querySelector(".loading-state")?.replaceWith(emptyState("receipt", tr("deliveryOrdersLoadFailedTitle"), tr("deliveryOrdersLoadFailedBody")));
@@ -2206,16 +2357,33 @@ async function renderDelivery() {
   app.querySelector(".loading-state")?.remove();
 
   const body = el(`<div class="delivery-campus-body"></div>`);
-  // Re-renders in place after a mark-(not-)delivered action -- orders'
-  // own objects are mutated directly (see deliveryOrderCard()) rather
-  // than re-fetched, so this just re-buckets/re-sections the same list.
-  const rerenderBody = () => {
-    body.innerHTML = "";
-    body.append(deliveryOrderListContent(orders, rerenderBody));
+  // Asked as a bottom sheet, only for someone Online with no delivery email
+  // registered yet -- once they have one, never again.
+  const askForEmail = () => {
+    if (loadCourierOnline() && state.deliveryCampusFilter !== "belval") openDeliveryRegisterSheet();
   };
-  app.append(campusFilterRow("deliveryCampusFilter", rerenderBody));
-  rerenderBody();
+  const paint = () => {
+    onlineSlot.innerHTML = "";
+    if (state.deliveryCampusFilter !== "belval") onlineSlot.append(courierOnlineRow(changed, askForEmail));
+    body.innerHTML = "";
+    body.append(deliveryOrderListContent(data, changed));
+  };
+  // After any action: repaint at once from the locally updated order (cards
+  // mutate their own order object), then re-read the server so the pinned
+  // delivery and the offers reflect what actually happened.
+  const changed = async () => {
+    paint();
+    try {
+      data = await loadDeliveryData();
+    } catch {
+      return; // keep what's on screen
+    }
+    if (state.screen === "delivery") paint();
+  };
+  app.append(campusFilterRow("deliveryCampusFilter", paint));
+  paint();
   app.append(body);
+  askForEmail();
 }
 
 // Belval has no orderable restaurant yet, so instead of four dead "coming
@@ -2792,11 +2960,209 @@ function orderStatusLabel(status) {
   return key ? tr(key) : status;
 }
 
-async function openOrderHistory() {
+// Strings for the Basket / Order History split. Kept beside their only user
+// (not in i18n.js) with an English fallback per key.
+const HISTORY_STRINGS = {
+  en: {
+    myOrders: "My orders",
+    myDeliveries: "My deliveries",
+    inProgress: "In progress",
+    delivered: "Delivered",
+    noDeliveriesTitle: "No deliveries yet",
+    noDeliveriesBody: "Orders you take and deliver will show up here.",
+    deliveriesNeedEmail: "Verify your University email in Profile to see your deliveries.",
+    basketOrdersInProgress: "{n} in progress — see Profile → Order History",
+    yourDelivery: "Your delivery",
+    stepAccepted: "Accepted",
+    stepPickedUp: "Picked up",
+    online: "Online",
+    offline: "Offline",
+    offlineMessage: "You're offline. Switch Online on to see new orders.",
+    noOffers: "No new orders right now.",
+    orderEmailsTitle: "New-order emails",
+  },
+  fr: {
+    myOrders: "Mes commandes",
+    myDeliveries: "Mes livraisons",
+    inProgress: "En cours",
+    delivered: "Livrées",
+    noDeliveriesTitle: "Aucune livraison pour l'instant",
+    noDeliveriesBody: "Les commandes que vous prenez et livrez apparaîtront ici.",
+    deliveriesNeedEmail: "Vérifiez votre e-mail universitaire dans le profil pour voir vos livraisons.",
+    basketOrdersInProgress: "{n} en cours — voir Profil → Historique",
+    yourDelivery: "Votre livraison",
+    stepAccepted: "Acceptée",
+    stepPickedUp: "Récupérée",
+    online: "En ligne",
+    offline: "Hors ligne",
+    offlineMessage: "Vous êtes hors ligne. Activez « En ligne » pour voir les nouvelles commandes.",
+    noOffers: "Aucune nouvelle commande pour l'instant.",
+    orderEmailsTitle: "E-mails de nouvelles commandes",
+  },
+  es: {
+    myOrders: "Mis pedidos",
+    myDeliveries: "Mis entregas",
+    inProgress: "En curso",
+    delivered: "Entregados",
+    noDeliveriesTitle: "Aún no hay entregas",
+    noDeliveriesBody: "Los pedidos que recojas y entregues aparecerán aquí.",
+    deliveriesNeedEmail: "Verifica tu correo universitario en el perfil para ver tus entregas.",
+    basketOrdersInProgress: "{n} en curso — mira Perfil → Historial de pedidos",
+    yourDelivery: "Tu entrega",
+    stepAccepted: "Aceptado",
+    stepPickedUp: "Recogido",
+    online: "Conectado",
+    offline: "Desconectado",
+    offlineMessage: "Estás desconectado. Activa «Conectado» para ver pedidos nuevos.",
+    noOffers: "No hay pedidos nuevos ahora.",
+    orderEmailsTitle: "Avisos de pedidos nuevos",
+  },
+  pt: {
+    myOrders: "Os meus pedidos",
+    myDeliveries: "As minhas entregas",
+    inProgress: "Em curso",
+    delivered: "Entregues",
+    noDeliveriesTitle: "Ainda sem entregas",
+    noDeliveriesBody: "Os pedidos que aceitares e entregares aparecem aqui.",
+    deliveriesNeedEmail: "Confirma o teu e-mail universitário no perfil para veres as tuas entregas.",
+    basketOrdersInProgress: "{n} em curso — vê Perfil → Histórico de pedidos",
+    yourDelivery: "A tua entrega",
+    stepAccepted: "Aceite",
+    stepPickedUp: "Recolhido",
+    online: "Online",
+    offline: "Offline",
+    offlineMessage: "Estás offline. Ativa «Online» para ver novos pedidos.",
+    noOffers: "Sem novos pedidos de momento.",
+    orderEmailsTitle: "Avisos de novos pedidos",
+  },
+  ru: {
+    myOrders: "Мои заказы",
+    myDeliveries: "Мои доставки",
+    inProgress: "В процессе",
+    delivered: "Доставлено",
+    noDeliveriesTitle: "Пока нет доставок",
+    noDeliveriesBody: "Заказы, которые вы возьмёте и доставите, появятся здесь.",
+    deliveriesNeedEmail: "Подтвердите университетскую почту в профиле, чтобы видеть свои доставки.",
+    basketOrdersInProgress: "В процессе: {n} — см. Профиль → История заказов",
+    yourDelivery: "Ваша доставка",
+    stepAccepted: "Принято",
+    stepPickedUp: "Забрано",
+    online: "Онлайн",
+    offline: "Офлайн",
+    offlineMessage: "Вы не в сети. Включите «Онлайн», чтобы видеть новые заказы.",
+    noOffers: "Новых заказов пока нет.",
+    orderEmailsTitle: "Письма о новых заказах",
+  },
+  zh: {
+    myOrders: "我的订单",
+    myDeliveries: "我的配送",
+    inProgress: "进行中",
+    delivered: "已送达",
+    noDeliveriesTitle: "还没有配送",
+    noDeliveriesBody: "你接下并送达的订单会显示在这里。",
+    deliveriesNeedEmail: "请先在个人资料中验证大学邮箱，才能查看你的配送。",
+    basketOrdersInProgress: "进行中 {n} 个 — 见 个人资料 → 订单历史",
+    yourDelivery: "你的配送",
+    stepAccepted: "已接单",
+    stepPickedUp: "已取餐",
+    online: "在线",
+    offline: "离线",
+    offlineMessage: "你处于离线状态。打开“在线”即可查看新订单。",
+    noOffers: "暂时没有新订单。",
+    orderEmailsTitle: "新订单邮件",
+  },
+  lb: {
+    myOrders: "Meng Bestellungen",
+    myDeliveries: "Meng Liwwerungen",
+    inProgress: "Amgaang",
+    delivered: "Geliwwert",
+    noDeliveriesTitle: "Nach keng Liwwerungen",
+    noDeliveriesBody: "Bestellungen, déi s de unhëls a liwwers, ginn hei ugewisen.",
+    deliveriesNeedEmail: "Bestäteg deng Universitéits-E-Mail am Profil, fir deng Liwwerungen ze gesinn.",
+    basketOrdersInProgress: "{n} amgaang — kuck Profil → Bestellhistorique",
+    yourDelivery: "Deng Liwwerung",
+    stepAccepted: "Ugeholl",
+    stepPickedUp: "Ofgeholl",
+    online: "Online",
+    offline: "Offline",
+    offlineMessage: "Du bass offline. Schalt „Online“ un, fir nei Bestellungen ze gesinn.",
+    noOffers: "Elo keng nei Bestellungen.",
+    orderEmailsTitle: "E-Mailen iwwer nei Bestellungen",
+  },
+  hi: {
+    myOrders: "मेरे ऑर्डर",
+    myDeliveries: "मेरी डिलीवरी",
+    inProgress: "जारी",
+    delivered: "डिलीवर हुए",
+    noDeliveriesTitle: "अभी कोई डिलीवरी नहीं",
+    noDeliveriesBody: "जो ऑर्डर आप लेंगे और पहुँचाएँगे वे यहाँ दिखेंगे।",
+    deliveriesNeedEmail: "अपनी डिलीवरी देखने के लिए प्रोफ़ाइल में यूनिवर्सिटी ईमेल सत्यापित करें।",
+    basketOrdersInProgress: "{n} जारी — प्रोफ़ाइल → ऑर्डर इतिहास देखें",
+  },
+  ar: {
+    myOrders: "طلباتي",
+    myDeliveries: "توصيلاتي",
+    inProgress: "قيد التنفيذ",
+    delivered: "تم التسليم",
+    noDeliveriesTitle: "لا توجد توصيلات بعد",
+    noDeliveriesBody: "ستظهر هنا الطلبات التي تقبلها وتسلّمها.",
+    deliveriesNeedEmail: "أكّد بريدك الجامعي في الملف الشخصي لرؤية توصيلاتك.",
+    basketOrdersInProgress: "{n} قيد التنفيذ — انظر الملف الشخصي ← سجل الطلبات",
+  },
+  bn: {
+    myOrders: "আমার অর্ডার",
+    myDeliveries: "আমার ডেলিভারি",
+    inProgress: "চলমান",
+    delivered: "ডেলিভারি হয়েছে",
+    noDeliveriesTitle: "এখনও কোনো ডেলিভারি নেই",
+    noDeliveriesBody: "আপনি যে অর্ডার নেবেন ও পৌঁছে দেবেন তা এখানে দেখা যাবে।",
+    deliveriesNeedEmail: "আপনার ডেলিভারি দেখতে প্রোফাইলে বিশ্ববিদ্যালয়ের ইমেইল যাচাই করুন।",
+    basketOrdersInProgress: "{n} চলমান — প্রোফাইল → অর্ডার ইতিহাস দেখুন",
+  },
+  ur: {
+    myOrders: "میرے آرڈر",
+    myDeliveries: "میری ڈیلیوریاں",
+    inProgress: "جاری",
+    delivered: "پہنچا دیا گیا",
+    noDeliveriesTitle: "ابھی کوئی ڈیلیوری نہیں",
+    noDeliveriesBody: "جو آرڈر آپ لیں گے اور پہنچائیں گے وہ یہاں نظر آئیں گے۔",
+    deliveriesNeedEmail: "اپنی ڈیلیوریاں دیکھنے کے لیے پروفائل میں یونیورسٹی ای میل کی تصدیق کریں۔",
+    basketOrdersInProgress: "{n} جاری — پروفائل ← آرڈر ہسٹری دیکھیں",
+  },
+};
+
+function hx(key, params = {}) {
+  const text = (HISTORY_STRINGS[state.lang] && HISTORY_STRINGS[state.lang][key]) || HISTORY_STRINGS.en[key] || key;
+  return text.replace(/\{(\w+)\}/g, (_, name) => (params[name] != null ? String(params[name]) : ""));
+}
+
+// The orders this person took as a courier (claimed, not released), for the
+// "My deliveries" tab. Needs the verified University email; without it the
+// tab explains what to do instead of showing an empty list.
+async function loadCourierDeliveries() {
+  state.courierDeliveries = [];
+  state.courierDeliveriesNeedEmail = !state.registeredEmail;
+  if (!state.registeredEmail) return;
+  try {
+    state.courierDeliveries = (await api(`/api/courier/orders?email=${encodeURIComponent(state.registeredEmail)}`)) || [];
+  } catch {
+    state.courierDeliveries = [];
+  }
+}
+
+// mode "basket": the Basket tab -- only the draft being collected, plus a
+// pointer to orders already placed. mode "history": Profile's Order History,
+// with the My orders / My deliveries switch.
+async function openOrderHistory(mode = "basket") {
+  state.orderHistoryMode = mode;
+  state.orderHistoryTab = "orders";
   state.orderHistoryLoading = true;
   state.orderHistoryOrders = [];
+  state.courierDeliveries = [];
+  state.courierDeliveriesNeedEmail = false;
   goTo("order-history");
 
+  const deliveriesLoaded = mode === "history" ? loadCourierDeliveries() : Promise.resolve();
   const ids = loadOrderHistoryIds();
   const orders = [];
   await Promise.all(
@@ -2811,6 +3177,7 @@ async function openOrderHistory() {
     })
   );
   orders.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  await deliveriesLoaded;
 
   state.orderHistoryOrders = orders;
   state.orderHistoryLoading = false;
@@ -2875,31 +3242,103 @@ function draftOrderCard() {
   return card;
 }
 
+// One order the person delivered (or is delivering) as a courier.
+function courierDeliveryRow(order) {
+  const itemsSummary = order.items.map((it) => `${dishTitleWithSize(it.name, state.lang)}${it.quantity > 1 ? ` ×${it.quantity}` : ""}`).join(", ");
+  const progress = order.delivered_at
+    ? tr("deliveryDeliveredAt", { time: fmtDateTime(order.delivered_at) })
+    : order.picked_up_at
+    ? tr("deliveryPickedUpAt", { time: fmtDateTime(order.picked_up_at) })
+    : tr("deliveryClaimedAt", { time: fmtDateTime(order.claimed_at) });
+  return el(`
+    <article class="history-row">
+      <p class="restaurant">${escapeHtml(order.delivery_location || tr("deliveryLocationNotGiven"))}</p>
+      <p class="items-summary">${escapeHtml(itemsSummary)}</p>
+      <p class="meta">${escapeHtml(shortName(order.restaurant_name))} · ${escapeHtml(fmtLong(order.order_date))}</p>
+      <p class="meta">${escapeHtml(progress)}</p>
+    </article>
+  `);
+}
+
+function historyBlockWithHeading(heading, rows) {
+  const wrap = el(`<div></div>`);
+  wrap.append(el(`<h3 class="section-heading">${escapeHtml(heading)}</h3>`));
+  const list = el(`<div class="history-list"></div>`);
+  for (const row of rows) list.append(row);
+  wrap.append(list);
+  return wrap;
+}
+
 function renderOrderHistory() {
   app.innerHTML = "";
-  app.append(header({ title: tr("orderHistory"), back: () => goTo(state.subScreenReturnTo) }));
+  const historyMode = state.orderHistoryMode === "history";
+  app.append(header({ title: tr(historyMode ? "orderHistorySectionLabel" : "orderHistory"), back: () => goTo(state.subScreenReturnTo) }));
 
   if (state.orderHistoryLoading) {
     app.append(loadingState(tr("loadingOrderHistory")));
     return;
   }
 
-  const draft = draftOrderCard();
+  const current = state.orderHistoryOrders.filter((o) => !TERMINAL_ORDER_STATUSES.has(o.status));
+  const past = state.orderHistoryOrders.filter((o) => TERMINAL_ORDER_STATUSES.has(o.status));
 
-  if (!draft && state.orderHistoryOrders.length === 0) {
-    app.append(emptyState("clock", tr("orderHistoryEmptyTitle"), tr("orderHistoryEmptyBody")));
+  if (!historyMode) {
+    // Basket: only what is being collected for the next order. Orders already
+    // placed live in Profile -> Order History; a one-line pointer says so.
+    const draft = draftOrderCard();
+    if (current.length > 0) {
+      const note = el(`<button type="button" class="basket-orders-note">${escapeHtml(hx("basketOrdersInProgress", { n: current.length }))}</button>`);
+      note.addEventListener("click", () => {
+        state.subScreenReturnTo = "profile";
+        openOrderHistory("history");
+      });
+      app.append(note);
+    }
+    if (!draft) {
+      app.append(emptyState("clock", tr("yourOrderEmptyTitle"), tr("yourOrderEmptyBody")));
+      return;
+    }
+    app.append(historyBlockWithHeading(tr("draftOrderHeading"), [draft]));
     return;
   }
 
-  if (draft) {
-    app.append(el(`<h3 class="section-heading">${escapeHtml(tr("draftOrderHeading"))}</h3>`));
-    const list = el(`<div class="history-list"></div>`);
-    list.append(draft);
-    app.append(list);
+  // Order History: the same person in two roles -- the customer who ordered,
+  // and the courier who took and delivered someone else's order.
+  const tab = state.orderHistoryTab === "deliveries" ? "deliveries" : "orders";
+  const toggle = el(`
+    <div class="history-toggle" role="tablist">
+      <button type="button" role="tab" data-tab="orders" class="${tab === "orders" ? "is-active" : ""}" aria-selected="${tab === "orders"}">${escapeHtml(hx("myOrders"))}<span class="count">${state.orderHistoryOrders.length}</span></button>
+      <button type="button" role="tab" data-tab="deliveries" class="${tab === "deliveries" ? "is-active" : ""}" aria-selected="${tab === "deliveries"}">${escapeHtml(hx("myDeliveries"))}<span class="count">${state.courierDeliveries.length}</span></button>
+    </div>
+  `);
+  for (const button of toggle.querySelectorAll("button")) {
+    button.addEventListener("click", () => {
+      state.orderHistoryTab = button.dataset.tab;
+      renderOrderHistory();
+    });
+  }
+  app.append(toggle);
+
+  if (tab === "deliveries") {
+    if (state.courierDeliveriesNeedEmail) {
+      app.append(emptyState("clock", hx("noDeliveriesTitle"), hx("deliveriesNeedEmail")));
+      return;
+    }
+    if (state.courierDeliveries.length === 0) {
+      app.append(emptyState("clock", hx("noDeliveriesTitle"), hx("noDeliveriesBody")));
+      return;
+    }
+    const inProgress = state.courierDeliveries.filter((o) => !o.delivered_at);
+    const done = state.courierDeliveries.filter((o) => o.delivered_at);
+    if (inProgress.length > 0) app.append(historyBlockWithHeading(hx("inProgress"), inProgress.map(courierDeliveryRow)));
+    if (done.length > 0) app.append(historyBlockWithHeading(hx("delivered"), done.map(courierDeliveryRow)));
+    return;
   }
 
-  const current = state.orderHistoryOrders.filter((o) => !TERMINAL_ORDER_STATUSES.has(o.status));
-  const past = state.orderHistoryOrders.filter((o) => TERMINAL_ORDER_STATUSES.has(o.status));
+  if (state.orderHistoryOrders.length === 0) {
+    app.append(emptyState("clock", tr("orderHistoryEmptyTitle"), tr("orderHistoryEmptyBody")));
+    return;
+  }
 
   if (current.length > 0) {
     app.append(el(`<h3 class="section-heading">${escapeHtml(tr("currentOrdersHeading"))}</h3>`));
@@ -3018,7 +3457,7 @@ function renderProfile() {
   `);
   historyRow.addEventListener("click", () => {
     state.subScreenReturnTo = "profile";
-    openOrderHistory();
+    openOrderHistory("history");
   });
   rows.append(historyRow);
 

@@ -535,6 +535,22 @@ class OrderStore:
             ]
         return [self.get_order(i) for i in ids]
 
+    def list_orders_for_courier(self, courier_email: str, limit: int = 100) -> list[dict]:
+        """Every order this courier currently holds or has delivered --
+        claimed (a released order has claimed_at cleared, so it's not
+        theirs any more) -- newest claim first. Matched on the canonical
+        identity, so plus-tag variants of the same address are one courier."""
+        wanted = canonical_identity(courier_email)
+        if not wanted:
+            return []
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT id, courier_email FROM orders WHERE claimed_at IS NOT NULL AND courier_email IS NOT NULL "
+                "ORDER BY claimed_at DESC"
+            ).fetchall()
+        ids = [r[0] for r in rows if canonical_identity(r[1]) == wanted][:limit]
+        return [self.get_order(i) for i in ids]
+
     def count_created_between(self, start: datetime, end: datetime) -> int:
         """How many orders were actually placed in [start, end) -- both
         real, timezone-aware datetimes. Used by daily_report.py's evening
