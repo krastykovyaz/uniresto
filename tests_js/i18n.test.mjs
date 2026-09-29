@@ -1,18 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  ALLERGEN_LABELS,
-  CATEGORY_LABELS,
-  DISH_NAME_LABELS,
-  LANGUAGES,
-  allergenLabel,
-  categoryLabel,
-  dishNameLabel,
-  intlLocale,
-  langInfo,
-  t,
-  translations,
-} from "../static/i18n.js";
+import { ALLERGEN_LABELS, CATEGORY_LABELS, DISH_NAME_LABELS, LANGUAGES, allergenLabel, categoryLabel, dishNameLabel, intlLocale, langInfo, t, translations, dishSize, dishTitle, dishTitleWithSize } from "../static/i18n.js";
 
 test("11 languages are configured: the 10 most-spoken plus Luxembourgish", () => {
   assert.equal(LANGUAGES.length, 11);
@@ -349,4 +337,77 @@ test("intlLocale uses the declared locale, or Luxembourgish's German fallback", 
   // lb-LU where the runtime's Intl data has it; de-LU on runtimes (some
   // Chromium builds) that ship without Luxembourgish.
   assert.ok(["lb-LU", "de-LU"].includes(intlLocale("lb")));
+});
+
+
+// ---------------------------------------------------------------------------
+// Sizes belong in the card body, not in the item's title
+// ---------------------------------------------------------------------------
+
+test("dishTitle drops the size and dishSize keeps it, for every shape Restopolis uses", () => {
+  const cases = [
+    ["Mini salades 150 g", "Mini salades", "150 g"],
+    ["Rosport Blue 0,50 l non consigné", "Rosport Blue", "0,50 l non consigné"],
+    ["Rosport Blue 1,00 l btl", "Rosport Blue", "1,00 l btl"],
+    ["Rosport Wave 0,50 l non-consigné", "Rosport Wave", "0,50 l non-consigné"],
+    ["Lët'z kola 0,33 btl", "Lët'z kola", "0,33 btl"],
+    ["Ramborn Apple Soda 0,33 l btl", "Ramborn Apple Soda", "0,33 l btl"],
+    ["Lait Luxlait BIO 0,25 l Tétra Pack (gratuit)", "Lait Luxlait BIO", "0,25 l Tétra Pack (gratuit)"],
+    ["Lait chocolaté Luxlait 0,25 l Tétra Pack", "Lait chocolaté Luxlait", "0,25 l Tétra Pack"],
+    ["Consigne ECOBOX (500 ml)", "Consigne ECOBOX", "500 ml"],
+    ["Thermo Café 1,50 l", "Thermo Café", "1,50 l"],
+    ["Cornet Luxlait 130 ml (Chocolat, Fraise, Vanille)", "Cornet Luxlait (Chocolat, Fraise, Vanille)", "130 ml"],
+    ["Glace miniature Luxlait 100 ml (Framboise, Praliné, Vanille)", "Glace miniature Luxlait (Framboise, Praliné, Vanille)", "100 ml"],
+    ['Mini muesli maison "Douceur d\'automne" 150 g', 'Mini muesli maison "Douceur d\'automne"', "150 g"],
+    ["Fuze Tea - Black Tea Pêche/Hibiscus 0,20 l btl", "Fuze Tea - Black Tea Pêche/Hibiscus", "0,20 l btl"],
+  ];
+  for (const [raw, title, size] of cases) {
+    assert.equal(dishTitle(raw, "fr"), title, raw);
+    assert.equal(dishSize(raw), size, raw);
+  }
+});
+
+test("names without a size come back untouched", () => {
+  for (const raw of ["Salad'bar", "1/2 Levain jambon cuit", 'Banane "commerce équitable"', "Café \"commerce équitable\"", "Cappuccino", "Dessert du Jour"]) {
+    assert.equal(dishTitle(raw, "en"), dishNameLabel(raw, "en"), raw);
+    assert.equal(dishSize(raw), null, raw);
+  }
+});
+
+test("translated names lose their size too, in every script", () => {
+  for (const lang of ["en", "zh", "hi", "es", "fr", "ar", "bn", "pt", "ru", "ur", "lb"]) {
+    const title = dishTitle("Mini salades 150 g", lang);
+    assert.ok(!/[\d\u0660-\u0669\u09E6-\u09EF]/.test(title), `${lang}: ${title}`);
+    assert.ok(title.length > 3, `${lang}: ${title}`);
+  }
+  assert.equal(dishTitle("Mini salades 150 g", "en"), "Mini salads");
+  assert.equal(dishTitle("Gobelet comestible 220 ml", "en"), "Edible cup");
+});
+
+test("the three Rosport Blue bottles get one title and three different sizes", () => {
+  const raws = ["Rosport Blue 0,25 l btl", "Rosport Blue 0,50 l btl", "Rosport Blue 1,00 l btl"];
+  assert.deepEqual([...new Set(raws.map((r) => dishTitle(r, "en")))], ["Rosport Blue"]);
+  assert.equal(new Set(raws.map((r) => dishSize(r))).size, 3);
+});
+
+test("dishTitleWithSize keeps the exact product in one-line summaries", () => {
+  assert.equal(dishTitleWithSize("Rosport Blue 0,50 l non consigné", "en"), "Rosport Blue (0,50 l non consigné)");
+  assert.equal(dishTitleWithSize("Salad'bar", "en"), "Salad'bar");
+});
+
+test("no live menu item title still contains a size", async () => {
+  const fs = await import("node:fs");
+  const menus = JSON.parse(fs.readFileSync(new URL("../data/menus.json", import.meta.url), "utf-8"));
+  const names = new Set();
+  (function walk(x) {
+    if (Array.isArray(x)) x.forEach(walk);
+    else if (x && typeof x === "object") {
+      if (typeof x.name === "string" && "category" in x) names.add(x.name);
+      Object.values(x).forEach(walk);
+    }
+  })(menus);
+  assert.ok(names.size > 50);
+  for (const raw of names) {
+    assert.ok(!/\d[\d.,]*\s*(g|kg|ml|cl|l)\b|\bbtl\b|Tétra|non[ -]consigné/i.test(dishTitle(raw, "fr")), `${raw} -> ${dishTitle(raw, "fr")}`);
+  }
 });

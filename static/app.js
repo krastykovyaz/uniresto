@@ -15,7 +15,7 @@ import {
   computeFormulaTotal,
   priceForItem,
 } from "./pricing.js";
-import { LANGUAGES, allergenLabel, categoryLabel, dishNameLabel, getLanguage, intlLocale, langInfo, setLanguage, t } from "./i18n.js";
+import { LANGUAGES, allergenLabel, categoryLabel, dishSize, dishTitle, dishTitleWithSize, getLanguage, intlLocale, langInfo, setLanguage, t } from "./i18n.js";
 import {
   CALORIE_BUCKETS,
   WEIGHT_BUCKETS,
@@ -1936,7 +1936,7 @@ function verifiedCourierEmailOrRedirect() {
 // Closed (cancelled) has nothing left to do.
 function deliveryOrderCard(order, sectionKey, onChanged) {
   const itemsSummary = order.items
-    .map((it) => `${dishNameLabel(it.name, state.lang)}${it.quantity > 1 ? ` ×${it.quantity}` : ""}`)
+    .map((it) => `${dishTitleWithSize(it.name, state.lang)}${it.quantity > 1 ? ` ×${it.quantity}` : ""}`)
     .join(", ");
   // Grill/BBQ mains and salmon (Part 60) -- the courier needs to know
   // this order includes one of those, since it had to be pre-ordered
@@ -2569,9 +2569,9 @@ function renderFavorites() {
 
     const row = el(`
       <article class="favorite-row">
-        <button type="button" class="heart-btn is-favorite" aria-label="${escapeHtml(tr("removeFavorite", { name: dishNameLabel(fav.name, state.lang) }))}" aria-pressed="true">${icon("heartFilled", 20)}</button>
+        <button type="button" class="heart-btn is-favorite" aria-label="${escapeHtml(tr("removeFavorite", { name: dishTitle(fav.name, state.lang) }))}" aria-pressed="true">${icon("heartFilled", 20)}</button>
         <div class="favorite-info">
-          <p class="name">${escapeHtml(dishNameLabel(fav.name, state.lang))}</p>
+          <p class="name">${escapeHtml(dishTitle(fav.name, state.lang))}</p>
           <p class="restaurant">${escapeHtml(shortName(fav.restaurantName))}</p>
           ${
             liveItem
@@ -2583,7 +2583,7 @@ function renderFavorites() {
               : `<p class="status-line">${escapeHtml(restaurantStatus === "available" ? tr("favoriteNotOnTodayMenu") : dateStatusLabel(restaurantStatus))}</p>`
           }
         </div>
-        ${liveItem ? `<button type="button" class="order-now-btn" aria-label="${escapeHtml(tr("orderNow"))}: ${escapeHtml(dishNameLabel(fav.name, state.lang))}">${icon("plus", 18)}</button>` : ""}
+        ${liveItem ? `<button type="button" class="order-now-btn" aria-label="${escapeHtml(tr("orderNow"))}: ${escapeHtml(dishTitle(fav.name, state.lang))}">${icon("plus", 18)}</button>` : ""}
       </article>
     `);
 
@@ -2681,7 +2681,7 @@ async function openOrderHistory() {
 const TERMINAL_ORDER_STATUSES = new Set(["confirmed", "cancelled"]);
 
 function historyRow(order) {
-  const itemsSummary = order.items.map((it) => `${dishNameLabel(it.name, state.lang)}${it.quantity > 1 ? ` ×${it.quantity}` : ""}`).join(", ");
+  const itemsSummary = order.items.map((it) => `${dishTitleWithSize(it.name, state.lang)}${it.quantity > 1 ? ` ×${it.quantity}` : ""}`).join(", ");
   const row = el(`
     <article class="history-row">
       <p class="restaurant">${escapeHtml(shortName(order.restaurant_name))} · ${escapeHtml(fmtLong(order.order_date))}</p>
@@ -2713,7 +2713,7 @@ function draftOrderCard() {
   const itemsSummary = state.selection
     .map((s) => {
       const item = byId.get(s.menuItemId);
-      return item ? `${dishNameLabel(item.name, state.lang)}${s.quantity > 1 ? ` ×${s.quantity}` : ""}` : null;
+      return item ? `${dishTitleWithSize(item.name, state.lang)}${s.quantity > 1 ? ` ×${s.quantity}` : ""}` : null;
     })
     .filter(Boolean)
     .join(", ");
@@ -3568,6 +3568,14 @@ function weightText(item) {
   return item.weight_value != null ? item.weight_display : null;
 }
 
+// The size that used to sit in the item's name ("0,25 l btl", "150 g"),
+// now shown in the card body instead -- the name as Restopolis wrote it is
+// the most exact source ("0,50 l non consigné" vs a parsed "0.5 l"), with
+// the parsed weight as the fallback for names that carry none.
+function sizeText(item) {
+  return dishSize(item.name) || weightText(item);
+}
+
 // Same idea as weightText(), but for raw (value, unit) pairs -- used for
 // the confirmed-order screen, whose items come from POST /api/orders'
 // response shape rather than the /menu endpoint's pre-formatted items.
@@ -3685,7 +3693,7 @@ function foodCard(item) {
   // Weight is never gone: openDishDetailSheet() reads it straight from the
   // item, same as the allergens hidden below (Part 91), and a card with no
   // photo keeps it.
-  const metaParts = [hasPhoto ? null : weightText(item), caloriesText(item)].filter(Boolean);
+  const metaParts = [hasPhoto ? null : sizeText(item), caloriesText(item)].filter(Boolean);
   const card = el(`
     <article class="food-card ${isSelected ? "is-selected" : ""} ${earlyCutoffPassed ? "is-early-cutoff-passed" : ""}" data-item-id="${item.id}">
       <div class="food-card-photo icon-avatar ${categoryIconClass(item)} ${storedPhotoPath ? "has-custom-photo" : ""}">
@@ -3693,7 +3701,7 @@ function foodCard(item) {
         <p class="food-card-photo-note">📸 Add dish pic here!</p>
         <img class="food-card-custom-photo" alt="" ${storedPhotoPath ? `src="${escapeHtml(storedPhotoPath)}"` : "hidden"}>
         <input type="file" accept="image/*" class="food-card-photo-input" hidden>
-        <button type="button" class="heart-btn ${isFav ? "is-favorite" : ""}" aria-label="${escapeHtml(tr(isFav ? "removeFavorite" : "addFavorite", { name: dishNameLabel(item.name, state.lang) }))}" aria-pressed="${isFav}">${icon(isFav ? "heartFilled" : "heart", 18)}</button>
+        <button type="button" class="heart-btn ${isFav ? "is-favorite" : ""}" aria-label="${escapeHtml(tr(isFav ? "removeFavorite" : "addFavorite", { name: dishTitle(item.name, state.lang) }))}" aria-pressed="${isFav}">${icon(isFav ? "heartFilled" : "heart", 18)}</button>
         ${
           item.vegan || item.vegetarian || item.requires_early_order
             ? `<div class="badge-row">
@@ -3709,7 +3717,7 @@ function foodCard(item) {
       </div>
       <div class="card-body">
         <div class="card-title">
-          <p class="name">${escapeHtml(dishNameLabel(item.name, state.lang))}</p>
+          <p class="name">${escapeHtml(dishTitle(item.name, state.lang))}</p>
           ${item.description ? `<p class="description">${escapeHtml(item.description)}</p>` : ""}
         </div>
         ${metaParts.length ? `<p class="meta-row">${metaParts.map((p) => escapeHtml(p)).join(" · ")}</p>` : ""}
@@ -3730,7 +3738,7 @@ function foodCard(item) {
           <span class="price ${priceIsUnspecified(item) ? "is-unspecified" : ""}">${escapeHtml(priceText(item))}</span>
           ${
             hasPhoto
-              ? `<button type="button" class="select-check" aria-label="${escapeHtml(tr(isSelected ? "deselectItem" : "selectItem", { name: dishNameLabel(item.name, state.lang) }))}" aria-pressed="${isSelected}">${icon(isSelected ? "check" : "plus", 14)}</button>`
+              ? `<button type="button" class="select-check" aria-label="${escapeHtml(tr(isSelected ? "deselectItem" : "selectItem", { name: dishTitle(item.name, state.lang) }))}" aria-pressed="${isSelected}">${icon(isSelected ? "check" : "plus", 14)}</button>`
               : `<div class="select-check" aria-hidden="true">${icon(isSelected ? "check" : "plus", 14)}</div>`
           }
         </div>
@@ -3744,9 +3752,9 @@ function foodCard(item) {
     qtyRow.append(
       el(`
       <div class="quantity-stepper">
-        <button type="button" aria-label="${escapeHtml(tr("decreaseQuantityOf", { name: dishNameLabel(item.name, state.lang) }))}">−</button>
+        <button type="button" aria-label="${escapeHtml(tr("decreaseQuantityOf", { name: dishTitle(item.name, state.lang) }))}">−</button>
         <span class="quantity-value">${sel.quantity}</span>
-        <button type="button" aria-label="${escapeHtml(tr("increaseQuantityOf", { name: dishNameLabel(item.name, state.lang) }))}">+</button>
+        <button type="button" aria-label="${escapeHtml(tr("increaseQuantityOf", { name: dishTitle(item.name, state.lang) }))}">+</button>
       </div>
     `)
     );
@@ -3867,7 +3875,7 @@ function foodCard(item) {
     card.addEventListener("click", openDetail);
     card.setAttribute("role", "button");
     card.setAttribute("tabindex", "0");
-    card.setAttribute("aria-label", tr("viewDishDetails", { name: dishNameLabel(item.name, state.lang) }));
+    card.setAttribute("aria-label", tr("viewDishDetails", { name: dishTitle(item.name, state.lang) }));
     card.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
@@ -3880,7 +3888,7 @@ function foodCard(item) {
     card.setAttribute("tabindex", "0");
     card.setAttribute("aria-pressed", String(isSelected));
     card.setAttribute("aria-disabled", String(earlyCutoffPassed));
-    card.setAttribute("aria-label", tr(isSelected ? "deselectItem" : "selectItem", { name: dishNameLabel(item.name, state.lang) }));
+    card.setAttribute("aria-label", tr(isSelected ? "deselectItem" : "selectItem", { name: dishTitle(item.name, state.lang) }));
     card.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
@@ -3913,12 +3921,12 @@ function openDishDetailSheet(item, trigger, earlyCutoffPassed = false) {
     (state.dishPhotos && state.dishPhotos[item.category] && state.dishPhotos[item.category][item.name]) ||
     trigger.querySelector(".food-card-custom-photo")?.src ||
     "";
-  const name = dishNameLabel(item.name, state.lang);
+  const name = dishTitle(item.name, state.lang);
 
   const bullets = [];
   if (item.vegan) bullets.push(tr("vegan"));
   else if (item.vegetarian) bullets.push(tr("vegetarian"));
-  const weight = weightText(item);
+  const weight = sizeText(item);
   if (weight) bullets.push(weight);
   if (item.requires_early_order) bullets.push(tr("earlyOrderBadge"));
 
@@ -4352,8 +4360,8 @@ function renderSmartLunchResult() {
       grid.append(
         el(`
           <div class="smart-lunch-item">
-            <p class="name">${escapeHtml(dishNameLabel(item.name, state.lang))}</p>
-            <p class="meta">${weightText(item) ? escapeHtml(weightText(item)) : ""}${weightText(item) && caloriesText(item) ? " · " : ""}${caloriesText(item) ? escapeHtml(caloriesText(item)) : ""}</p>
+            <p class="name">${escapeHtml(dishTitle(item.name, state.lang))}</p>
+            <p class="meta">${sizeText(item) ? escapeHtml(sizeText(item)) : ""}${sizeText(item) && caloriesText(item) ? " · " : ""}${caloriesText(item) ? escapeHtml(caloriesText(item)) : ""}</p>
           </div>
         `)
       );
@@ -4637,16 +4645,16 @@ async function renderReview() {
     const line = el(`
       <div class="review-line">
         <div class="details">
-          <p class="name">${escapeHtml(dishNameLabel(item.name, state.lang))}</p>
-          <p class="meta">${weightText(item) ? `${escapeHtml(weightText(item))} ` : ""}× ${sel.quantity}${item.price != null ? ` · €${(item.price * sel.quantity).toFixed(2)}` : ""}</p>
+          <p class="name">${escapeHtml(dishTitle(item.name, state.lang))}</p>
+          <p class="meta">${sizeText(item) ? `${escapeHtml(sizeText(item))} ` : ""}× ${sel.quantity}${item.price != null ? ` · €${(item.price * sel.quantity).toFixed(2)}` : ""}</p>
         </div>
         <div class="line-actions">
           <div class="quantity-stepper">
-            <button type="button" aria-label="${escapeHtml(tr("decreaseQuantityOf", { name: dishNameLabel(item.name, state.lang) }))}">−</button>
+            <button type="button" aria-label="${escapeHtml(tr("decreaseQuantityOf", { name: dishTitle(item.name, state.lang) }))}">−</button>
             <span class="quantity-value">${sel.quantity}</span>
-            <button type="button" aria-label="${escapeHtml(tr("increaseQuantityOf", { name: dishNameLabel(item.name, state.lang) }))}">+</button>
+            <button type="button" aria-label="${escapeHtml(tr("increaseQuantityOf", { name: dishTitle(item.name, state.lang) }))}">+</button>
           </div>
-          <button type="button" class="remove-btn" aria-label="${escapeHtml(tr("remove"))}: ${escapeHtml(dishNameLabel(item.name, state.lang))}">${escapeHtml(tr("remove"))}</button>
+          <button type="button" class="remove-btn" aria-label="${escapeHtml(tr("remove"))}: ${escapeHtml(dishTitle(item.name, state.lang))}">${escapeHtml(tr("remove"))}</button>
         </div>
       </div>
     `);
@@ -4870,8 +4878,8 @@ function renderConfirmation() {
     app.append(el(`
       <div class="review-line">
         <div class="details">
-          <p class="name">${escapeHtml(dishNameLabel(it.name, state.lang))}</p>
-          <p class="meta">${localizedWeightValue(it.weight_value, it.weight_unit) ? `${escapeHtml(localizedWeightValue(it.weight_value, it.weight_unit))} ` : ""}× ${it.quantity}${it.price != null ? ` · €${it.line_price.toFixed(2)}` : ""}</p>
+          <p class="name">${escapeHtml(dishTitle(it.name, state.lang))}</p>
+          <p class="meta">${dishSize(it.name) || localizedWeightValue(it.weight_value, it.weight_unit) ? `${escapeHtml(dishSize(it.name) || localizedWeightValue(it.weight_value, it.weight_unit))} ` : ""}× ${it.quantity}${it.price != null ? ` · €${it.line_price.toFixed(2)}` : ""}</p>
         </div>
       </div>
     `));

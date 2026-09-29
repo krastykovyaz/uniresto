@@ -3685,6 +3685,63 @@ export function dishNameLabel(rawName, lang) {
 }
 
 // ---------------------------------------------------------------------------
+// Sizes live in the card body, not in the item's name.
+//
+// Restopolis bakes the size/container into the dish name ("Rosport Blue 0,50
+// l non consigné", "Mini salades 150 g", "Lait Luxlait BIO 0,25 l Tétra Pack
+// (gratuit)", "Consigne ECOBOX (500 ml)", "Cornet Luxlait 130 ml (Chocolat,
+// ...)"). The app shows the TITLE without it and the size on the card's own
+// body line instead -- but it stays part of the raw name everywhere that
+// names a real product (favorites keys, orders, emails, Telegram), since
+// "Rosport Blue" alone doesn't say which of three bottles it is.
+// ---------------------------------------------------------------------------
+
+const _UNIT = "(?:kg|g|ml|cl|l)";
+const _NUM = "\\d+(?:[.,]\\d+)?";
+// A size as the French source writes it, in one of three shapes:
+//   (500 ml)                                   -- parenthesised
+//   150 g / 0,25 l btl / 0,50 l non consigné / 0,25 l Tétra Pack (gratuit)
+//   0,33 btl                                   -- a bottle with no unit
+const DISH_SIZE_RE = new RegExp(
+  `\\s*(?:\\(\\s*(${_NUM}\\s*${_UNIT})\\s*\\)|(${_NUM}\\s*${_UNIT}\\b(?:\\s*(?:btl\\b|non[ -]consign\u00e9|T\u00e9tra Pack))?(?:\\s*\\(gratuit\\))?|${_NUM}\\s*btl\\b))`,
+  "i"
+);
+// A translated name keeps its size at the END in the target language's own
+// digits and unit word ("150克", "150 ग्राम", "١٥٠ غ", "১৫০ গ্রাম", "150 г").
+const TRAILING_TRANSLATED_SIZE_RE = /\s*[\d\u0660-\u0669\u09E6-\u09EF][\d\u0660-\u0669\u09E6-\u09EF.,]*\s*[^\s\d]{1,12}$/u;
+
+function _tidy(text) {
+  return text.replace(/\s{2,}/g, " ").replace(/\s+([,)])/g, "$1").trim();
+}
+
+// The size as written in the source name ("0,25 l btl", "150 g",
+// "500 ml"), or null when the name carries none.
+export function dishSize(rawName) {
+  const m = DISH_SIZE_RE.exec(rawName);
+  return m ? (m[1] || m[2]).trim() : null;
+}
+
+// The name to show as an item's title: translated like dishNameLabel(), then
+// with the size taken out. Names without a size come back untouched.
+export function dishTitle(rawName, lang) {
+  const label = dishNameLabel(rawName, lang);
+  if (!DISH_SIZE_RE.test(rawName)) return label;
+  const stripped = _tidy(label.replace(DISH_SIZE_RE, ""));
+  if (stripped !== label) return stripped || label;
+  // Translated names carry the size in the target language ("150 غ").
+  const trailing = _tidy(label.replace(TRAILING_TRANSLATED_SIZE_RE, ""));
+  return trailing || label;
+}
+
+// Title plus the size in brackets -- for plain one-line summaries (a
+// courier's order list, order history) where there's no body line to put
+// the size on but the exact product still matters.
+export function dishTitleWithSize(rawName, lang) {
+  const size = dishSize(rawName);
+  return size ? `${dishTitle(rawName, lang)} (${size})` : dishTitle(rawName, lang);
+}
+
+// ---------------------------------------------------------------------------
 // Allergen labels: the 14 EU 1169/2011 Annex II major allergens -- see
 // restopolis/allergens.py's ALLERGEN_NAMES (the backend's French source
 // of truth, by numeric code). This is the same standardized, legally
