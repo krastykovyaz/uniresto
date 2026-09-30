@@ -4247,14 +4247,9 @@ function dishIllustrationSvg() {
   `;
 }
 
-// The item whose quantity was just changed, so only ITS card plays the
-// little "pop" on the number (refreshMenuScreen() rebuilds every card).
-let lastChangedItemId = null;
-
 function foodCard(item) {
   const sel = selectionFor(item.id);
   const isSelected = !!sel;
-  const justChangedId = lastChangedItemId;
   const isFav = isFavorite(state.slug, item.category, item.name);
   // Grill/BBQ mains and salmon (Part 59) -- confirmed real kitchen
   // practice, not Restopolis data -- need to be ordered by 08:00, well
@@ -4289,7 +4284,6 @@ function foodCard(item) {
         <img class="food-card-custom-photo" alt="" ${storedPhotoPath ? `src="${escapeHtml(storedPhotoPath)}"` : "hidden"}>
         <input type="file" accept="image/*" class="food-card-photo-input" hidden>
         <button type="button" class="heart-btn ${isFav ? "is-favorite" : ""}" aria-label="${escapeHtml(tr(isFav ? "removeFavorite" : "addFavorite", { name: dishTitle(item.name, state.lang) }))}" aria-pressed="${isFav}">${icon(isFav ? "heartFilled" : "heart", 18)}</button>
-        ${isSelected ? `<span class="qty-badge ${justChangedId === item.id ? "is-pop" : ""}" aria-hidden="true">${sel.quantity}</span>` : ""}
         ${
           item.vegan || item.vegetarian || item.requires_early_order
             ? `<div class="badge-row">
@@ -4323,28 +4317,34 @@ function foodCard(item) {
             : ""
         }
         <div class="add-row">
-          <div class="buy ${isSelected ? "is-active" : ""}">
-            ${
-              isSelected
-                ? `<button type="button" class="buy-dec" aria-label="${escapeHtml(tr("decreaseQuantityOf", { name: dishTitle(item.name, state.lang) }))}">${icon("minus", 18)}</button>
-                   <span class="price ${priceIsUnspecified(item) ? "is-unspecified" : ""}">${escapeHtml(priceText(item))}</span>
-                   <button type="button" class="buy-inc" aria-label="${escapeHtml(tr("increaseQuantityOf", { name: dishTitle(item.name, state.lang) }))}">${icon("plus", 18)}</button>`
-                : hasPhoto
-                  ? `<button type="button" class="buy-add" aria-label="${escapeHtml(tr("selectItem", { name: dishTitle(item.name, state.lang) }))}"><span class="price ${priceIsUnspecified(item) ? "is-unspecified" : ""}">${escapeHtml(priceText(item))}</span><span class="buy-plus">${icon("plus", 18)}</span></button>`
-                  : `<div class="buy-add" aria-hidden="true"><span class="price ${priceIsUnspecified(item) ? "is-unspecified" : ""}">${escapeHtml(priceText(item))}</span><span class="buy-plus">${icon("plus", 18)}</span></div>`
-            }
-          </div>
+          ${
+            hasPhoto
+              ? `<button type="button" class="buy-pill ${isSelected ? "is-selected" : ""}" aria-label="${escapeHtml(tr(isSelected ? "deselectItem" : "selectItem", { name: dishTitle(item.name, state.lang) }))}" aria-pressed="${isSelected}"><span class="price ${priceIsUnspecified(item) ? "is-unspecified" : ""}">${escapeHtml(priceText(item))}</span><span class="buy-icon">${icon(isSelected ? "check" : "plus", 18)}</span></button>`
+              : `<div class="buy-pill ${isSelected ? "is-selected" : ""}" aria-hidden="true"><span class="price ${priceIsUnspecified(item) ? "is-unspecified" : ""}">${escapeHtml(priceText(item))}</span><span class="buy-icon">${icon(isSelected ? "check" : "plus", 18)}</span></div>`
+          }
         </div>
       </div>
     </article>
   `);
 
   if (isSelected) {
-    card.querySelector(".buy-dec").addEventListener("click", (e) => {
+    const qtyRow = el(`<div class="quantity-row"></div>`);
+    card.querySelector(".card-body").append(qtyRow);
+    qtyRow.append(
+      el(`
+      <div class="quantity-stepper">
+        <button type="button" aria-label="${escapeHtml(tr("decreaseQuantityOf", { name: dishTitle(item.name, state.lang) }))}">−</button>
+        <span class="quantity-value">${sel.quantity}</span>
+        <button type="button" aria-label="${escapeHtml(tr("increaseQuantityOf", { name: dishTitle(item.name, state.lang) }))}">+</button>
+      </div>
+    `)
+    );
+    const [decBtn, , incBtn] = qtyRow.querySelectorAll("button, span");
+    decBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       changeQuantity(item.id, -1);
     });
-    card.querySelector(".buy-inc").addEventListener("click", (e) => {
+    incBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       changeQuantity(item.id, +1);
     });
@@ -4449,7 +4449,7 @@ function foodCard(item) {
     // button (see its markup above), not the decorative div a photo-less
     // card still uses. stopPropagation so it never also re-opens the
     // detail sheet via the root card handler below.
-    card.querySelector(".buy-add")?.addEventListener("click", (e) => {
+    card.querySelector(".buy-pill").addEventListener("click", (e) => {
       e.stopPropagation();
       selectOrExplain();
     });
@@ -4843,9 +4843,7 @@ function toggleSelection(itemId) {
   }
   state.serverQuote = null;
   saveCart();
-  lastChangedItemId = itemId;
   refreshMenuScreen();
-  lastChangedItemId = null;
   renderBottomNav(); // keeps the Basket tab's dot (state.selection.length > 0) in sync
 }
 
@@ -4866,9 +4864,7 @@ function changeQuantity(itemId, delta) {
   }
   state.serverQuote = null;
   saveCart();
-  lastChangedItemId = itemId;
   refreshMenuScreen();
-  lastChangedItemId = null;
   if (wasRemoved) renderBottomNav(); // only the empty-selection case can flip the Basket tab's dot off
 }
 
