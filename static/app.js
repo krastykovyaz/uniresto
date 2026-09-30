@@ -4461,6 +4461,9 @@ function foodCard(item) {
     card.setAttribute("tabindex", "0");
     card.setAttribute("aria-label", tr("viewDishDetails", { name: dishTitle(item.name, state.lang) }));
     card.addEventListener("keydown", (e) => {
+      // Only the card itself -- Enter/Space on the heart or the pill's own
+      // buttons must activate that button, not the card.
+      if (e.target !== card) return;
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         openDetail();
@@ -4474,6 +4477,9 @@ function foodCard(item) {
     card.setAttribute("aria-disabled", String(earlyCutoffPassed));
     card.setAttribute("aria-label", tr(isSelected ? "deselectItem" : "selectItem", { name: dishTitle(item.name, state.lang) }));
     card.addEventListener("keydown", (e) => {
+      // Only the card itself -- Enter/Space on the heart or the pill's own
+      // buttons must activate that button, not the card.
+      if (e.target !== card) return;
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         selectOrExplain();

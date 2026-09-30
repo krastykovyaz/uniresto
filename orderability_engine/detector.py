@@ -36,7 +36,7 @@ button on every call.
 from __future__ import annotations
 
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from bs4 import BeautifulSoup
 
@@ -47,7 +47,7 @@ from restopolis.parser import (
     align_day_blocks,
     extract_service_time,
 )
-from orderability_engine.models import RestopolisDayStatus, hash_menu_signature
+from orderability_engine.models import TZINFO, RestopolisDayStatus, hash_menu_signature
 
 logger = logging.getLogger("orderability.detector")
 
@@ -88,7 +88,7 @@ def _read_reservation_signal(day_div) -> tuple[bool | None, str | None]:
 
 def weeks_ahead_for(target_date: date, today: date | None = None) -> int:
     """Raises PastDateError if target_date is before the current week."""
-    today = today or date.today()
+    today = today or datetime.now(TZINFO).date()
     expected_week_start = _week_start(target_date)
     if expected_week_start < _week_start(today):
         raise PastDateError(

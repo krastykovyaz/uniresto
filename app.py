@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import io
+import math
 import time
 import logging
 import os
@@ -57,6 +58,7 @@ from orderability_engine.orders import (
     OrderStore,
     OrderValidationError,
     recalculate_order,
+    validate_selection_shape,
 )
 from orderability_engine.page_views import MAX_SOURCE_LENGTH, PageViewStore
 from orderability_engine.pending_dish_photos import PendingDishPhotoStore
@@ -966,6 +968,10 @@ def create_app(
 
         flat_items, _ = _load_flat_menu(restaurant, d)
         result = svc().check_orderability(restaurant, d)
+        try:
+            validate_selection_shape(selection)
+        except OrderValidationError as exc:
+            return jsonify({"error": "invalid_selection", "message": str(exc)}), 400
         offending = _early_cutoff_violations(flat_items, selection, result.early_cutoff.available)
         if offending:
             return jsonify({
@@ -1078,6 +1084,10 @@ def create_app(
             return jsonify({"error": "date_not_available", "status": "closed", "reason": "Our ordering deadline for this date has passed."}), 409
 
         flat_items, _ = _load_flat_menu(restaurant, d)
+        try:
+            validate_selection_shape(selection)
+        except OrderValidationError as exc:
+            return jsonify({"error": "invalid_selection", "message": str(exc)}), 400
         offending = _early_cutoff_violations(flat_items, selection, result.early_cutoff.available)
         if offending:
             return jsonify({
@@ -2061,6 +2071,8 @@ def create_app(
             real_price = float(real_price_raw)
         except (TypeError, ValueError):
             abort(400, description="'real_price' must be a number")
+        if not math.isfinite(real_price) or real_price < 0:
+            abort(400, description="'real_price' must be a finite number of at least 0")
 
         order = store().get_order(order_id)
         if order is None:
@@ -2075,7 +2087,18 @@ def create_app(
         confirm_url = f"{request.host_url}o/{order_id}/confirm?token={token}"
         cancel_url = f"{request.host_url}o/{order_id}/cancel?token={token}"
         order = store().get_order(order_id)  # re-fetch: now carries the real_price/awaiting_confirmation status
-        send_order_needs_confirmation(order["customer_email"], order, real_price, confirm_url, cancel_url)
+        sent, error = send_order_needs_confirmation(order["customer_email"], order, real_price, confirm_url, cancel_url)
+        if not sent:
+            # The order has already moved on to awaiting_confirmation, so it
+            # can't be re-priced -- give the admin the customer's links to
+            # forward by hand instead of silently leaving it stuck.
+            logging.getLogger("uniresto.mailer").warning("set-price email for order %s failed: %s", order_id, error)
+            return (
+                f"Price saved, but the email to {order['customer_email']} was not sent ({error}).\n"
+                f"Send the customer these links yourself:\nConfirm: {confirm_url}\nCancel: {cancel_url}\n",
+                502,
+                {"Content-Type": "text/plain; charset=utf-8"},
+            )
 
         return redirect(f"/admin/orders?token={request.args.get('token', '')}")
 

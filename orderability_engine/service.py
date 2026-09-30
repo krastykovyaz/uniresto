@@ -153,7 +153,7 @@ class OrderabilityService:
         self._week_html_ttl = menu_cache_ttl_seconds if menu_cache_ttl_seconds is not None else WEEK_HTML_TTL_SECONDS
 
     def _today(self) -> date:
-        return self._today_override or date.today()
+        return self._today_override or datetime.now(TZINFO).date()
 
     def today(self) -> date:
         """The service's notion of today, honoring an injected override --

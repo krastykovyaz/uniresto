@@ -2538,6 +2538,38 @@ def test_admin_set_price_for_order_without_email_is_400(client, monkeypatch):
     assert resp.status_code == 400
 
 
+def test_admin_set_price_rejects_nan_inf_and_negative(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    for bad in ("nan", "inf", "-1"):
+        resp = client.post(f"/admin/orders/{order_id}/set-price?token=correct-token", data={"real_price": bad})
+        assert resp.status_code == 400, bad
+
+
+def test_admin_set_price_email_failure_is_reported_with_the_links(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    with patch("app.send_order_needs_confirmation", return_value=(False, "smtp down")):
+        resp = client.post(f"/admin/orders/{order_id}/set-price?token=correct-token", data={"real_price": "8.50"})
+    assert resp.status_code == 502
+    body = resp.get_data(as_text=True)
+    assert "smtp down" in body
+    assert f"/o/{order_id}/confirm?token=" in body
+
+
+def test_order_rejects_a_dish_listed_twice(client):
+    payload = _order_payload([{"id": SALAD_BAR_ID, "quantity": 2}, {"id": SALAD_BAR_ID, "quantity": 2}])
+    resp = _post_order(client, payload)
+    assert resp.status_code == 400
+    assert resp.get_json()["error"] == "invalid_selection"
+
+
+def test_order_rejects_malformed_items_without_crashing(client):
+    for items in ("abc", [1, 2], [{"id": True, "quantity": 1}], [{"id": SALAD_BAR_ID, "quantity": True}]):
+        resp = _post_order(client, _order_payload(items))
+        assert resp.status_code == 400, items
+
+
 def test_admin_set_price_invalid_price_is_400(client, monkeypatch):
     monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
     order_id = _create_basic_order(client, customer_email="student@uni.lu")

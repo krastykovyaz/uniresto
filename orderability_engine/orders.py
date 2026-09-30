@@ -186,6 +186,26 @@ def _line_weight(weight_value: float | None, quantity: int) -> float | None:
     return None if weight_value is None else weight_value * quantity
 
 
+def validate_selection_shape(selection) -> None:
+    """Raises OrderValidationError unless `selection` is a list of
+    {"id": int, ...} dicts with no dish listed twice. Checked before anything
+    reads the entries: a string or a non-dict entry used to crash the order
+    routes with a 500, and a repeated id let one dish past MAX_QUANTITY
+    (two lines of 2 = 4)."""
+    if not isinstance(selection, list):
+        raise OrderValidationError("'items' must be a list of {id, quantity}")
+    seen = set()
+    for entry in selection:
+        if not isinstance(entry, dict):
+            raise OrderValidationError("Each entry in 'items' must be an object {id, quantity}")
+        item_id = entry.get("id")
+        if isinstance(item_id, bool) or not isinstance(item_id, int):
+            raise OrderValidationError(f"Menu item id must be an integer, got {item_id!r}")
+        if item_id in seen:
+            raise OrderValidationError(f"Menu item id {item_id} is listed more than once")
+        seen.add(item_id)
+
+
 def recalculate_order(menu_items: list[dict], selection: list[dict]) -> dict:
     """menu_items: the live, backend-fetched menu (each dict has at least
     id/category/name/description/price/weight_value/weight_unit/allergens).
@@ -193,6 +213,7 @@ def recalculate_order(menu_items: list[dict], selection: list[dict]) -> dict:
     ONLY two fields trusted from the browser; everything else is looked
     up server-side. Raises OrderValidationError for an unknown id or a
     quantity outside [MIN_QUANTITY, MAX_QUANTITY]."""
+    validate_selection_shape(selection)
     by_id = {item["id"]: item for item in menu_items}
 
     line_items = []
@@ -202,7 +223,7 @@ def recalculate_order(menu_items: list[dict], selection: list[dict]) -> dict:
 
         if item_id not in by_id:
             raise OrderValidationError(f"Menu item id {item_id!r} is not on the current menu for this date")
-        if not isinstance(quantity, int) or not (MIN_QUANTITY <= quantity <= MAX_QUANTITY):
+        if isinstance(quantity, bool) or not isinstance(quantity, int) or not (MIN_QUANTITY <= quantity <= MAX_QUANTITY):
             raise OrderValidationError(
                 f"Quantity for item {item_id} must be an integer between {MIN_QUANTITY} and {MAX_QUANTITY}, got {quantity!r}"
             )
