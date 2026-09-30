@@ -1589,6 +1589,10 @@ def create_app(
     # only ever called when that screen actually renders.
     CLIENT_TRACKED_EVENTS = ("home", "menu")
 
+    # /api/visit/ is what static/app.js calls: ad/content blockers and DNS
+    # filters drop any URL containing "track", which silently lost QR-code
+    # scans. /api/track/ stays for pages still cached with the old app.js.
+    @app.post("/api/visit/<event>")
     @app.post("/api/track/<event>")
     def api_track(event):
         """Fired by static/app.js -- "home" once from init(), "menu" from

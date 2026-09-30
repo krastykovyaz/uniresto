@@ -3831,3 +3831,27 @@ def test_the_communication_email_bonus_needs_a_verified_address(client):
     stranger = client.application.test_client()
     stranger.held_tokens_for = ["student@uni.lu"]
     assert _claim_reward(stranger, "communication_email_added", "verified-elsewhere@gmail.com", verify_value=False).status_code == 403
+
+
+def test_visit_home_records_the_given_source(client):
+    # /api/visit/ is the blocker-safe path app.js now uses.
+    resp = client.post("/api/visit/home", json={"source": "flyer-g"})
+    assert resp.status_code == 200
+    page_views = client.application.config["PAGE_VIEW_STORE"]
+    assert page_views.source_counts("home") == [("flyer-g", 1)]
+
+
+def test_visit_menu_records_a_page_view(client):
+    assert client.post("/api/visit/menu").status_code == 200
+    assert _count_now(client, "menu") == 1
+
+
+def test_visit_rejects_events_the_client_does_not_own(client):
+    assert client.post("/api/visit/delivery").status_code == 404
+    assert client.post("/api/visit/nonsense").status_code == 404
+
+
+def test_visit_and_track_share_one_rate_limit_budget(client):
+    assert _post_n(client, "/api/track/home", 60) == [200] * 60
+    assert client.post("/api/visit/home").status_code == 429
+    assert _count_now(client, "home") == 60

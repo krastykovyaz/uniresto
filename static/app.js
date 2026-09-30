@@ -2774,7 +2774,7 @@ async function selectDate(dateInfo) {
     // Part 74: one real "viewed a menu" per day someone actually opens --
     // counted here, not at the API, because renderDates()'s background
     // prefetch hits that same endpoint for every orderable day shown.
-    api("/api/track/menu", { method: "POST" }).catch(() => {});
+    api("/api/visit/menu", { method: "POST" }).catch(() => {});
   } catch (err) {
     state.menuError = { status: err.body && err.body.status, reason: err.message };
   }
@@ -5864,7 +5864,7 @@ async function init() {
   // never persisted, so it only ever attributes the visit it actually
   // arrived on, not anything the person does afterwards.
   const urlSource = new URLSearchParams(window.location.search).get("src") || undefined;
-  api("/api/track/home", { method: "POST", body: JSON.stringify({ source: urlSource }) }).catch(() => {});
+  api("/api/visit/home", { method: "POST", body: JSON.stringify({ source: urlSource }) }).catch(() => {});
   setInterval(tickStatusClock, 30000);
   app.append(loadingState(tr("loadingRestaurants")));
   try {
