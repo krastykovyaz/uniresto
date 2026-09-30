@@ -213,6 +213,11 @@ PRIVATE_ORDER_FIELDS = ("customer_email", "customer_phone", "courier_email", "co
 
 
 MAX_CUSTOMER_NOTE_LENGTH = 200
+# Building + room / phone number -- generous for real input, but without a
+# cap one order could store megabytes that are echoed to the delivery list,
+# emails and Telegram.
+MAX_DELIVERY_LOCATION_LENGTH = 200
+MAX_CUSTOMER_PHONE_LENGTH = 32
 MAX_FEEDBACK_LENGTH = 500
 DELIVERY_LIST_DAYS = 14
 
@@ -1021,6 +1026,10 @@ def create_app(
             abort(400, description="Body must include 'restaurant', 'date', and a non-empty 'items' list of {id, quantity}")
         if not delivery_location:
             abort(400, description="'delivery_location' is required")
+        if len(delivery_location) > MAX_DELIVERY_LOCATION_LENGTH:
+            abort(400, description=f"'delivery_location' must be at most {MAX_DELIVERY_LOCATION_LENGTH} characters")
+        if customer_phone is not None and len(customer_phone) > MAX_CUSTOMER_PHONE_LENGTH:
+            abort(400, description=f"'customer_phone' must be at most {MAX_CUSTOMER_PHONE_LENGTH} characters")
         if not customer_email:
             abort(400, description="'customer_email' is required")
         if not _is_valid_email_format(customer_email):
@@ -1698,6 +1707,11 @@ def create_app(
 
     @app.get("/admin/orderability")
     def admin_orderability():
+        # Same admin gate as every other /admin page: this debug table shows
+        # the scraper's upstream status for every restaurant and day, and
+        # each view triggers real orderability checks -- neither is public.
+        if not _is_admin_authorized():
+            abort(404)
         rows = []
         today = svc().today()
         for restaurant in by_slug.values():

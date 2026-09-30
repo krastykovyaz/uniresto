@@ -2666,8 +2666,15 @@ def test_favicon_ico_redirects_to_the_real_png(client):
     assert resp.headers["Location"].endswith("/static/favicon-32.png")
 
 
-def test_admin_page_renders(client):
-    resp = client.get("/admin/orderability")
+def test_admin_orderability_needs_the_admin_token(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    assert client.get("/admin/orderability").status_code == 404
+    assert client.get("/admin/orderability?token=wrong").status_code == 404
+
+
+def test_admin_page_renders(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    resp = client.get("/admin/orderability?token=correct-token")
     assert resp.status_code == 200
     assert b"Orderability debug" in resp.data
     assert b"AVAILABLE" in resp.data
@@ -3020,6 +3027,11 @@ def test_customer_note_of_200_characters_is_allowed_and_201_is_not(client):
     with patch("app.send_admin_notification", return_value=(True, None)):
         assert client.post("/api/orders", json=_bare_order(customer_note="x" * 200)).status_code == 201
     assert client.post("/api/orders", json=_bare_order(customer_note="x" * 201)).status_code == 400
+
+
+def test_delivery_location_and_phone_are_length_capped(client):
+    assert client.post("/api/orders", json=_bare_order(delivery_location="B — " + "x" * 300)).status_code == 400
+    assert client.post("/api/orders", json=_bare_order(customer_phone="1" * 33)).status_code == 400
 
 
 def test_feedback_of_500_characters_is_allowed_and_501_is_not(client):

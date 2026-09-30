@@ -5237,7 +5237,7 @@ function buildTotalsBox() {
     const totals = order.totals;
     const weightLines = Object.entries(totals.weight_by_unit || {})
       .filter(([, v]) => v > 0)
-      .map(([unit, v]) => `<div class="totals-row"><span>${escapeHtml(tr("weight"))} (${unit})</span><span>${v} ${unit}</span></div>`)
+      .map(([unit, v]) => `<div class="totals-row"><span>${escapeHtml(tr("weight"))} (${escapeHtml(unit)})</span><span>${v} ${escapeHtml(unit)}</span></div>`)
       .join("");
     const formula = totals.formula;
     const formulaLine =
@@ -5260,7 +5260,7 @@ function buildTotalsBox() {
   const totals = computeOrderTotals(state.selection, menuById());
   const weightLines = Object.entries(totals.weightByUnit)
     .filter(([, v]) => v > 0)
-    .map(([unit, v]) => `<div class="totals-row"><span>${escapeHtml(tr("weight"))} (${unit})</span><span>${v} ${unit}</span></div>`)
+    .map(([unit, v]) => `<div class="totals-row"><span>${escapeHtml(tr("weight"))} (${escapeHtml(unit)})</span><span>${v} ${escapeHtml(unit)}</span></div>`)
     .join("");
   const { formula } = priceBreakdown(totals);
   const formulaLine =
@@ -5654,7 +5654,7 @@ function renderConfirmation() {
   const totals = order.totals;
   const weightLines = Object.entries(totals.weight_by_unit || {})
     .filter(([, v]) => v > 0)
-    .map(([unit, v]) => `<div class="totals-row"><span>${escapeHtml(tr("weight"))} (${unit})</span><span>${v} ${unit}</span></div>`)
+    .map(([unit, v]) => `<div class="totals-row"><span>${escapeHtml(tr("weight"))} (${escapeHtml(unit)})</span><span>${v} ${escapeHtml(unit)}</span></div>`)
     .join("");
   const formula = totals.formula;
   const formulaLine =
