@@ -4249,7 +4249,7 @@ function dishIllustrationSvg() {
 }
 
 // The item whose quantity was just changed, so only ITS card plays the
-// little "pop" on the number (refreshMenuScreen() rebuilds every card).
+// little "pop" on the number (refreshMenuScreen() may rebuild several).
 let lastChangedItemId = null;
 
 function foodCard(item) {
@@ -4683,7 +4683,7 @@ async function openSharedDish() {
 
 function openDishDetailSheet(item, trigger, earlyCutoffPassed = false) {
   // Reassigned after toggleSelection()/changeQuantity() below -- both
-  // call refreshMenuScreen(), which replaceWith()s every .food-card
+  // call refreshMenuScreen(), which replaceWith()s this dish's .food-card
   // (including this one), detaching the original `trigger` node. Kept
   // current so Escape/backdrop-close can still hand focus back to a
   // real, attached element instead of a silently-detached one.
@@ -4851,7 +4851,7 @@ function toggleSelection(itemId) {
   state.serverQuote = null;
   saveCart();
   lastChangedItemId = itemId;
-  refreshMenuScreen();
+  refreshMenuScreen(itemId);
   lastChangedItemId = null;
   renderBottomNav(); // keeps the Basket tab's dot (state.selection.length > 0) in sync
 }
@@ -4874,17 +4874,26 @@ function changeQuantity(itemId, delta) {
   state.serverQuote = null;
   saveCart();
   lastChangedItemId = itemId;
-  refreshMenuScreen();
+  refreshMenuScreen(itemId);
   lastChangedItemId = null;
   if (wasRemoved) renderBottomNav(); // only the empty-selection case can flip the Basket tab's dot off
 }
 
-function refreshMenuScreen() {
-  // Re-render just the affected pieces to keep scroll position stable.
-  for (const sel of [...document.querySelectorAll(".food-card")]) {
+function refreshMenuScreen(changedItemId = null) {
+  // Re-render just the affected pieces to keep scroll position stable --
+  // only the changed dish's card(s) when we know which one it was, so the
+  // other cards (and their photos) aren't rebuilt and don't blink.
+  const selector = changedItemId == null ? ".food-card" : `.food-card[data-item-id="${changedItemId}"]`;
+  for (const sel of [...document.querySelectorAll(selector)]) {
     const id = Number(sel.dataset.itemId);
     const item = menuById().get(id);
-    if (item) sel.replaceWith(foodCard(item));
+    if (!item) continue;
+    // Keep keyboard focus on the same control (e.g. the "+" just pressed)
+    // instead of losing it when the card is swapped out.
+    const focusedClass = sel.contains(document.activeElement) ? document.activeElement.classList[0] : null;
+    const fresh = foodCard(item);
+    sel.replaceWith(fresh);
+    if (focusedClass) (fresh.querySelector(`.${focusedClass}`) || fresh.querySelector(".buy-add, .buy-inc"))?.focus();
   }
   renderSummaryBar();
 }
