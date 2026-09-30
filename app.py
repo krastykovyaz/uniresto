@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import io
+import math
 import time
 import logging
 import os
@@ -57,6 +58,7 @@ from orderability_engine.orders import (
     OrderStore,
     OrderValidationError,
     recalculate_order,
+    validate_selection_shape,
 )
 from orderability_engine.page_views import MAX_SOURCE_LENGTH, PageViewStore
 from orderability_engine.pending_dish_photos import PendingDishPhotoStore
@@ -213,6 +215,11 @@ PRIVATE_ORDER_FIELDS = ("customer_email", "customer_phone", "courier_email", "co
 
 
 MAX_CUSTOMER_NOTE_LENGTH = 200
+# Building + room / phone number -- generous for real input, but without a
+# cap one order could store megabytes that are echoed to the delivery list,
+# emails and Telegram.
+MAX_DELIVERY_LOCATION_LENGTH = 200
+MAX_CUSTOMER_PHONE_LENGTH = 32
 MAX_FEEDBACK_LENGTH = 500
 DELIVERY_LIST_DAYS = 14
 
@@ -612,6 +619,17 @@ def create_app(
                 courier = (order.get("courier_email") or "").strip()
                 if courier:
                     rewards().award_once(courier, f"{COURIER_NO_SHOW}:{order['id']}", REWARD_POINTS[COURIER_NO_SHOW])
+        # Only after the penalties above, which still need to see an unconfirmed
+        # order as 'awaiting_confirmation'.
+        _close_expired_orders()
+
+    def _close_expired_orders() -> None:
+        """Moves open orders for a day whose delivery window is over
+        (is_delivery_expired: past 13:30 Luxembourg on that day) to
+        'expired' -- see OrderStore.expire_open_orders()."""
+        now = svc().now()
+        last_expired_day = now.date() if is_delivery_expired(now.date(), now) else now.date() - timedelta(days=1)
+        store().expire_open_orders(last_expired_day.isoformat())
 
     def get_restaurant_or_404(slug: str):
         restaurant = by_slug.get(slug)
@@ -961,6 +979,10 @@ def create_app(
 
         flat_items, _ = _load_flat_menu(restaurant, d)
         result = svc().check_orderability(restaurant, d)
+        try:
+            validate_selection_shape(selection)
+        except OrderValidationError as exc:
+            return jsonify({"error": "invalid_selection", "message": str(exc)}), 400
         offending = _early_cutoff_violations(flat_items, selection, result.early_cutoff.available)
         if offending:
             return jsonify({
@@ -1021,6 +1043,10 @@ def create_app(
             abort(400, description="Body must include 'restaurant', 'date', and a non-empty 'items' list of {id, quantity}")
         if not delivery_location:
             abort(400, description="'delivery_location' is required")
+        if len(delivery_location) > MAX_DELIVERY_LOCATION_LENGTH:
+            abort(400, description=f"'delivery_location' must be at most {MAX_DELIVERY_LOCATION_LENGTH} characters")
+        if customer_phone is not None and len(customer_phone) > MAX_CUSTOMER_PHONE_LENGTH:
+            abort(400, description=f"'customer_phone' must be at most {MAX_CUSTOMER_PHONE_LENGTH} characters")
         if not customer_email:
             abort(400, description="'customer_email' is required")
         if not _is_valid_email_format(customer_email):
@@ -1069,6 +1095,10 @@ def create_app(
             return jsonify({"error": "date_not_available", "status": "closed", "reason": "Our ordering deadline for this date has passed."}), 409
 
         flat_items, _ = _load_flat_menu(restaurant, d)
+        try:
+            validate_selection_shape(selection)
+        except OrderValidationError as exc:
+            return jsonify({"error": "invalid_selection", "message": str(exc)}), 400
         offending = _early_cutoff_violations(flat_items, selection, result.early_cutoff.available)
         if offending:
             return jsonify({
@@ -1173,6 +1203,7 @@ def create_app(
         README.md Part 46/49's same reasoning for Cart/Favorites) and
         re-fetches each order's current, authoritative record from here
         rather than trusting anything cached in the browser."""
+        _close_expired_orders()
         order = store().get_order(order_id)
         # Order ids are sequential, so only the person the order belongs to
         # (a browser holding the token for its University address) may read
@@ -1422,7 +1453,7 @@ def create_app(
             # Once there's nothing left to deliver, the building is enough
             # for the card's heading -- the room/free-text half isn't
             # needed by anyone browsing this list anymore.
-            if order.get("delivered_at") or order["status"] == "cancelled":
+            if order.get("delivered_at") or order["status"] in ("cancelled", "expired"):
                 order["delivery_location"] = _building_only(order.get("delivery_location"))
             # Part 76: the Delivery screen's "Expired" section reads this
             # instead of comparing dates on the courier's own device.
@@ -1459,7 +1490,7 @@ def create_app(
         # is ungated -- a stale tab or a direct call must not email a
         # customer "order accepted" about an order that was called off or
         # is already in their hands.
-        if order["status"] == "cancelled" or order["delivered_at"]:
+        if order["status"] in ("cancelled", "expired") or order["delivered_at"]:
             return jsonify({"error": "not_claimable", "status": order["status"], "delivered": bool(order["delivered_at"])}), 409
         newly_claimed = store().mark_claimed(order_id, courier_email=courier_email, courier_lang=courier_lang)
         if newly_claimed:
@@ -1538,8 +1569,8 @@ def create_app(
         order = store().get_order(order_id)
         if order is None:
             abort(404, description=f"No order #{order_id}")
-        if order["status"] == "cancelled":
-            return jsonify({"error": "not_deliverable", "status": "cancelled"}), 409
+        if order["status"] in ("cancelled", "expired"):
+            return jsonify({"error": "not_deliverable", "status": order["status"]}), 409
         store().mark_delivered(order_id)
         _award_delivery_luni(order)
         return jsonify({"delivered": True})
@@ -1589,6 +1620,10 @@ def create_app(
     # only ever called when that screen actually renders.
     CLIENT_TRACKED_EVENTS = ("home", "menu")
 
+    # /api/visit/ is what static/app.js calls: ad/content blockers and DNS
+    # filters drop any URL containing "track", which silently lost QR-code
+    # scans. /api/track/ stays for pages still cached with the old app.js.
+    @app.post("/api/visit/<event>")
     @app.post("/api/track/<event>")
     def api_track(event):
         """Fired by static/app.js -- "home" once from init(), "menu" from
@@ -1694,6 +1729,11 @@ def create_app(
 
     @app.get("/admin/orderability")
     def admin_orderability():
+        # Same admin gate as every other /admin page: this debug table shows
+        # the scraper's upstream status for every restaurant and day, and
+        # each view triggers real orderability checks -- neither is public.
+        if not _is_admin_authorized():
+            abort(404)
         rows = []
         today = svc().today()
         for restaurant in by_slug.values():
@@ -1714,6 +1754,7 @@ def create_app(
         email and change order status, so it's not left wide open."""
         if not _is_admin_authorized():
             abort(404)
+        _close_expired_orders()
         return render_template(
             "admin_orders.html",
             pending=store().list_orders_by_status("pending"),
@@ -2043,6 +2084,8 @@ def create_app(
             real_price = float(real_price_raw)
         except (TypeError, ValueError):
             abort(400, description="'real_price' must be a number")
+        if not math.isfinite(real_price) or real_price < 0:
+            abort(400, description="'real_price' must be a finite number of at least 0")
 
         order = store().get_order(order_id)
         if order is None:
@@ -2057,7 +2100,18 @@ def create_app(
         confirm_url = f"{request.host_url}o/{order_id}/confirm?token={token}"
         cancel_url = f"{request.host_url}o/{order_id}/cancel?token={token}"
         order = store().get_order(order_id)  # re-fetch: now carries the real_price/awaiting_confirmation status
-        send_order_needs_confirmation(order["customer_email"], order, real_price, confirm_url, cancel_url)
+        sent, error = send_order_needs_confirmation(order["customer_email"], order, real_price, confirm_url, cancel_url)
+        if not sent:
+            # The order has already moved on to awaiting_confirmation, so it
+            # can't be re-priced -- give the admin the customer's links to
+            # forward by hand instead of silently leaving it stuck.
+            logging.getLogger("uniresto.mailer").warning("set-price email for order %s failed: %s", order_id, error)
+            return (
+                f"Price saved, but the email to {order['customer_email']} was not sent ({error}).\n"
+                f"Send the customer these links yourself:\nConfirm: {confirm_url}\nCancel: {cancel_url}\n",
+                502,
+                {"Content-Type": "text/plain; charset=utf-8"},
+            )
 
         return redirect(f"/admin/orders?token={request.args.get('token', '')}")
 

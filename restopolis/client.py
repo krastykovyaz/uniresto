@@ -27,7 +27,8 @@ import html
 import logging
 import time
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -177,7 +178,8 @@ class RestopolisClient:
         # HTML would mislabel its contents as the requested week's data.
         from restopolis.parser import get_week_dates  # local import: avoids a hard import-time cycle
 
-        expected_week_start = _week_start(date.today()) + timedelta(weeks=weeks_ahead)
+        # Restopolis weeks follow Luxembourg time, not this server's own clock.
+        expected_week_start = _week_start(datetime.now(ZoneInfo("Europe/Luxembourg")).date()) + timedelta(weeks=weeks_ahead)
         actual_dates = get_week_dates(page_html)
         actual_week_start = actual_dates[0] if actual_dates else None
         if actual_week_start != expected_week_start:

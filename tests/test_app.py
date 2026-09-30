@@ -2538,6 +2538,48 @@ def test_admin_set_price_for_order_without_email_is_400(client, monkeypatch):
     assert resp.status_code == 400
 
 
+def test_admin_set_price_rejects_nan_inf_and_negative(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    for bad in ("nan", "inf", "-1"):
+        resp = client.post(f"/admin/orders/{order_id}/set-price?token=correct-token", data={"real_price": bad})
+        assert resp.status_code == 400, bad
+
+
+def test_admin_set_price_email_failure_is_reported_with_the_links(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    with patch("app.send_order_needs_confirmation", return_value=(False, "smtp down")):
+        resp = client.post(f"/admin/orders/{order_id}/set-price?token=correct-token", data={"real_price": "8.50"})
+    assert resp.status_code == 502
+    body = resp.get_data(as_text=True)
+    assert "smtp down" in body
+    assert f"/o/{order_id}/confirm?token=" in body
+
+
+def test_an_open_order_is_expired_once_its_day_is_over(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    order_id = _create_basic_order(client)  # for 2026-09-24
+    assert client.get(f"/api/orders/{order_id}").get_json()["status"] == "pending"
+    # 13:30 on the day is when delivery closes (is_delivery_expired).
+    client.application.config["ORDERABILITY_SERVICE"]._now_override = datetime.datetime(2026, 9, 24, 13, 31, tzinfo=TZINFO)
+    assert client.get(f"/api/orders/{order_id}").get_json()["status"] == "expired"
+    assert f"Order #{order_id}</strong>" not in client.get("/admin/orders?token=correct-token").get_data(as_text=True)
+
+
+def test_order_rejects_a_dish_listed_twice(client):
+    payload = _order_payload([{"id": SALAD_BAR_ID, "quantity": 2}, {"id": SALAD_BAR_ID, "quantity": 2}])
+    resp = _post_order(client, payload)
+    assert resp.status_code == 400
+    assert resp.get_json()["error"] == "invalid_selection"
+
+
+def test_order_rejects_malformed_items_without_crashing(client):
+    for items in ("abc", [1, 2], [{"id": True, "quantity": 1}], [{"id": SALAD_BAR_ID, "quantity": True}]):
+        resp = _post_order(client, _order_payload(items))
+        assert resp.status_code == 400, items
+
+
 def test_admin_set_price_invalid_price_is_400(client, monkeypatch):
     monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
     order_id = _create_basic_order(client, customer_email="student@uni.lu")
@@ -2666,8 +2708,15 @@ def test_favicon_ico_redirects_to_the_real_png(client):
     assert resp.headers["Location"].endswith("/static/favicon-32.png")
 
 
-def test_admin_page_renders(client):
-    resp = client.get("/admin/orderability")
+def test_admin_orderability_needs_the_admin_token(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    assert client.get("/admin/orderability").status_code == 404
+    assert client.get("/admin/orderability?token=wrong").status_code == 404
+
+
+def test_admin_page_renders(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    resp = client.get("/admin/orderability?token=correct-token")
     assert resp.status_code == 200
     assert b"Orderability debug" in resp.data
     assert b"AVAILABLE" in resp.data
@@ -3020,6 +3069,11 @@ def test_customer_note_of_200_characters_is_allowed_and_201_is_not(client):
     with patch("app.send_admin_notification", return_value=(True, None)):
         assert client.post("/api/orders", json=_bare_order(customer_note="x" * 200)).status_code == 201
     assert client.post("/api/orders", json=_bare_order(customer_note="x" * 201)).status_code == 400
+
+
+def test_delivery_location_and_phone_are_length_capped(client):
+    assert client.post("/api/orders", json=_bare_order(delivery_location="B — " + "x" * 300)).status_code == 400
+    assert client.post("/api/orders", json=_bare_order(customer_phone="1" * 33)).status_code == 400
 
 
 def test_feedback_of_500_characters_is_allowed_and_501_is_not(client):
@@ -3831,3 +3885,27 @@ def test_the_communication_email_bonus_needs_a_verified_address(client):
     stranger = client.application.test_client()
     stranger.held_tokens_for = ["student@uni.lu"]
     assert _claim_reward(stranger, "communication_email_added", "verified-elsewhere@gmail.com", verify_value=False).status_code == 403
+
+
+def test_visit_home_records_the_given_source(client):
+    # /api/visit/ is the blocker-safe path app.js now uses.
+    resp = client.post("/api/visit/home", json={"source": "flyer-g"})
+    assert resp.status_code == 200
+    page_views = client.application.config["PAGE_VIEW_STORE"]
+    assert page_views.source_counts("home") == [("flyer-g", 1)]
+
+
+def test_visit_menu_records_a_page_view(client):
+    assert client.post("/api/visit/menu").status_code == 200
+    assert _count_now(client, "menu") == 1
+
+
+def test_visit_rejects_events_the_client_does_not_own(client):
+    assert client.post("/api/visit/delivery").status_code == 404
+    assert client.post("/api/visit/nonsense").status_code == 404
+
+
+def test_visit_and_track_share_one_rate_limit_budget(client):
+    assert _post_n(client, "/api/track/home", 60) == [200] * 60
+    assert client.post("/api/visit/home").status_code == 429
+    assert _count_now(client, "home") == 60

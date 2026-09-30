@@ -2008,7 +2008,7 @@ function campusFilterRow(stateKey, onChange) {
 function classifyDeliveryOrder(order) {
   if (order.delivered_at) return "delivered";
   if (order.status === "cancelled") return "closed";
-  if (order.expired) return "expired";
+  if (order.expired || order.status === "expired") return "expired";
   return "pending";
 }
 
@@ -2299,7 +2299,7 @@ function deliveryOrderListContent(data, onChanged) {
   const online = loadCourierOnline();
 
   // 1) what I'm carrying right now
-  const active = mine.filter((o) => !o.delivered_at && o.status !== "cancelled");
+  const active = mine.filter((o) => !o.delivered_at && o.status !== "cancelled" && o.status !== "expired");
   if (active.length > 0) wrap.append(courierActiveBlock(active, onChanged));
 
   // 2) open orders as offers, most urgent first
@@ -2774,7 +2774,7 @@ async function selectDate(dateInfo) {
     // Part 74: one real "viewed a menu" per day someone actually opens --
     // counted here, not at the API, because renderDates()'s background
     // prefetch hits that same endpoint for every orderable day shown.
-    api("/api/track/menu", { method: "POST" }).catch(() => {});
+    api("/api/visit/menu", { method: "POST" }).catch(() => {});
   } catch (err) {
     state.menuError = { status: err.body && err.body.status, reason: err.message };
   }
@@ -2956,6 +2956,7 @@ function orderStatusLabel(status) {
     awaiting_confirmation: "statusAwaitingConfirmation",
     confirmed: "statusConfirmed",
     cancelled: "statusCancelled",
+    expired: "statusExpired",
   }[status];
   return key ? tr(key) : status;
 }
@@ -3188,7 +3189,7 @@ async function openOrderHistory(mode = "basket") {
 // 30 status machine (see orderStatusLabel()'s own comment) -- everything
 // else (pending/reviewing/awaiting_confirmation) is still actively
 // moving, so it belongs in "Current orders", not history.
-const TERMINAL_ORDER_STATUSES = new Set(["confirmed", "cancelled"]);
+const TERMINAL_ORDER_STATUSES = new Set(["confirmed", "cancelled", "expired"]);
 
 function historyRow(order) {
   const itemsSummary = order.items.map((it) => `${dishTitleWithSize(it.name, state.lang)}${it.quantity > 1 ? ` ×${it.quantity}` : ""}`).join(", ");
@@ -4247,9 +4248,14 @@ function dishIllustrationSvg() {
   `;
 }
 
+// The item whose quantity was just changed, so only ITS card plays the
+// little "pop" on the number (refreshMenuScreen() may rebuild several).
+let lastChangedItemId = null;
+
 function foodCard(item) {
   const sel = selectionFor(item.id);
   const isSelected = !!sel;
+  const justChangedId = lastChangedItemId;
   const isFav = isFavorite(state.slug, item.category, item.name);
   // Grill/BBQ mains and salmon (Part 59) -- confirmed real kitchen
   // practice, not Restopolis data -- need to be ordered by 08:00, well
@@ -4284,6 +4290,7 @@ function foodCard(item) {
         <img class="food-card-custom-photo" alt="" ${storedPhotoPath ? `src="${escapeHtml(storedPhotoPath)}"` : "hidden"}>
         <input type="file" accept="image/*" class="food-card-photo-input" hidden>
         <button type="button" class="heart-btn ${isFav ? "is-favorite" : ""}" aria-label="${escapeHtml(tr(isFav ? "removeFavorite" : "addFavorite", { name: dishTitle(item.name, state.lang) }))}" aria-pressed="${isFav}">${icon(isFav ? "heartFilled" : "heart", 18)}</button>
+        ${isSelected ? `<span class="qty-badge ${justChangedId === item.id ? "is-pop" : ""}" aria-hidden="true">${sel.quantity}</span>` : ""}
         ${
           item.vegan || item.vegetarian || item.requires_early_order
             ? `<div class="badge-row">
@@ -4317,35 +4324,28 @@ function foodCard(item) {
             : ""
         }
         <div class="add-row">
-          <span class="price ${priceIsUnspecified(item) ? "is-unspecified" : ""}">${escapeHtml(priceText(item))}</span>
-          ${
-            hasPhoto
-              ? `<button type="button" class="select-check" aria-label="${escapeHtml(tr(isSelected ? "deselectItem" : "selectItem", { name: dishTitle(item.name, state.lang) }))}" aria-pressed="${isSelected}">${icon(isSelected ? "check" : "plus", 14)}</button>`
-              : `<div class="select-check" aria-hidden="true">${icon(isSelected ? "check" : "plus", 14)}</div>`
-          }
+          <div class="buy ${isSelected ? "is-active" : ""}">
+            ${
+              isSelected
+                ? `<button type="button" class="buy-dec" aria-label="${escapeHtml(tr("decreaseQuantityOf", { name: dishTitle(item.name, state.lang) }))}">${icon("minus", 18)}</button>
+                   <span class="price ${priceIsUnspecified(item) ? "is-unspecified" : ""}">${escapeHtml(priceText(item))}</span>
+                   <button type="button" class="buy-inc" aria-label="${escapeHtml(tr("increaseQuantityOf", { name: dishTitle(item.name, state.lang) }))}">${icon("plus", 18)}</button>`
+                : hasPhoto
+                  ? `<button type="button" class="buy-add" aria-label="${escapeHtml(tr("selectItem", { name: dishTitle(item.name, state.lang) }))}"><span class="price ${priceIsUnspecified(item) ? "is-unspecified" : ""}">${escapeHtml(priceText(item))}</span><span class="buy-plus">${icon("plus", 18)}</span></button>`
+                  : `<div class="buy-add" aria-hidden="true"><span class="price ${priceIsUnspecified(item) ? "is-unspecified" : ""}">${escapeHtml(priceText(item))}</span><span class="buy-plus">${icon("plus", 18)}</span></div>`
+            }
+          </div>
         </div>
       </div>
     </article>
   `);
 
   if (isSelected) {
-    const qtyRow = el(`<div class="quantity-row"></div>`);
-    card.querySelector(".card-body").append(qtyRow);
-    qtyRow.append(
-      el(`
-      <div class="quantity-stepper">
-        <button type="button" aria-label="${escapeHtml(tr("decreaseQuantityOf", { name: dishTitle(item.name, state.lang) }))}">−</button>
-        <span class="quantity-value">${sel.quantity}</span>
-        <button type="button" aria-label="${escapeHtml(tr("increaseQuantityOf", { name: dishTitle(item.name, state.lang) }))}">+</button>
-      </div>
-    `)
-    );
-    const [decBtn, , incBtn] = qtyRow.querySelectorAll("button, span");
-    decBtn.addEventListener("click", (e) => {
+    card.querySelector(".buy-dec").addEventListener("click", (e) => {
       e.stopPropagation();
       changeQuantity(item.id, -1);
     });
-    incBtn.addEventListener("click", (e) => {
+    card.querySelector(".buy-inc").addEventListener("click", (e) => {
       e.stopPropagation();
       changeQuantity(item.id, +1);
     });
@@ -4450,7 +4450,7 @@ function foodCard(item) {
     // button (see its markup above), not the decorative div a photo-less
     // card still uses. stopPropagation so it never also re-opens the
     // detail sheet via the root card handler below.
-    card.querySelector(".select-check").addEventListener("click", (e) => {
+    card.querySelector(".buy-add")?.addEventListener("click", (e) => {
       e.stopPropagation();
       selectOrExplain();
     });
@@ -4462,6 +4462,9 @@ function foodCard(item) {
     card.setAttribute("tabindex", "0");
     card.setAttribute("aria-label", tr("viewDishDetails", { name: dishTitle(item.name, state.lang) }));
     card.addEventListener("keydown", (e) => {
+      // Only the card itself -- Enter/Space on the heart or the pill's own
+      // buttons must activate that button, not the card.
+      if (e.target !== card) return;
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         openDetail();
@@ -4475,6 +4478,9 @@ function foodCard(item) {
     card.setAttribute("aria-disabled", String(earlyCutoffPassed));
     card.setAttribute("aria-label", tr(isSelected ? "deselectItem" : "selectItem", { name: dishTitle(item.name, state.lang) }));
     card.addEventListener("keydown", (e) => {
+      // Only the card itself -- Enter/Space on the heart or the pill's own
+      // buttons must activate that button, not the card.
+      if (e.target !== card) return;
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         selectOrExplain();
@@ -4677,7 +4683,7 @@ async function openSharedDish() {
 
 function openDishDetailSheet(item, trigger, earlyCutoffPassed = false) {
   // Reassigned after toggleSelection()/changeQuantity() below -- both
-  // call refreshMenuScreen(), which replaceWith()s every .food-card
+  // call refreshMenuScreen(), which replaceWith()s this dish's .food-card
   // (including this one), detaching the original `trigger` node. Kept
   // current so Escape/backdrop-close can still hand focus back to a
   // real, attached element instead of a silently-detached one.
@@ -4844,7 +4850,9 @@ function toggleSelection(itemId) {
   }
   state.serverQuote = null;
   saveCart();
-  refreshMenuScreen();
+  lastChangedItemId = itemId;
+  refreshMenuScreen(itemId);
+  lastChangedItemId = null;
   renderBottomNav(); // keeps the Basket tab's dot (state.selection.length > 0) in sync
 }
 
@@ -4865,16 +4873,27 @@ function changeQuantity(itemId, delta) {
   }
   state.serverQuote = null;
   saveCart();
-  refreshMenuScreen();
+  lastChangedItemId = itemId;
+  refreshMenuScreen(itemId);
+  lastChangedItemId = null;
   if (wasRemoved) renderBottomNav(); // only the empty-selection case can flip the Basket tab's dot off
 }
 
-function refreshMenuScreen() {
-  // Re-render just the affected pieces to keep scroll position stable.
-  for (const sel of [...document.querySelectorAll(".food-card")]) {
+function refreshMenuScreen(changedItemId = null) {
+  // Re-render just the affected pieces to keep scroll position stable --
+  // only the changed dish's card(s) when we know which one it was, so the
+  // other cards (and their photos) aren't rebuilt and don't blink.
+  const selector = changedItemId == null ? ".food-card" : `.food-card[data-item-id="${changedItemId}"]`;
+  for (const sel of [...document.querySelectorAll(selector)]) {
     const id = Number(sel.dataset.itemId);
     const item = menuById().get(id);
-    if (item) sel.replaceWith(foodCard(item));
+    if (!item) continue;
+    // Keep keyboard focus on the same control (e.g. the "+" just pressed)
+    // instead of losing it when the card is swapped out.
+    const focusedClass = sel.contains(document.activeElement) ? document.activeElement.classList[0] : null;
+    const fresh = foodCard(item);
+    sel.replaceWith(fresh);
+    if (focusedClass) (fresh.querySelector(`.${focusedClass}`) || fresh.querySelector(".buy-add, .buy-inc"))?.focus();
   }
   renderSummaryBar();
 }
@@ -5234,7 +5253,7 @@ function buildTotalsBox() {
     const totals = order.totals;
     const weightLines = Object.entries(totals.weight_by_unit || {})
       .filter(([, v]) => v > 0)
-      .map(([unit, v]) => `<div class="totals-row"><span>${escapeHtml(tr("weight"))} (${unit})</span><span>${v} ${unit}</span></div>`)
+      .map(([unit, v]) => `<div class="totals-row"><span>${escapeHtml(tr("weight"))} (${escapeHtml(unit)})</span><span>${v} ${escapeHtml(unit)}</span></div>`)
       .join("");
     const formula = totals.formula;
     const formulaLine =
@@ -5257,7 +5276,7 @@ function buildTotalsBox() {
   const totals = computeOrderTotals(state.selection, menuById());
   const weightLines = Object.entries(totals.weightByUnit)
     .filter(([, v]) => v > 0)
-    .map(([unit, v]) => `<div class="totals-row"><span>${escapeHtml(tr("weight"))} (${unit})</span><span>${v} ${unit}</span></div>`)
+    .map(([unit, v]) => `<div class="totals-row"><span>${escapeHtml(tr("weight"))} (${escapeHtml(unit)})</span><span>${v} ${escapeHtml(unit)}</span></div>`)
     .join("");
   const { formula } = priceBreakdown(totals);
   const formulaLine =
@@ -5651,7 +5670,7 @@ function renderConfirmation() {
   const totals = order.totals;
   const weightLines = Object.entries(totals.weight_by_unit || {})
     .filter(([, v]) => v > 0)
-    .map(([unit, v]) => `<div class="totals-row"><span>${escapeHtml(tr("weight"))} (${unit})</span><span>${v} ${unit}</span></div>`)
+    .map(([unit, v]) => `<div class="totals-row"><span>${escapeHtml(tr("weight"))} (${escapeHtml(unit)})</span><span>${v} ${escapeHtml(unit)}</span></div>`)
     .join("");
   const formula = totals.formula;
   const formulaLine =
@@ -5864,7 +5883,7 @@ async function init() {
   // never persisted, so it only ever attributes the visit it actually
   // arrived on, not anything the person does afterwards.
   const urlSource = new URLSearchParams(window.location.search).get("src") || undefined;
-  api("/api/track/home", { method: "POST", body: JSON.stringify({ source: urlSource }) }).catch(() => {});
+  api("/api/visit/home", { method: "POST", body: JSON.stringify({ source: urlSource }) }).catch(() => {});
   setInterval(tickStatusClock, 30000);
   app.append(loadingState(tr("loadingRestaurants")));
   try {

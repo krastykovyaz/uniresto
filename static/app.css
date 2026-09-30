@@ -618,7 +618,7 @@ svg { display: block; }
 .food-card-photo {
   position: relative;
   width: 100%;
-  height: 110px;
+  height: 120px;
   border-radius: 0;
   flex: 0 0 auto;
   display: flex;
@@ -727,6 +727,80 @@ svg { display: block; }
 .food-card .add-row .price { font-size: 0.85rem; font-weight: 700; color: var(--color-primary-dark); }
 .food-card .add-row .price.is-unspecified { font-weight: 400; font-style: italic; color: var(--color-text-muted); }
 
+/* Price and add control are ONE pill: light green with a "+" while the dish
+   isn't in the order, solid green "- price +" once it is. The photo above it
+   dims and shows the quantity (.qty-badge), so nothing extra is added under
+   the card and cards keep the same height selected or not. The whole photo
+   card is still the detail-sheet tap target; only these buttons add/remove
+   (see foodCard() in app.js). */
+.food-card .buy {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 38px;
+  border-radius: 999px;
+  background: var(--color-primary-bg);
+  color: var(--color-primary-dark);
+  overflow: hidden;
+  transition: background 0.2s;
+}
+.food-card .buy-add {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px 0 14px;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.food-card .buy-plus { display: grid; place-items: center; color: var(--color-primary); }
+.food-card .buy.is-active { background: var(--color-primary); color: var(--color-primary-contrast); justify-content: space-between; }
+.food-card .buy.is-active .price { color: inherit; }
+.food-card .buy-dec, .food-card .buy-inc {
+  width: 42px;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+/* Dim the photo and put the quantity on it. ::before because ::after is
+   already the "pending review" strip; z-index keeps the heart and badges
+   above the dimming. */
+.food-card-photo::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: rgba(14, 40, 26, 0.5);
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
+}
+.food-card.is-selected .food-card-photo::before { opacity: 1; }
+.food-card-photo .badge-row { z-index: 2; }
+.qty-badge {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 2.6rem;
+  font-weight: 700;
+  pointer-events: none;
+}
+.qty-badge.is-pop { animation: qty-pop 0.22s ease-out; }
+@keyframes qty-pop { 0% { transform: scale(0.6); } 60% { transform: scale(1.15); } 100% { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .qty-badge.is-pop { animation: none; } }
+
 .weight-price-row {
   display: flex;
   flex-wrap: wrap;
@@ -755,32 +829,6 @@ svg { display: block; }
 .badge.is-early-order-passed { color: var(--color-closed); }
 
 .allergen-line { font-size: 0.78rem; line-height: 1.45; color: var(--color-text-muted); margin: 0; }
-
-/* A flat visual indicator only (never its own click target -- the
-   WHOLE card is the button, see foodCard() in app.js), so it sits
-   inline in .add-row now rather than floating absolute over the name. */
-.select-check {
-  width: 26px;
-  height: 26px;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  border: 1.5px solid var(--color-border);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--color-primary);
-  background: var(--color-surface);
-  /* Resets the default <button> chrome for the hasPhoto variant (see
-     foodCard() in app.js) -- a plain <div> (the no-photo variant) never
-     had any of this to begin with, so these are no-ops for it. */
-  -webkit-appearance: none;
-  appearance: none;
-  padding: 0;
-  margin: 0;
-  font: inherit;
-  cursor: pointer;
-}
-.food-card.is-selected .select-check { background: var(--color-primary); color: var(--color-primary-contrast); border-color: var(--color-primary); }
 
 .heart-btn {
   border: none;

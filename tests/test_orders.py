@@ -569,3 +569,30 @@ def test_migrate_survives_another_worker_adding_the_column_first(tmp_path):
     with patch.object(OrderStore, "_existing_columns", return_value=set()):
         store = OrderStore(db)  # must not raise
     assert "on_way_emailed_at" in store._existing_columns()
+
+
+def test_expire_open_orders_closes_only_past_unfinished_orders(store):
+    def order(day):
+        return store.create_order("A", "A", day, [{"category": "x", "name": "y"}])
+
+    past = datetime.date(2026, 9, 24)
+    pending = order(past)
+    reviewing = order(past)
+    store.mark_reviewing(reviewing)
+    awaiting = order(past)
+    token = store.set_real_price(awaiting, 5.0)
+    confirmed = order(past)
+    store.confirm_order(confirmed, store.set_real_price(confirmed, 5.0))
+    delivered = order(past)
+    store.mark_delivered(delivered)
+    future = order(datetime.date(2026, 9, 25))
+
+    assert store.expire_open_orders("2026-09-24") == 3
+    assert store.get_order(pending)["status"] == "expired"
+    assert store.get_order(reviewing)["status"] == "expired"
+    assert store.get_order(awaiting)["status"] == "expired"
+    assert store.get_order(confirmed)["status"] == "confirmed"
+    assert store.get_order(delivered)["status"] == "pending"
+    assert store.get_order(future)["status"] == "pending"
+    # An expired order's old email link no longer works.
+    assert store.confirm_order(awaiting, token) is False
