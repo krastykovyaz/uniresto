@@ -166,6 +166,11 @@ class OrderabilityService:
     def _now(self) -> datetime:
         return self._now_override or datetime.now(TZINFO)
 
+    def now(self) -> datetime:
+        """Public twin of today(): the same (overridable) clock, for app.py
+        code that decides things from the current time."""
+        return self._now()
+
     def get_week_html(self, restaurant: RestaurantConfig, target_date: date, refresh: bool = False) -> tuple[str, int]:
         """Raises PastDateError, or (only when refresh=True) HorizonExceededError.
         Returns (html, weeks_ahead).

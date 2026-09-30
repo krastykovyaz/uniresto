@@ -541,6 +541,23 @@ class OrderStore:
             ids = [r[0] for r in self._conn.execute("SELECT id FROM orders ORDER BY id DESC LIMIT ?", (limit,)).fetchall()]
         return [self.get_order(i) for i in ids]
 
+    def expire_open_orders(self, up_to_date: str) -> int:
+        """Closes every order for a day that's already over (order_date up
+        to and including `up_to_date`, an ISO date) that never got past the
+        admin/customer steps -- still pending, reviewing or awaiting the
+        customer's confirmation, and not delivered. They move to 'expired',
+        a terminal status like 'cancelled', so they stop showing as open in
+        the admin panel, the customer's orders and the delivery list.
+        Confirmed orders are left alone: those are real deliveries (or
+        courier no-shows) and keep their status. Returns how many closed."""
+        with self._lock, self._transaction() as conn:
+            cur = conn.execute(
+                "UPDATE orders SET status = 'expired' WHERE delivered_at IS NULL AND order_date <= ? "
+                "AND status IN ('pending', 'reviewing', 'awaiting_confirmation')",
+                (up_to_date,),
+            )
+            return cur.rowcount
+
     def list_open_claimed_orders(self) -> list[dict]:
         """Orders a courier claimed that were never delivered and are
         still live (awaiting the customer's confirmation, or confirmed) --

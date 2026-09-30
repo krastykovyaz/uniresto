@@ -2557,6 +2557,16 @@ def test_admin_set_price_email_failure_is_reported_with_the_links(client, monkey
     assert f"/o/{order_id}/confirm?token=" in body
 
 
+def test_an_open_order_is_expired_once_its_day_is_over(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    order_id = _create_basic_order(client)  # for 2026-09-24
+    assert client.get(f"/api/orders/{order_id}").get_json()["status"] == "pending"
+    # 13:30 on the day is when delivery closes (is_delivery_expired).
+    client.application.config["ORDERABILITY_SERVICE"]._now_override = datetime.datetime(2026, 9, 24, 13, 31, tzinfo=TZINFO)
+    assert client.get(f"/api/orders/{order_id}").get_json()["status"] == "expired"
+    assert f"Order #{order_id}</strong>" not in client.get("/admin/orders?token=correct-token").get_data(as_text=True)
+
+
 def test_order_rejects_a_dish_listed_twice(client):
     payload = _order_payload([{"id": SALAD_BAR_ID, "quantity": 2}, {"id": SALAD_BAR_ID, "quantity": 2}])
     resp = _post_order(client, payload)

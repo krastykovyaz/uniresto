@@ -619,6 +619,17 @@ def create_app(
                 courier = (order.get("courier_email") or "").strip()
                 if courier:
                     rewards().award_once(courier, f"{COURIER_NO_SHOW}:{order['id']}", REWARD_POINTS[COURIER_NO_SHOW])
+        # Only after the penalties above, which still need to see an unconfirmed
+        # order as 'awaiting_confirmation'.
+        _close_expired_orders()
+
+    def _close_expired_orders() -> None:
+        """Moves open orders for a day whose delivery window is over
+        (is_delivery_expired: past 13:30 Luxembourg on that day) to
+        'expired' -- see OrderStore.expire_open_orders()."""
+        now = svc().now()
+        last_expired_day = now.date() if is_delivery_expired(now.date(), now) else now.date() - timedelta(days=1)
+        store().expire_open_orders(last_expired_day.isoformat())
 
     def get_restaurant_or_404(slug: str):
         restaurant = by_slug.get(slug)
@@ -1192,6 +1203,7 @@ def create_app(
         README.md Part 46/49's same reasoning for Cart/Favorites) and
         re-fetches each order's current, authoritative record from here
         rather than trusting anything cached in the browser."""
+        _close_expired_orders()
         order = store().get_order(order_id)
         # Order ids are sequential, so only the person the order belongs to
         # (a browser holding the token for its University address) may read
@@ -1441,7 +1453,7 @@ def create_app(
             # Once there's nothing left to deliver, the building is enough
             # for the card's heading -- the room/free-text half isn't
             # needed by anyone browsing this list anymore.
-            if order.get("delivered_at") or order["status"] == "cancelled":
+            if order.get("delivered_at") or order["status"] in ("cancelled", "expired"):
                 order["delivery_location"] = _building_only(order.get("delivery_location"))
             # Part 76: the Delivery screen's "Expired" section reads this
             # instead of comparing dates on the courier's own device.
@@ -1478,7 +1490,7 @@ def create_app(
         # is ungated -- a stale tab or a direct call must not email a
         # customer "order accepted" about an order that was called off or
         # is already in their hands.
-        if order["status"] == "cancelled" or order["delivered_at"]:
+        if order["status"] in ("cancelled", "expired") or order["delivered_at"]:
             return jsonify({"error": "not_claimable", "status": order["status"], "delivered": bool(order["delivered_at"])}), 409
         newly_claimed = store().mark_claimed(order_id, courier_email=courier_email, courier_lang=courier_lang)
         if newly_claimed:
@@ -1557,8 +1569,8 @@ def create_app(
         order = store().get_order(order_id)
         if order is None:
             abort(404, description=f"No order #{order_id}")
-        if order["status"] == "cancelled":
-            return jsonify({"error": "not_deliverable", "status": "cancelled"}), 409
+        if order["status"] in ("cancelled", "expired"):
+            return jsonify({"error": "not_deliverable", "status": order["status"]}), 409
         store().mark_delivered(order_id)
         _award_delivery_luni(order)
         return jsonify({"delivered": True})
@@ -1742,6 +1754,7 @@ def create_app(
         email and change order status, so it's not left wide open."""
         if not _is_admin_authorized():
             abort(404)
+        _close_expired_orders()
         return render_template(
             "admin_orders.html",
             pending=store().list_orders_by_status("pending"),

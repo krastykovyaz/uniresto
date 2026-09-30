@@ -2008,7 +2008,7 @@ function campusFilterRow(stateKey, onChange) {
 function classifyDeliveryOrder(order) {
   if (order.delivered_at) return "delivered";
   if (order.status === "cancelled") return "closed";
-  if (order.expired) return "expired";
+  if (order.expired || order.status === "expired") return "expired";
   return "pending";
 }
 
@@ -2299,7 +2299,7 @@ function deliveryOrderListContent(data, onChanged) {
   const online = loadCourierOnline();
 
   // 1) what I'm carrying right now
-  const active = mine.filter((o) => !o.delivered_at && o.status !== "cancelled");
+  const active = mine.filter((o) => !o.delivered_at && o.status !== "cancelled" && o.status !== "expired");
   if (active.length > 0) wrap.append(courierActiveBlock(active, onChanged));
 
   // 2) open orders as offers, most urgent first
@@ -2956,6 +2956,7 @@ function orderStatusLabel(status) {
     awaiting_confirmation: "statusAwaitingConfirmation",
     confirmed: "statusConfirmed",
     cancelled: "statusCancelled",
+    expired: "statusExpired",
   }[status];
   return key ? tr(key) : status;
 }
@@ -3188,7 +3189,7 @@ async function openOrderHistory(mode = "basket") {
 // 30 status machine (see orderStatusLabel()'s own comment) -- everything
 // else (pending/reviewing/awaiting_confirmation) is still actively
 // moving, so it belongs in "Current orders", not history.
-const TERMINAL_ORDER_STATUSES = new Set(["confirmed", "cancelled"]);
+const TERMINAL_ORDER_STATUSES = new Set(["confirmed", "cancelled", "expired"]);
 
 function historyRow(order) {
   const itemsSummary = order.items.map((it) => `${dishTitleWithSize(it.name, state.lang)}${it.quantity > 1 ? ` ×${it.quantity}` : ""}`).join(", ");
