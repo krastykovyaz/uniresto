@@ -1694,8 +1694,8 @@ svg { display: block; }
 /* Phone layout where the bottom bar is NOT position:fixed but a row at the bottom of a
    full-height column, with the content scrolling above it in .scroller -- the same
    structure the desktop device frame already uses. Nothing to jump: the bar can't
-   move relative to the screen. Opt-in with ?navflow=1 (see applyNavFlowOptIn() in
-   app.js); desktop widths keep the frame. */
+   move relative to the screen. On for the iPhone Home Screen app, opt-in with
+   ?navflow=1 elsewhere (see applyNavFlow() in app.js); desktop widths keep the frame. */
 @media (max-width: 1023.98px) {
   html.nav-flow,
   html.nav-flow body { height: 100%; overflow: hidden; }

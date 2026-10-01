@@ -40,16 +40,19 @@ const scroller = document.getElementById("scroller");
 // scrolls on its own; otherwise (phones) the page itself scrolls.
 const FRAMED = window.matchMedia("(min-width: 1024px)");
 
-// Opt-in while it is tested on real phones: with ?navflow=1 the bottom bar becomes
-// part of the page layout (the content scrolls above it, in .scroller) instead of
-// a position:fixed bar that iPhone Safari can lift out of place while scrolling.
-// ?navflow=0 turns it off again; the choice is remembered on this device.
-(function applyNavFlowOptIn() {
+// The bottom bar as part of the page layout (the content scrolls above it, in
+// .scroller) instead of a position:fixed bar that iPhone can lift out of place while
+// scrolling. On by default for the app added to the iPhone Home Screen -- where the
+// lift was reported, and where there's no address bar to type ?navflow=1 into -- and
+// opt-in elsewhere with ?navflow=1. ?navflow=0 turns it off, also on the Home Screen
+// app; the choice is remembered on this device.
+(function applyNavFlow() {
   try {
     const asked = new URLSearchParams(window.location.search).get("navflow");
-    if (asked === "1") localStorage.setItem("uniresto.navflow", "1");
-    else if (asked === "0") localStorage.removeItem("uniresto.navflow");
-    if (localStorage.getItem("uniresto.navflow") === "1") document.documentElement.classList.add("nav-flow");
+    if (asked === "1" || asked === "0") localStorage.setItem("uniresto.navflow", asked);
+    const saved = localStorage.getItem("uniresto.navflow");
+    const homeScreenApp = window.navigator.standalone === true;
+    if (saved === "1" || (homeScreenApp && saved !== "0")) document.documentElement.classList.add("nav-flow");
   } catch {
     /* no storage (private mode) -- the normal layout stands */
   }
