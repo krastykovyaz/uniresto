@@ -62,6 +62,7 @@ from orderability_engine.orders import (
 )
 from orderability_engine.page_views import MAX_SOURCE_LENGTH, PageViewStore
 from orderability_engine.pending_dish_photos import PendingDishPhotoStore
+from orderability_engine.push_notify import PushSubscriptionStore, notify_in_background, push_config, sanitize_prefs, valid_subscription
 from orderability_engine.photo_sanitize import sanitize_dish_photo
 from orderability_engine.pricing import INCLUDED_SIDE_CATEGORIES, compute_formula_total
 from orderability_engine.rate_limits import RateLimitStore
@@ -323,6 +324,8 @@ def create_app(
     page_view_store: PageViewStore | None = None,
     daily_report_store: DailyReportStore | None = None,
     rate_limit_store: RateLimitStore | None = None,
+    push_store: PushSubscriptionStore | None = None,
+    push_sender=None,
     enable_menu_refresh_scheduler: bool = True,
     enable_daily_report_scheduler: bool = True,
 ) -> Flask:
@@ -341,6 +344,14 @@ def create_app(
         cache=OrderabilityCache("orderability.db"), restaurants=restaurants
     )
     app.config["ORDER_STORE"] = order_store or OrderStore("orders.db")
+    # Web push (Profile > Notifications): the devices people subscribed, and the
+    # function that pushes to them. Tests pass their own sender to record calls.
+    app.config["PUSH_STORE"] = push_store or PushSubscriptionStore("orders.db")
+    app.config["PUSH_SENDER"] = push_sender or (
+        lambda email, kind, title, body, url="/", tag=None: notify_in_background(
+            app.config["PUSH_STORE"], email, kind, title, body, url, tag
+        )
+    )
     # Real file paths (not EmailVerificationStore's own ":memory:"
     # default) so a code issued by one gunicorn worker process is
     # visible to whichever worker handles the matching /verify-code
@@ -480,6 +491,36 @@ def create_app(
     def rewards() -> RewardStore:
         return app.config["REWARD_STORE"]
 
+    def push_store_() -> PushSubscriptionStore:
+        return app.config["PUSH_STORE"]
+
+    def push_to(emails, kind: str, title: str, body: str, url: str = "/", tag: str | None = None) -> None:
+        """Best-effort web push to these people's subscribed devices (those with
+        `kind` switched on). Never raises, never blocks: a push must not fail an
+        order, a claim or a payout."""
+        seen = set()
+        for email in emails:
+            person = canonical_identity(email or "")
+            if not person or person in seen:
+                continue
+            seen.add(person)
+            try:
+                app.config["PUSH_SENDER"](person, kind, title, body, url, tag)
+            except Exception:  # noqa: BLE001 -- see above
+                logging.getLogger("uniresto.push").warning("[PUSH] could not queue a %s push", kind, exc_info=True)
+
+    def order_people(order: dict) -> list:
+        """The customer's own email and their University (reward) email -- the same
+        person under up to two addresses; push_to() folds duplicates."""
+        return [order.get("customer_email"), order.get("reward_email")]
+
+    def _award_once(email: str, action: str, points: int) -> bool:
+        """rewards().award_once(), plus a push when it actually paid Luni out."""
+        paid = rewards().award_once(email, action, points)
+        if paid and points > 0:
+            push_to([email], "luni", f"You earned {points} Luni", "Thanks for using UniResto.")
+        return paid
+
     def delivery_subscribers() -> DeliverySubscriberStore:
         return app.config["DELIVERY_SUBSCRIBER_STORE"]
 
@@ -510,6 +551,7 @@ def create_app(
         "send_code": (20, 3600),
         "rewards_read": (300, 3600),  # Profile re-reads the balance on every visit
         "rewards_claim": (30, 3600),
+        "push": (60, 3600),           # subscribe / change switches / unsubscribe
         # Belval "which restaurant first" votes: a person taps once, so this
         # is generous even for a shared campus NAT, yet stops a script
         # from stuffing the count.
@@ -584,9 +626,9 @@ def create_app(
         customer_addresses = {canonical_identity(order.get(f)) for f in ("reward_email", "customer_email") if order.get(f)}
         if canonical_identity(courier) in customer_addresses:
             return
-        rewards().award_once(courier, f"{DELIVERY_COMPLETED}:{order['id']}", REWARD_POINTS[DELIVERY_COMPLETED])
+        _award_once(courier, f"{DELIVERY_COMPLETED}:{order['id']}", REWARD_POINTS[DELIVERY_COMPLETED])
         if customer:
-            rewards().award_once(customer, f"{ORDER_PLACED}:{order['id']}", REWARD_POINTS[ORDER_PLACED])
+            _award_once(customer, f"{ORDER_PLACED}:{order['id']}", REWARD_POINTS[ORDER_PLACED])
 
     def _apply_expired_order_penalties() -> None:
         """-1 Luni for whoever let a claimed order fall through, once its
@@ -614,11 +656,11 @@ def create_app(
                 if not customer and _is_allowed_customer_email((order.get("customer_email") or "").strip()):
                     customer = order["customer_email"].strip()
                 if customer:
-                    rewards().award_once(customer, f"{ORDER_NOT_CONFIRMED}:{order['id']}", REWARD_POINTS[ORDER_NOT_CONFIRMED])
+                    _award_once(customer, f"{ORDER_NOT_CONFIRMED}:{order['id']}", REWARD_POINTS[ORDER_NOT_CONFIRMED])
             elif order["status"] == "confirmed" and not order.get("picked_up_at"):
                 courier = (order.get("courier_email") or "").strip()
                 if courier:
-                    rewards().award_once(courier, f"{COURIER_NO_SHOW}:{order['id']}", REWARD_POINTS[COURIER_NO_SHOW])
+                    _award_once(courier, f"{COURIER_NO_SHOW}:{order['id']}", REWARD_POINTS[COURIER_NO_SHOW])
         # Only after the penalties above, which still need to see an unconfirmed
         # order as 'awaiting_confirmation'.
         _close_expired_orders()
@@ -629,7 +671,14 @@ def create_app(
         'expired' -- see OrderStore.expire_open_orders()."""
         now = svc().now()
         last_expired_day = now.date() if is_delivery_expired(now.date(), now) else now.date() - timedelta(days=1)
-        store().expire_open_orders(last_expired_day.isoformat())
+        for order in store().expire_open_orders(last_expired_day.isoformat()):
+            push_to(
+                order_people(order),
+                "order",
+                "Your order expired",
+                f"Nobody could deliver your {order['restaurant_name']} order for {order['order_date']}.",
+                tag=f"order-{order['id']}",
+            )
 
     def get_restaurant_or_404(slug: str):
         restaurant = by_slug.get(slug)
@@ -920,7 +969,7 @@ def create_app(
         _apply_expired_order_penalties()
 
         if action == UNIVERSITY_EMAIL_VERIFIED:
-            outcome = CLAIM_AWARDED if rewards().award_once(email, action, REWARD_POINTS[action]) else CLAIM_ALREADY_AWARDED
+            outcome = CLAIM_AWARDED if _award_once(email, action, REWARD_POINTS[action]) else CLAIM_ALREADY_AWARDED
         else:
             raw_value = (body.get("value") or "").strip() if isinstance(body.get("value"), str) else ""
             if action == COMMUNICATION_EMAIL_ADDED:
@@ -1185,6 +1234,13 @@ def create_app(
         # unbounded, admin-uncontrolled list of addresses, so a single
         # unexpected exception must not take down order creation OR skip
         # notifying the remaining couriers.
+        push_to(
+            [courier_email for courier_email, _lang in delivery_subscribers().list_subscribers()],
+            "newDelivery",
+            "New order to deliver",
+            f"{order['restaurant_name']}, {_building_only(order.get('delivery_location')) or 'Belval'}.",
+            tag=f"delivery-{order['id']}",
+        )
         for courier_email, courier_lang in delivery_subscribers().list_subscribers():
             try:
                 send_delivery_notification(courier_email, order, restopolis_url=restopolis_url, courier_lang=courier_lang)
@@ -1265,7 +1321,7 @@ def create_app(
             # flow (Profile's own University Email field), not the
             # checkout/courier ones below that share the same
             # VerifiedEmailStore fact but aren't "registering" anything.
-            rewards().award_once(email, UNIVERSITY_EMAIL_VERIFIED, REWARD_POINTS[UNIVERSITY_EMAIL_VERIFIED])
+            _award_once(email, UNIVERSITY_EMAIL_VERIFIED, REWARD_POINTS[UNIVERSITY_EMAIL_VERIFIED])
         return jsonify({"verified": verified, "reason": reason, **_token_payload(verified, email)})
 
     @app.post("/api/orders/email/send-code")
@@ -1500,6 +1556,13 @@ def create_app(
             )
             # At most once per order (Part 76): a release + re-claim
             # must never email the customer again for the SAME claim.
+            push_to(
+                order_people(order),
+                "courier",
+                "A courier took your order",
+                f"Your {order['restaurant_name']} order for {order['order_date']} will be delivered.",
+                tag=f"order-{order_id}",
+            )
             if order.get("customer_email") and store().mark_accepted_emailed(order_id):
                 send_order_accepted(order["customer_email"], order)
         return jsonify({"claimed": True, "already_claimed": not newly_claimed})
@@ -1528,6 +1591,7 @@ def create_app(
         newly_picked_up = store().mark_picked_up(order_id)
         if not newly_picked_up:
             return jsonify({"error": "not_pickupable"}), 409
+        push_to(order_people(order), "courier", "Your order is on its way", f"A courier picked up your {order['restaurant_name']} order.", tag=f"order-{order_id}")
         if order.get("customer_email") and store().mark_on_way_emailed(order_id):
             send_order_out_for_delivery(order["customer_email"], order)
         return jsonify({"picked_up": True})
@@ -1571,7 +1635,8 @@ def create_app(
             abort(404, description=f"No order #{order_id}")
         if order["status"] in ("cancelled", "expired"):
             return jsonify({"error": "not_deliverable", "status": order["status"]}), 409
-        store().mark_delivered(order_id)
+        if store().mark_delivered(order_id) and not order.get("delivered_at"):
+            push_to(order_people(order), "courier", "Your order was delivered", f"Enjoy your {order['restaurant_name']} order.", tag=f"order-{order_id}")
         _award_delivery_luni(order)
         return jsonify({"delivered": True})
 
@@ -1855,7 +1920,7 @@ def create_app(
         either way). None for a pre-Part-90 row this old migration never
         backfilled an email onto -- never crashes, just nothing to credit."""
         if entry.get("email"):
-            rewards().award_once(entry["email"], f"{DISH_PHOTO_APPROVED}:{entry['id']}", REWARD_POINTS[DISH_PHOTO_APPROVED])
+            _award_once(entry["email"], f"{DISH_PHOTO_APPROVED}:{entry['id']}", REWARD_POINTS[DISH_PHOTO_APPROVED])
 
     def _dish_photo_decision_page(pending_id: int, decision: str):
         """GET on an approve/reject link (the Telegram buttons): shows the
@@ -2065,7 +2130,15 @@ def create_app(
             abort(404)
         if store().get_order(order_id) is None:
             abort(404, description=f"No order with id {order_id}")
-        store().admin_cancel_order(order_id)
+        if store().admin_cancel_order(order_id):
+            cancelled = store().get_order(order_id)
+            push_to(
+                order_people(cancelled),
+                "order",
+                "Your order was cancelled",
+                f"{cancelled['restaurant_name']}, {cancelled['order_date']}. No charge was made.",
+                tag=f"order-{order_id}",
+            )
         return redirect(f"/admin/orders?token={request.args.get('token') or request.form.get('token', '')}")
 
     @app.post("/admin/orders/<int:order_id>/set-price")
@@ -2100,6 +2173,13 @@ def create_app(
         confirm_url = f"{request.host_url}o/{order_id}/confirm?token={token}"
         cancel_url = f"{request.host_url}o/{order_id}/cancel?token={token}"
         order = store().get_order(order_id)  # re-fetch: now carries the real_price/awaiting_confirmation status
+        push_to(
+            order_people(order),
+            "order",
+            "Confirm your order price",
+            f"{order['restaurant_name']}, {order['order_date']}: €{real_price:.2f}. Open UniResto to confirm or cancel.",
+            tag=f"order-{order_id}",
+        )
         sent, error = send_order_needs_confirmation(order["customer_email"], order, real_price, confirm_url, cancel_url)
         if not sent:
             # The order has already moved on to awaiting_confirmation, so it
@@ -2383,6 +2463,65 @@ def create_app(
         resp.headers["Service-Worker-Allowed"] = "/"
         resp.headers["Cache-Control"] = "no-cache"
         return resp
+
+    # ------------------------------------------------------------ Web push
+    #
+    # Profile > Notifications (static/app.js): a device subscribes under the
+    # verified email of the person using it -- proven the same way as every
+    # other identity-bound action, by the token verify-code handed the browser
+    # -- and says which kinds it wants. app.py's push_to() then sends to those.
+
+    @app.get("/api/push/key")
+    def api_push_key():
+        """The public VAPID key a browser needs to subscribe; null while push
+        isn't set up on this server (the screen then says it's unavailable)."""
+        config = push_config()
+        return jsonify({"key": config["public"] if config else None})
+
+    def _push_request():
+        """(email, body, None) for a request whose email this browser has proven,
+        else (None, body, error response). Same answer whether the address is
+        unknown or merely not proven, so nothing reveals who exists."""
+        if (limited := rate_limited_response("push")) is not None:
+            return None, {}, limited
+        body = request.get_json(force=True, silent=True) or {}
+        email = (body.get("email") or "").strip() if isinstance(body.get("email"), str) else ""
+        if not email or not _is_proven(email):
+            return None, body, (jsonify({"error": "not_verified"}), 403)
+        return email, body, None
+
+    @app.post("/api/push/subscribe")
+    def api_push_subscribe():
+        email, body, error = _push_request()
+        if error:
+            return error
+        if push_config() is None:
+            return jsonify({"error": "push_not_configured"}), 503
+        subscription = body.get("subscription") if isinstance(body.get("subscription"), dict) else {}
+        keys = subscription.get("keys") if isinstance(subscription.get("keys"), dict) else {}
+        endpoint, p256dh, auth = subscription.get("endpoint"), keys.get("p256dh"), keys.get("auth")
+        if not valid_subscription(endpoint, p256dh, auth):
+            abort(400, description="'subscription' must have an https endpoint and p256dh/auth keys")
+        if not push_store_().upsert(email, endpoint, p256dh, auth, sanitize_prefs(body.get("prefs"))):
+            return jsonify({"error": "too_many_devices"}), 409
+        return jsonify({"subscribed": True})
+
+    @app.post("/api/push/prefs")
+    def api_push_prefs():
+        email, body, error = _push_request()
+        if error:
+            return error
+        if not push_store_().set_prefs(email, str(body.get("endpoint") or ""), sanitize_prefs(body.get("prefs"))):
+            abort(404, description="No such subscription for this person")
+        return jsonify({"saved": True})
+
+    @app.post("/api/push/unsubscribe")
+    def api_push_unsubscribe():
+        email, body, error = _push_request()
+        if error:
+            return error
+        push_store_().remove(email, str(body.get("endpoint") or ""))
+        return jsonify({"subscribed": False})
 
     return app
 

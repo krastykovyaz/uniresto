@@ -587,7 +587,7 @@ def test_expire_open_orders_closes_only_past_unfinished_orders(store):
     store.mark_delivered(delivered)
     future = order(datetime.date(2026, 9, 25))
 
-    assert store.expire_open_orders("2026-09-24") == 3
+    assert len(store.expire_open_orders("2026-09-24")) == 3
     assert store.get_order(pending)["status"] == "expired"
     assert store.get_order(reviewing)["status"] == "expired"
     assert store.get_order(awaiting)["status"] == "expired"

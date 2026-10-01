@@ -3438,9 +3438,9 @@ function openRewardRulesSheet(trigger) {
 // Profile > Notifications: turning push on for THIS device and choosing which
 // kinds it gets (the kinds and per-device choices live in notifications.js).
 // This screen asks for the browser's permission, registers the service worker
-// (static/sw.js, served at /sw.js) and can show a test notification. The server
-// side -- storing each device's push subscription and sending the real
-// notifications -- is the next step; until then nothing arrives on its own.
+// (static/sw.js, served at /sw.js), subscribes the device with the server under the
+// person's verified University email (/api/push/*) and can show a test notification.
+// The server pushes from orderability_engine/push_notify.py as things happen.
 
 function safeLocalStorage() {
   try {
@@ -3462,6 +3462,41 @@ function registerServiceWorker() {
   return navigator.serviceWorker.register("/sw.js", { scope: "/" });
 }
 
+function urlBase64ToUint8Array(base64) {
+  const padded = (base64 + "=".repeat((4 - (base64.length % 4)) % 4)).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(padded);
+  return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+}
+
+// Subscribes THIS device with the browser's push service and tells the server, under
+// the verified University email, which kinds it wants (the switches). Safe to repeat:
+// the browser hands back the same subscription and the server just refreshes it.
+async function subscribeThisDevice(prefs) {
+  const registration = await registerServiceWorker();
+  await navigator.serviceWorker.ready;
+  const { key } = await api("/api/push/key");
+  if (!key) throw new Error("push is not set up on the server");
+  const subscription =
+    (await registration.pushManager.getSubscription()) ||
+    (await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(key) }));
+  await api("/api/push/subscribe", {
+    method: "POST",
+    body: JSON.stringify({ email: state.registeredEmail, subscription: subscription.toJSON(), prefs }),
+  });
+  return subscription;
+}
+
+async function syncNotificationPrefs(prefs) {
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+    if (!subscription) return;
+    await api("/api/push/prefs", { method: "POST", body: JSON.stringify({ email: state.registeredEmail, endpoint: subscription.endpoint, prefs }) });
+  } catch {
+    /* best effort: the choice is still saved on this device and re-sent next time the screen opens */
+  }
+}
+
 function renderNotifications() {
   app.innerHTML = "";
   app.append(header({ title: tr("notifications"), back: () => goTo("profile") }));
@@ -3470,7 +3505,9 @@ function renderNotifications() {
   const storage = safeLocalStorage();
   const prefs = loadNotificationPrefs(storage);
 
-  if (status === "granted") registerServiceWorker().catch(() => {});
+  // Push needs to know whose notifications these are: the verified University email.
+  const needEmail = !state.registeredEmail;
+  if (status === "granted" && !needEmail) subscribeThisDevice(prefs).catch(() => {});
 
   const cards = {
     default: { cls: "is-ok", title: "notifIntroTitle", body: "notifIntroBody" },
@@ -3488,21 +3525,29 @@ function renderNotifications() {
     `)
   );
 
-  if (status === "default") {
+  if (status === "default" || (status === "granted" && needEmail)) {
     const enable = el(`<button type="button" class="primary-button notif-enable">${escapeHtml(tr("notifEnable"))}</button>`);
     enable.addEventListener("click", async () => {
+      if (needEmail) {
+        // The University-email sheet rises from the bottom; once verified the screen is
+        // redrawn and this same button asks for the permission -- from a fresh tap,
+        // which iPhone requires.
+        openEmailSheet(enable, () => renderNotifications(), "notifNeedEmailHint");
+        return;
+      }
       enable.disabled = true;
       try {
-        await Notification.requestPermission();
+        if (Notification.permission !== "granted") await Notification.requestPermission();
+        if (Notification.permission === "granted") await subscribeThisDevice(prefs);
       } catch {
-        /* the browser refused to even ask -- the screen re-reads the state below */
+        showToast(tr("notifUnsupported"));
       }
       renderNotifications();
     });
     app.append(enable);
   }
 
-  const active = status === "granted";
+  const active = status === "granted" && !needEmail;
   for (const group of NOTIFICATION_EVENTS) {
     app.append(el(`<p class="notif-group-title">${escapeHtml(tr(group.groupKey))}</p>`));
     const rows = el(`<div class="profile-rows ${active ? "" : "is-off"}"></div>`);
@@ -3520,6 +3565,7 @@ function renderNotifications() {
         prefs[item.key] = !prefs[item.key];
         saveNotificationPrefs(storage, prefs);
         e.currentTarget.setAttribute("aria-checked", String(prefs[item.key]));
+        syncNotificationPrefs(prefs);
       });
       rows.append(row);
     }
