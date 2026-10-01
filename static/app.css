@@ -1094,6 +1094,26 @@ svg { display: block; }
 .empty-state h3 { color: var(--color-text); margin: 0 0 var(--space-1); }
 
 .loading-state { padding: var(--space-6); text-align: center; color: var(--color-text-muted); }
+.loading-label { margin: var(--space-2) 0 0; }
+/* The loading burger: bottom bun, patty, lettuce and top bun drop in one
+   after another, then the whole stack fades and starts over. */
+.burger-loader { width: 56px; height: 51px; margin: 0 auto; overflow: visible; }
+.bl-bun { fill: #e8a54b; }
+.bl-seed { fill: #fbe7b5; }
+.bl-patty { fill: #7a4a2b; }
+.bl-lettuce { fill: var(--color-primary); }
+.bl-layer { transform-box: fill-box; animation: bl-drop 2.4s infinite ease-in-out both; }
+.bl-2 { animation-delay: 0.25s; }
+.bl-3 { animation-delay: 0.5s; }
+.bl-4 { animation-delay: 0.75s; }
+@keyframes bl-drop {
+  0% { transform: translateY(-22px); opacity: 0; }
+  18% { transform: translateY(0); opacity: 1; }
+  78% { transform: translateY(0); opacity: 1; }
+  100% { transform: translateY(0); opacity: 0; }
+}
+/* No motion: show the finished burger, standing still. */
+@media (prefers-reduced-motion: reduce) { .bl-layer { animation: none; } }
 
 /* --------------------------------------------------------------- Toast */
 

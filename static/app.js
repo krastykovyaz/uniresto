@@ -5717,10 +5717,29 @@ function emptyState(iconName, title, body) {
   `);
 }
 
+// A little burger that builds itself layer by layer (see .burger-loader in
+// app.css) above the label, instead of plain text alone.
+function burgerLoaderSvg() {
+  return `
+    <svg class="burger-loader" viewBox="0 0 32 29" aria-hidden="true" focusable="false">
+      <g class="bl-layer bl-1"><path class="bl-bun" d="M3 22.5h26v.5c0 2.6-3 4-6 4H9c-3 0-6-1.4-6-4z"></path></g>
+      <g class="bl-layer bl-2"><rect class="bl-patty" x="3" y="16" width="26" height="5.5" rx="2.7"></rect></g>
+      <g class="bl-layer bl-3"><path class="bl-lettuce" d="M2 14q3-3 6 0t6 0 6 0 6 0 4 0v2H2z"></path></g>
+      <g class="bl-layer bl-4">
+        <path class="bl-bun" d="M3 12C3 5 9 2 16 2s13 3 13 10z"></path>
+        <ellipse class="bl-seed" cx="11" cy="7" rx="1.6" ry="1"></ellipse>
+        <ellipse class="bl-seed" cx="17" cy="5" rx="1.6" ry="1"></ellipse>
+        <ellipse class="bl-seed" cx="22" cy="8" rx="1.6" ry="1"></ellipse>
+      </g>
+    </svg>
+  `;
+}
+
 function loadingState(label) {
   const d = document.createElement("div");
   d.className = "loading-state";
-  d.textContent = label;
+  d.setAttribute("role", "status");
+  d.innerHTML = `${burgerLoaderSvg()}<p class="loading-label">${escapeHtml(label)}</p>`;
   return d;
 }
 
