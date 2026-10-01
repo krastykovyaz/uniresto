@@ -1506,13 +1506,54 @@ function openOrderEmailVerifySheet(trigger, email, onVerified) {
 // bar for jumping straight to a root screen. None of the 4 tabs shows
 // as "active" while on a drill-down screen, since none of them
 // literally is the current screen -- that's honest, not a bug.
+//
+// Home vs. the other three tabs: leaving the Home branch (role -> restaurants ->
+// dates -> menu -> review ...) for Favorites, Orders or Profile remembers
+// exactly where you were, including how far you had scrolled, and the next tap
+// on Home brings you back to that spot. Tapping Home while you're already on
+// the Home branch is the real reset, back to the first Home page -- after one
+// stop on the way: if the screen is scrolled down, the first tap scrolls it to the top.
+const TAB_SCREENS = new Set(["favorites", "order-history", "profile"]);
+// Home-branch screens worth coming back to: not the loading/confirming/confirmation
+// ones, which are transient.
+const RESUMABLE_HOME_SCREENS = new Set(["role", "restaurants", "dates", "menu", "review", "smart-lunch", "delivery"]);
+let homeResume = null;
+
+function rememberHomeBranch() {
+  if (!RESUMABLE_HOME_SCREENS.has(state.screen)) return;
+  homeResume = { screen: state.screen, windowY: window.scrollY, scrollerY: scroller.scrollTop };
+}
+
+function onHomeTab() {
+  if (homeResume && TAB_SCREENS.has(state.screen)) {
+    const { screen, windowY, scrollerY } = homeResume;
+    homeResume = null;
+    state.screen = screen;
+    render();
+    window.scrollTo(0, windowY);
+    scroller.scrollTop = scrollerY;
+    saveLocation();
+    return;
+  }
+  // Already on the Home branch: first tap takes you to the top of what you're on
+  // (e.g. the top of the menu), and only a tap from the top goes on to the first
+  // Home page -- one step before the full reset.
+  if (Math.max(window.scrollY, scroller.scrollTop) > 8) {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    scroller.scrollTo({ top: 0, behavior: "smooth" });
+    return;
+  }
+  goHome();
+}
+
 const BOTTOM_NAV_TABS = [
-  { screen: "role", labelKey: "home", iconName: "home", go: () => goHome() },
+  { screen: "role", labelKey: "home", iconName: "home", go: () => onHomeTab() },
   {
     screen: "favorites",
     labelKey: "favorites",
     iconName: "heart",
     go: () => {
+      rememberHomeBranch();
       state.subScreenReturnTo = "restaurants";
       openFavorites();
     },
@@ -1522,11 +1563,20 @@ const BOTTOM_NAV_TABS = [
     labelKey: "orderHistory",
     iconName: "receipt",
     go: () => {
+      rememberHomeBranch();
       state.subScreenReturnTo = "restaurants";
       openOrderHistory();
     },
   },
-  { screen: "profile", labelKey: "profile", iconName: "user", go: () => goTo("profile") },
+  {
+    screen: "profile",
+    labelKey: "profile",
+    iconName: "user",
+    go: () => {
+      rememberHomeBranch();
+      goTo("profile");
+    },
+  },
 ];
 
 function renderBottomNav() {
@@ -1657,12 +1707,9 @@ function goTo(screen) {
   saveLocation();
 }
 
-// Bottom-nav Home tab's own destination -- always the role picker
-// ("What would you like to do?"), regardless of where browsing last
-// left off. An earlier version resumed mid-browse instead (the date
-// picker or a restaurant's menu); that's what a manual page refresh
-// still does (see RESTORABLE_SCREENS/restoreLocation()), but the Home
-// tap itself is meant as a genuine reset back to the top-level choice.
+// The Home tab's reset: the role picker ("What would you like to do?").
+// onHomeTab() uses it when you tap Home while already on the Home branch (or
+// there's nothing to resume); coming back from another tab resumes instead.
 function goHome() {
   goTo("role");
 }
@@ -5778,6 +5825,9 @@ function loadingState(label, withBurger = false) {
 function render() {
   document.querySelector(".summary-bar")?.remove();
   offScroll(updateCategoryNavHighlight);
+  // Back on the Home branch by any route (the back button, a restaurant tap, ...):
+  // there's nothing left to "resume" -- see onHomeTab().
+  if (!TAB_SCREENS.has(state.screen)) homeResume = null;
 
   switch (state.screen) {
     case "role":
