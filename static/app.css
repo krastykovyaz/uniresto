@@ -1690,6 +1690,42 @@ svg { display: block; }
   .food-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 
+/* ------------------------------------------------- Bottom bar in the layout */
+/* Phone layout where the bottom bar is NOT position:fixed but a row at the bottom of a
+   full-height column, with the content scrolling above it in .scroller -- the same
+   structure the desktop device frame already uses. Nothing to jump: the bar can't
+   move relative to the screen. Opt-in with ?navflow=1 (see applyNavFlowOptIn() in
+   app.js); desktop widths keep the frame. */
+@media (max-width: 1023.98px) {
+  html.nav-flow,
+  html.nav-flow body { height: 100%; overflow: hidden; }
+  html.nav-flow .device-screen {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+  }
+  html.nav-flow .scroller {
+    display: block;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  /* The old 120px bottom padding cleared the fixed bar; now only the floating order
+     summary bar needs clearing. */
+  html.nav-flow #app { min-height: 0; padding-bottom: 96px; }
+  html.nav-flow #bottom-nav {
+    position: static;
+    flex: 0 0 auto;
+    width: 100%;
+    align-self: center;
+    transform: none;
+    will-change: auto;
+  }
+}
+
 /* -------------------------------------------------------- Language sheet */
 /* The only language picker in the app (Profile screen). */
 
