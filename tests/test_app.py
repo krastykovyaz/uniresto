@@ -2702,6 +2702,16 @@ def test_root_falls_back_to_english_for_an_unknown_lang_param(client):
     assert "Order lunch from University" in body
 
 
+def test_service_worker_is_served_from_the_root_with_site_wide_scope(client):
+    resp = client.get("/sw.js")
+    assert resp.status_code == 200
+    assert resp.mimetype == "text/javascript"
+    assert resp.headers["Service-Worker-Allowed"] == "/"
+    assert resp.headers["Cache-Control"] == "no-cache"
+    body = resp.get_data(as_text=True)
+    assert 'addEventListener("push"' in body and 'addEventListener("notificationclick"' in body
+
+
 def test_favicon_ico_redirects_to_the_real_png(client):
     resp = client.get("/favicon.ico")
     assert resp.status_code in (301, 302)

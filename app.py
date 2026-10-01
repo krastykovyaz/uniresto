@@ -2374,6 +2374,16 @@ def create_app(
     def favicon():
         return redirect(url_for("static", filename="favicon-32.png"))
 
+    # The push-notification service worker. A worker may only control paths
+    # under its own URL, so it has to be served from "/" (not /static/) to
+    # cover the whole app; no-cache so a new version is picked up at once.
+    @app.get("/sw.js")
+    def service_worker():
+        resp = send_from_directory(app.static_folder, "sw.js", mimetype="text/javascript")
+        resp.headers["Service-Worker-Allowed"] = "/"
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
     return app
 
 
