@@ -5718,7 +5718,8 @@ function emptyState(iconName, title, body) {
 }
 
 // A little burger that builds itself layer by layer (see .burger-loader in
-// app.css) above the label, instead of plain text alone.
+// app.css), shown only while a restaurant's menu loads -- right after the
+// person chose a restaurant. Every other loading screen stays plain text.
 function burgerLoaderSvg() {
   return `
     <svg class="burger-loader" viewBox="0 0 32 29" aria-hidden="true" focusable="false">
@@ -5735,9 +5736,13 @@ function burgerLoaderSvg() {
   `;
 }
 
-function loadingState(label) {
+function loadingState(label, withBurger = false) {
   const d = document.createElement("div");
   d.className = "loading-state";
+  if (!withBurger) {
+    d.textContent = label;
+    return d;
+  }
   d.setAttribute("role", "status");
   d.innerHTML = `${burgerLoaderSvg()}<p class="loading-label">${escapeHtml(label)}</p>`;
   return d;
@@ -5761,14 +5766,14 @@ function render() {
       break;
     case "dates-loading":
       app.innerHTML = "";
-      app.append(loadingState(tr("checkingAvailability")));
+      app.append(loadingState(tr("checkingAvailability"), true));
       break;
     case "dates":
       renderDates();
       break;
     case "menu-loading":
       app.innerHTML = "";
-      app.append(loadingState(tr("loadingMenu")));
+      app.append(loadingState(tr("loadingMenu"), true));
       break;
     case "menu":
       renderMenu();
