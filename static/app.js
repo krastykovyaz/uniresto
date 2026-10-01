@@ -1493,7 +1493,8 @@ function openOrderEmailVerifySheet(trigger, email, onVerified) {
 // dates -> menu -> review ...) for Favorites, Orders or Profile remembers
 // exactly where you were, including how far you had scrolled, and the next tap
 // on Home brings you back to that spot. Tapping Home while you're already on
-// the Home branch is the real reset, back to the first Home page.
+// the Home branch is the real reset, back to the first Home page -- after one
+// stop on the way: if the screen is scrolled down, the first tap scrolls it to the top.
 const TAB_SCREENS = new Set(["favorites", "order-history", "profile"]);
 // Home-branch screens worth coming back to: not the loading/confirming/confirmation
 // ones, which are transient.
@@ -1514,6 +1515,14 @@ function onHomeTab() {
     window.scrollTo(0, windowY);
     scroller.scrollTop = scrollerY;
     saveLocation();
+    return;
+  }
+  // Already on the Home branch: first tap takes you to the top of what you're on
+  // (e.g. the top of the menu), and only a tap from the top goes on to the first
+  // Home page -- one step before the full reset.
+  if (Math.max(window.scrollY, scroller.scrollTop) > 8) {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    scroller.scrollTo({ top: 0, behavior: "smooth" });
     return;
   }
   goHome();
