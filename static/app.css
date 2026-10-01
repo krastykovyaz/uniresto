@@ -1095,6 +1095,21 @@ svg { display: block; }
 
 .loading-state { padding: var(--space-6); text-align: center; color: var(--color-text-muted); }
 .loading-label { margin: var(--space-2) 0 0; }
+/* The burger loader sits in the middle of the screen (above the bottom nav), not
+   at the top of the page. position:fixed is relative to the phone frame on
+   desktop (.device-screen is transformed, see the Intro section), so it centers
+   there too; pointer-events:none keeps anything underneath tappable. */
+.loading-state.is-centered {
+  position: fixed;
+  inset: env(safe-area-inset-top) 0 calc(var(--bottom-nav-height) + env(safe-area-inset-bottom)) 0;
+  z-index: 1;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
 /* The loading burger: bottom bun, patty, lettuce and top bun drop in one
    after another, then the whole stack fades and starts over. */
 .burger-loader { width: 56px; height: 51px; margin: 0 auto; overflow: visible; }
