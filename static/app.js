@@ -5749,6 +5749,7 @@ function loadingState(label, withBurger = false) {
     d.textContent = label;
     return d;
   }
+  d.classList.add("is-centered");
   d.setAttribute("role", "status");
   d.innerHTML = `${burgerLoaderSvg()}<p class="loading-label">${escapeHtml(label)}</p>`;
   return d;
