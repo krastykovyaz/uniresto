@@ -19,7 +19,7 @@ from orderability_engine.models import TZINFO
 from orderability_engine.orders import OrderStore
 from orderability_engine.page_views import PageViewStore
 
-STATS_PREVIOUS_DAYS = 3  # "last 3 days" -- plus today, which is still in progress
+STATS_PREVIOUS_DAYS = 2  # "last 2 days" -- plus today, which is still in progress
 
 
 def _day_label(day: date, today: date) -> str:

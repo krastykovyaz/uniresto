@@ -25,10 +25,10 @@ def _view(page_views, event, days_ago=0, source=None, hour=12):
         page_views._conn.commit()
 
 
-def test_it_covers_today_and_the_three_days_before(stores):
+def test_it_covers_today_and_the_two_days_before(stores):
     days = collect_stats(*stores, today=NOW.date())
-    assert STATS_PREVIOUS_DAYS == 3
-    assert [d["day"].isoformat() for d in days] == ["2026-09-29", "2026-09-28", "2026-09-27", "2026-09-26"]
+    assert STATS_PREVIOUS_DAYS == 2
+    assert [d["day"].isoformat() for d in days] == ["2026-09-29", "2026-09-28", "2026-09-27"]
 
 
 def test_each_day_counts_only_its_own_views(stores):
@@ -82,7 +82,7 @@ def test_sources_are_ordered_busiest_first_over_the_whole_window(stores):
     page_views, orders = stores
     _view(page_views, "home", 0, "flyer-b")
     for _ in range(3):
-        _view(page_views, "home", 3, "flyer-c")
+        _view(page_views, "home", 2, "flyer-c")
     for _ in range(2):
         _view(page_views, "home", 1, "flyer-a")
     labels = [line.strip().split(":")[0] for line in build_stats_message(page_views, orders, NOW).split("\n\n")[1].splitlines() if line.startswith("  ")]
@@ -93,12 +93,12 @@ def test_the_total_block_sums_everything(stores):
     page_views, orders = stores
     _view(page_views, "home", 0, "flyer-a")
     _view(page_views, "home", 1, "flyer-a")
-    _view(page_views, "home", 3, None)
+    _view(page_views, "home", 2, None)
     _view(page_views, "menu", 0)
     _view(page_views, "menu", 2)
     _view(page_views, "delivery", 1)
     total = build_stats_message(page_views, orders, NOW).split("\n\n")[-1]
-    assert total.startswith("Total, last 4 days")
+    assert total.startswith("Total, last 3 days")
     assert "Opened the app: 3" in total and "flyer-a: 2" in total and "(direct): 1" in total
     assert "Viewed a menu: 2" in total and "Opened deliveries: 1" in total
 
@@ -116,7 +116,8 @@ def test_the_message_has_the_familiar_shape(stores):
     page_views, orders = stores
     text = build_stats_message(page_views, orders, NOW)
     assert text.startswith("UniResto stats -- Tue 29 Sep, 15:30")
-    for expected in ("Tue 29 Sep (today, so far)", "Mon 28 Sep (yesterday)", "Sun 27 Sep", "Sat 26 Sep"):
+    for expected in ("Tue 29 Sep (today, so far)", "Mon 28 Sep (yesterday)", "Sun 27 Sep"):
         assert expected in text
+    assert "Sat 26 Sep" not in text  # older than the window
     for line in ("Opened the app:", "Viewed a menu:", "Orders placed:", "Opened deliveries:"):
-        assert text.count(line) == 5  # four days + the total
+        assert text.count(line) == 4  # three days + the total

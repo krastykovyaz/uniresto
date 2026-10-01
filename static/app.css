@@ -583,9 +583,10 @@ svg { display: block; }
 /* Two-column photo grid (matches a real delivery-app menu): every dish
    gets a big, category-tinted tile up top instead of a small inline
    icon -- Restopolis gives us no real per-dish photo (verified: every
-   scraped image/price field comes back empty), so the tile is an
-   honest flat illustration, tinted by categoryIconClass() the same way
-   the old small icon-avatar was, never a fabricated photo of the dish.
+   scraped image/price field comes back empty), so without a student's
+   photo the tile is an emoji picked from the dish's name (dish-emoji.js),
+   tinted by categoryIconClass() the same way the old small icon-avatar
+   was -- a generic symbol, never a fabricated photo of the dish.
    No horizontal padding on .food-grid itself -- .category-section
    already insets by --space-4, so the grid lines up with the section
    heading, search bar and chips instead of sitting a second 16px
@@ -625,24 +626,27 @@ svg { display: block; }
   align-items: center;
   justify-content: center;
 }
-.food-card-photo .food-card-illus { width: 52px; height: 52px; opacity: 0.35; }
+/* The default picture of a dish with no photo: one emoji picked from its name
+   (static/dish-emoji.js), on the category-tinted tile. */
+.food-card-emoji { font-size: 3.6rem; line-height: 1; filter: drop-shadow(0 2px 4px rgba(20, 23, 26, 0.12)); }
 /* Call-to-action crowdsourcing real dish photos from students -- tapping
    it uploads straight to api_upload_dish_photo (see foodCard() in
-   app.js), replacing the abstract illustration above for everyone who
-   views this same dish from then on. */
+   app.js), replacing the emoji above for everyone who views this same
+   dish from then on. A small pill in the corner, so it never veils the
+   emoji; the whole tile is the tap target. */
 .food-card-photo-note {
   position: absolute;
-  inset: 0;
+  top: 8px;
+  left: 8px;
+  max-width: calc(100% - 52px);
   margin: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 0 10px;
-  font-size: 0.72rem;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  font-size: 0.65rem;
   font-weight: 700;
-  color: currentColor;
-  background: rgba(255, 255, 255, 0.55);
+  line-height: 1.25;
+  color: var(--color-text-muted);
   cursor: pointer;
 }
 .food-card-custom-photo {
@@ -653,11 +657,11 @@ svg { display: block; }
   object-fit: cover;
 }
 /* Once a real photo is showing (either already-stored, or just picked
-   and mid-upload), the abstract illustration/note underneath it are
+   and mid-upload), the emoji/note underneath it are
    pointless dead weight -- hidden, not removed, so replaceWith(foodCard(item))
    on next re-render can cleanly fall back to the placeholder state if the
    upload ends up failing. */
-.food-card-photo.has-custom-photo .food-card-illus,
+.food-card-photo.has-custom-photo .food-card-emoji,
 .food-card-photo.has-custom-photo .food-card-photo-note {
   display: none;
 }
