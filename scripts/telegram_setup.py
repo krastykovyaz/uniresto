@@ -39,7 +39,7 @@ def main(argv: list[str]) -> int:
     if not ok:
         return 1
     ok, error = send_admin_text(
-        "📊 The Stats button is on. Tap it (or send /stats) any time to get today's stats and the last 3 days, "
+        "📊 The Stats button is on. Tap it (or send /stats) any time to get today's stats and the last 2 days, "
         "with every QR source.",
         with_stats_button=True,
     )
