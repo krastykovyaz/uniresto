@@ -4281,7 +4281,10 @@ function foodCard(item) {
   // Weight is never gone: openDishDetailSheet() reads it straight from the
   // item, same as the allergens hidden below (Part 91), and a card with no
   // photo keeps it.
-  const metaParts = [hasPhoto ? null : sizeText(item), caloriesText(item)].filter(Boolean);
+  // ...and drops the calories line too, along with the description below: a
+  // photo card shows only its title, and everything else is one tap away in
+  // the detail sheet (openDishDetailSheet()).
+  const metaParts = hasPhoto ? [] : [sizeText(item), caloriesText(item)].filter(Boolean);
   const card = el(`
     <article class="food-card ${isSelected ? "is-selected" : ""} ${earlyCutoffPassed ? "is-early-cutoff-passed" : ""}" data-item-id="${item.id}">
       <div class="food-card-photo icon-avatar ${categoryIconClass(item)} ${storedPhotoPath ? "has-custom-photo" : ""}">
@@ -4307,7 +4310,7 @@ function foodCard(item) {
       <div class="card-body">
         <div class="card-title">
           <p class="name">${escapeHtml(dishTitle(item.name, state.lang))}</p>
-          ${item.description ? `<p class="description">${escapeHtml(item.description)}</p>` : ""}
+          ${item.description && !hasPhoto ? `<p class="description">${escapeHtml(item.description)}</p>` : ""}
         </div>
         ${metaParts.length ? `<p class="meta-row">${metaParts.map((p) => escapeHtml(p)).join(" · ")}</p>` : ""}
         ${
@@ -4702,7 +4705,9 @@ function openDishDetailSheet(item, trigger, earlyCutoffPassed = false) {
   if (item.requires_early_order) bullets.push(tr("earlyOrderBadge"));
 
   const calories = caloriesText(item);
-  const hasMoreInfo = Boolean(item.description) || Boolean(item.allergens && item.allergens.length);
+  // The description sits open under the title now (the photo card no longer
+  // shows it); only the allergens stay in the collapsed section.
+  const hasMoreInfo = Boolean(item.allergens && item.allergens.length);
 
   const overlay = el(`<div class="sheet-overlay"></div>`);
   const sheet = el(`
@@ -4719,6 +4724,7 @@ function openDishDetailSheet(item, trigger, earlyCutoffPassed = false) {
         </div>
         <div class="dish-detail-body">
           <h2 class="dish-detail-name">${escapeHtml(name)}</h2>
+          ${item.description ? `<p class="dish-detail-description">${escapeHtml(item.description)}</p>` : ""}
           ${
             bullets.length
               ? `<ul class="dish-detail-bullets">${bullets.map((b) => `<li>${escapeHtml(b)}</li>`).join("")}</ul>`
@@ -4736,7 +4742,6 @@ function openDishDetailSheet(item, trigger, earlyCutoffPassed = false) {
             hasMoreInfo
               ? `<details class="dish-detail-more">
                   <summary>${escapeHtml(tr("moreAboutDish"))}</summary>
-                  ${item.description ? `<p class="dish-detail-description">${escapeHtml(item.description)}</p>` : ""}
                   ${
                     item.allergens && item.allergens.length
                       ? `<p class="dish-detail-allergens">${escapeHtml(tr("allergens"))} ${item.allergens.map((a) => escapeHtml(allergenLabel(a, state.lang))).join(" · ")}</p>`
