@@ -942,7 +942,9 @@ function openLanguageSheet(trigger) {
 // `onVerified(email)`, when given, is for callers outside Profile (e.g. a
 // courier tapping "Take this delivery"): it runs after a successful
 // verification INSTEAD of redrawing Profile, so the person stays where they were.
-function openEmailSheet(trigger, onVerified) {
+// `hintKey` swaps the explanatory line under the title for a caller-specific one
+// (e.g. why a dish photo needs this).
+function openEmailSheet(trigger, onVerified, hintKey = "registeredEmailHint") {
   const overlay = el(`<div class="sheet-overlay"></div>`);
   const sheet = el(`<div class="lang-sheet" role="dialog" aria-modal="true" aria-label="${escapeHtml(tr("registeredEmail"))}"></div>`);
   let step = "enter";
@@ -1042,7 +1044,7 @@ function openEmailSheet(trigger, onVerified) {
           <p class="screen-title">${escapeHtml(tr("registeredEmail"))}</p>
           <button type="button" class="filter-close" aria-label="${escapeHtml(tr("back"))}">${icon("close", 20)}</button>
         </div>
-        <p class="email-sheet-hint">${escapeHtml(tr("registeredEmailHint"))}</p>
+        <p class="email-sheet-hint">${escapeHtml(tr(hintKey))}</p>
         <div class="field-block">
           <input type="email" inputmode="email" class="email-sheet-input" placeholder="${escapeHtml(tr("customerEmailPlaceholder"))}" value="${escapeHtml(state.registeredEmail || "")}">
         </div>
@@ -4378,11 +4380,15 @@ function foodCard(item) {
     // one Profile's "University Email" row registers (state.registeredEmail,
     // @uni.lu/@student.uni.lu only, see ALLOWED_EMAIL_DOMAINS). Checked
     // here, BEFORE the picker even opens, so someone who hasn't verified
-    // one yet is sent straight to where they'd fix that instead of
-    // picking a photo just to have the upload itself refuse it.
+    // one yet gets the sign-in sheet instead of picking a photo just to
+    // have the upload itself refuse it.
     if (!state.registeredEmail) {
-      showToast(tr("dishPhotoNeedsUniversityEmail"));
-      goTo("profile");
+      // Sign in right here -- the University-email sheet rises from the bottom --
+      // instead of sending them off to Profile and losing the dish they were on.
+      // The picker isn't opened automatically afterwards: it has to start from a
+      // tap (iOS blocks it after the round trip to verify the code), so a toast
+      // says to tap the picture again.
+      openEmailSheet(photoTile, () => showToast(tr("dishPhotoVerifiedTapAgain")), "dishPhotoSignInHint");
       return;
     }
     photoInput.click();
