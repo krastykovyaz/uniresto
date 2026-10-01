@@ -27,6 +27,7 @@ import {
   filterItems,
 } from "./filters.js";
 import { searchItems } from "./search.js";
+import { NOTIFICATION_EVENTS, loadNotificationPrefs, notificationState, saveNotificationPrefs } from "./notifications.js";
 import { dishEmoji } from "./dish-emoji.js";
 
 const app = document.getElementById("app");
@@ -790,6 +791,7 @@ const ICON_PATHS = {
   sparkle: '<path d="M12 2l1.8 5.4L19 9l-5.2 1.8L12 16l-1.8-5.2L5 9l5.2-1.6L12 2z" fill="currentColor"/>',
   clock: '<circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" fill="none"/><path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>',
   home: '<path d="M4 11.5L12 4l8 7.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M6 10v9a1 1 0 0 0 1 1h3v-5h4v5h3a1 1 0 0 0 1-1v-9" stroke="currentColor" stroke-width="2" stroke-linejoin="round" fill="none"/>',
+  bell: '<path d="M6 17V11a6 6 0 0 1 12 0v6l1.5 2h-15L6 17z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="none"/><path d="M10 21a2 2 0 0 0 4 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>',
   receipt: '<path d="M6 3h12v18l-2-1.3L14 21l-2-1.3L10 21l-2-1.3L6 21V3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="none"/><path d="M8.5 8h7M8.5 12h7M8.5 16h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>',
   user: '<circle cx="12" cy="8" r="3.6" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M4.5 20c1.4-3.7 4.4-5.6 7.5-5.6s6.1 1.9 7.5 5.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>',
   warn: '<path d="M12 3l10 18H2L12 3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="none"/><path d="M12 10v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="17" r="1" fill="currentColor"/>',
@@ -3496,6 +3498,164 @@ function openRewardRulesSheet(trigger) {
   deviceScreen.append(overlay);
 }
 
+// ----------------------------------------------------- Screen: notifications
+//
+// Profile > Notifications: turning push on for THIS device and choosing which
+// kinds it gets (the kinds and per-device choices live in notifications.js).
+// This screen asks for the browser's permission, registers the service worker
+// (static/sw.js, served at /sw.js), subscribes the device with the server under the
+// person's verified University email (/api/push/*) and can show a test notification.
+// The server pushes from orderability_engine/push_notify.py as things happen.
+
+function safeLocalStorage() {
+  try {
+    return window.localStorage;
+  } catch {
+    return { getItem: () => null, setItem: () => {} };
+  }
+}
+
+function notificationEnv() {
+  const ua = navigator.userAgent || "";
+  const isIos = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const isStandalone = window.navigator.standalone === true || window.matchMedia("(display-mode: standalone)").matches;
+  const hasApi = "Notification" in window && "serviceWorker" in navigator && "PushManager" in window;
+  return { hasApi, isIos, isStandalone, permission: hasApi ? Notification.permission : "default" };
+}
+
+function registerServiceWorker() {
+  return navigator.serviceWorker.register("/sw.js", { scope: "/" });
+}
+
+function urlBase64ToUint8Array(base64) {
+  const padded = (base64 + "=".repeat((4 - (base64.length % 4)) % 4)).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(padded);
+  return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+}
+
+// Subscribes THIS device with the browser's push service and tells the server, under
+// the verified University email, which kinds it wants (the switches). Safe to repeat:
+// the browser hands back the same subscription and the server just refreshes it.
+async function subscribeThisDevice(prefs) {
+  const registration = await registerServiceWorker();
+  await navigator.serviceWorker.ready;
+  const { key } = await api("/api/push/key");
+  if (!key) throw new Error("push is not set up on the server");
+  const subscription =
+    (await registration.pushManager.getSubscription()) ||
+    (await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(key) }));
+  await api("/api/push/subscribe", {
+    method: "POST",
+    body: JSON.stringify({ email: state.registeredEmail, subscription: subscription.toJSON(), prefs }),
+  });
+  return subscription;
+}
+
+async function syncNotificationPrefs(prefs) {
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const subscription = await registration.pushManager.getSubscription();
+    if (!subscription) return;
+    await api("/api/push/prefs", { method: "POST", body: JSON.stringify({ email: state.registeredEmail, endpoint: subscription.endpoint, prefs }) });
+  } catch {
+    /* best effort: the choice is still saved on this device and re-sent next time the screen opens */
+  }
+}
+
+function renderNotifications() {
+  app.innerHTML = "";
+  app.append(header({ title: tr("notifications"), back: () => goTo("profile") }));
+
+  const status = notificationState(notificationEnv());
+  const storage = safeLocalStorage();
+  const prefs = loadNotificationPrefs(storage);
+
+  // Push needs to know whose notifications these are: the verified University email.
+  const needEmail = !state.registeredEmail;
+  if (status === "granted" && !needEmail) subscribeThisDevice(prefs).catch(() => {});
+
+  const cards = {
+    default: { cls: "is-ok", title: "notifIntroTitle", body: "notifIntroBody" },
+    granted: { cls: "is-ok", title: "notifOnTitle", body: "notifOnBody" },
+    denied: { cls: "is-bad", title: "notifBlockedTitle", body: "notifBlockedBody" },
+    install: { cls: "is-warn", title: "notifInstallTitle", body: "notifInstallBody" },
+    unsupported: { cls: "is-warn", title: "notifUnsupported", body: null },
+  }[status];
+  app.append(
+    el(`
+      <div class="notif-card ${cards.cls}">
+        <strong>${escapeHtml(tr(cards.title))}</strong>
+        ${cards.body ? `<span>${escapeHtml(tr(cards.body))}</span>` : ""}
+      </div>
+    `)
+  );
+
+  if (status === "default" || (status === "granted" && needEmail)) {
+    const enable = el(`<button type="button" class="primary-button notif-enable">${escapeHtml(tr("notifEnable"))}</button>`);
+    enable.addEventListener("click", async () => {
+      if (needEmail) {
+        // The University-email sheet rises from the bottom; once verified the screen is
+        // redrawn and this same button asks for the permission -- from a fresh tap,
+        // which iPhone requires.
+        openEmailSheet(enable, () => renderNotifications(), "notifNeedEmailHint");
+        return;
+      }
+      enable.disabled = true;
+      try {
+        if (Notification.permission !== "granted") await Notification.requestPermission();
+        if (Notification.permission === "granted") await subscribeThisDevice(prefs);
+      } catch {
+        showToast(tr("notifUnsupported"));
+      }
+      renderNotifications();
+    });
+    app.append(enable);
+  }
+
+  const active = status === "granted" && !needEmail;
+  for (const group of NOTIFICATION_EVENTS) {
+    app.append(el(`<p class="notif-group-title">${escapeHtml(tr(group.groupKey))}</p>`));
+    const rows = el(`<div class="profile-rows ${active ? "" : "is-off"}"></div>`);
+    for (const item of group.items) {
+      const row = el(`
+        <div class="profile-row notif-row">
+          <span class="profile-row-label">
+            <span class="notif-title">${escapeHtml(tr(item.titleKey))}</span>
+            <span class="notif-desc">${escapeHtml(tr(item.descKey))}</span>
+          </span>
+          <button type="button" class="switch" role="switch" aria-checked="${prefs[item.key]}" aria-label="${escapeHtml(tr(item.titleKey))}" ${active ? "" : "disabled"}></button>
+        </div>
+      `);
+      row.querySelector(".switch").addEventListener("click", (e) => {
+        prefs[item.key] = !prefs[item.key];
+        saveNotificationPrefs(storage, prefs);
+        e.currentTarget.setAttribute("aria-checked", String(prefs[item.key]));
+        syncNotificationPrefs(prefs);
+      });
+      rows.append(row);
+    }
+    app.append(rows);
+  }
+
+  if (active) {
+    const test = el(`<button type="button" class="secondary-button notif-test">${escapeHtml(tr("notifTest"))}</button>`);
+    test.addEventListener("click", async () => {
+      try {
+        const registration = await registerServiceWorker();
+        await navigator.serviceWorker.ready;
+        await registration.showNotification(tr("notifTestTitle"), {
+          body: tr("notifTestBody"),
+          icon: "/static/favicon-512.png",
+          tag: "uniresto-test",
+        });
+      } catch {
+        showToast(tr("notifUnsupported"));
+      }
+    });
+    app.append(test);
+  }
+}
+
 function renderProfile() {
   app.innerHTML = "";
   app.append(header({ title: tr("profile"), back: () => goTo("restaurants") }));
@@ -3577,6 +3737,27 @@ function renderProfile() {
   `);
   langRow.addEventListener("click", () => openLanguageSheet(langRow));
   rows.append(langRow);
+
+  const notifState = notificationState(notificationEnv());
+  const notifPrefs = loadNotificationPrefs(safeLocalStorage());
+  const notifValue =
+    notifState === "granted"
+      ? tr(Object.values(notifPrefs).some(Boolean) ? "notificationsOn" : "notificationsOff")
+      : notifState === "denied"
+        ? tr("notificationsBlocked")
+        : notifState === "unsupported"
+          ? tr("notificationsNA")
+          : tr("notificationsOff");
+  const notifRow = el(`
+    <button type="button" class="profile-row profile-row-notifications">
+      <span class="profile-row-icon">${icon("bell", 20)}</span>
+      <span class="profile-row-label">${escapeHtml(tr("notifications"))}</span>
+      <span class="profile-row-count">${escapeHtml(notifValue)}</span>
+      <span class="profile-row-chevron">${icon("chevron", 16)}</span>
+    </button>
+  `);
+  notifRow.addEventListener("click", () => goTo("notifications"));
+  rows.append(notifRow);
 
   const emailRow = el(`
     <button type="button" class="profile-row profile-row-email" aria-haspopup="dialog">
@@ -5874,6 +6055,9 @@ function render() {
       break;
     case "profile":
       renderProfile();
+      break;
+    case "notifications":
+      renderNotifications();
       break;
     default:
       renderRestaurants();

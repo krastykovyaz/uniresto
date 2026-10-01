@@ -15,6 +15,7 @@ from orderability_engine.daily_report import DailyReportStore
 from orderability_engine.delivery_subscribers import DeliverySubscriberStore
 from orderability_engine.dish_photos import DishPhotoStore
 from orderability_engine.pending_dish_photos import PendingDishPhotoStore
+from orderability_engine.push_notify import PushSubscriptionStore
 from orderability_engine.rewards import RewardStore
 from orderability_engine.email_verification import EmailVerificationStore
 from orderability_engine.feedback import FeedbackStore
@@ -107,6 +108,7 @@ def _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, 
     page_view_store = PageViewStore(tmp_path / "orders.db")
     daily_report_store = DailyReportStore(tmp_path / "orders.db")
     rate_limit_store = RateLimitStore(tmp_path / "orders.db")
+    pushes = []  # every push the app asked to send: (email, kind, title, body)
     app = create_app(
         service=service,
         order_store=order_store,
@@ -122,6 +124,8 @@ def _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, 
         page_view_store=page_view_store,
         daily_report_store=daily_report_store,
         rate_limit_store=rate_limit_store,
+        push_store=PushSubscriptionStore(tmp_path / "orders.db"),
+        push_sender=lambda email, kind, title, body, url="/", tag=None: pushes.append((email, kind, title, body)),
         # Explicit ":memory:" instances -- isolated per test, never the
         # real email_verification.db/delivery_email_verification.db/
         # checkout_email_verification.db files create_app() defaults to
@@ -137,6 +141,7 @@ def _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, 
         enable_daily_report_scheduler=False,
     )
     app.testing = True
+    app.config["PUSH_LOG"] = pushes
     app.test_client_class = _BrowserClient
     return app.test_client()
 
@@ -2702,6 +2707,16 @@ def test_root_falls_back_to_english_for_an_unknown_lang_param(client):
     assert "Order lunch from University" in body
 
 
+def test_service_worker_is_served_from_the_root_with_site_wide_scope(client):
+    resp = client.get("/sw.js")
+    assert resp.status_code == 200
+    assert resp.mimetype == "text/javascript"
+    assert resp.headers["Service-Worker-Allowed"] == "/"
+    assert resp.headers["Cache-Control"] == "no-cache"
+    body = resp.get_data(as_text=True)
+    assert 'addEventListener("push"' in body and 'addEventListener("notificationclick"' in body
+
+
 def test_favicon_ico_redirects_to_the_real_png(client):
     resp = client.get("/favicon.ico")
     assert resp.status_code in (301, 302)
@@ -3909,3 +3924,135 @@ def test_visit_and_track_share_one_rate_limit_budget(client):
     assert _post_n(client, "/api/track/home", 60) == [200] * 60
     assert client.post("/api/visit/home").status_code == 429
     assert _count_now(client, "home") == 60
+
+
+# ---------------------------------------------------------------------------
+# Web push (Profile > Notifications)
+# ---------------------------------------------------------------------------
+
+PUSH_SUB = {"endpoint": "https://push.example.com/dev1", "keys": {"p256dh": "pk", "auth": "ak"}}
+
+
+@pytest.fixture
+def push_on(monkeypatch):
+    monkeypatch.setenv("VAPID_PRIVATE_KEY", "priv")
+    monkeypatch.setenv("VAPID_PUBLIC_KEY", "pub-key")
+
+
+def _subscribe(client, email="student@uni.lu", subscription=PUSH_SUB, prefs=None):
+    body = {"email": email, "subscription": subscription}
+    if prefs is not None:
+        body["prefs"] = prefs
+    return client.post("/api/push/subscribe", json=body)
+
+
+def test_push_key_is_null_until_push_is_set_up(client, push_on, monkeypatch):
+    assert client.get("/api/push/key").get_json() == {"key": "pub-key"}
+    monkeypatch.delenv("VAPID_PUBLIC_KEY")
+    assert client.get("/api/push/key").get_json() == {"key": None}
+
+
+def test_subscribe_stores_the_device_for_a_proven_email(client, push_on):
+    assert _subscribe(client).status_code == 200
+    store = client.application.config["PUSH_STORE"]
+    assert [s["endpoint"] for s in store.subscriptions_for("student@uni.lu", "order")] == [PUSH_SUB["endpoint"]]
+
+
+def test_subscribe_needs_a_proven_email_not_just_any_email(client, push_on):
+    assert _subscribe(client, email="nobody@uni.lu").status_code == 403
+    client.held_tokens_for = []  # a browser that never verified student@uni.lu
+    assert _subscribe(client).status_code == 403
+    assert client.application.config["PUSH_STORE"].count() == 0
+
+
+def test_subscribe_is_off_without_vapid_keys(client):
+    assert _subscribe(client).status_code == 503
+
+
+def test_subscribe_rejects_a_malformed_subscription(client, push_on):
+    assert _subscribe(client, subscription={"endpoint": "http://insecure/x", "keys": {"p256dh": "a", "auth": "b"}}).status_code == 400
+    assert _subscribe(client, subscription={"endpoint": PUSH_SUB["endpoint"]}).status_code == 400
+    assert client.post("/api/push/subscribe", json={"email": "student@uni.lu", "subscription": "x"}).status_code == 400
+
+
+def test_prefs_and_unsubscribe_only_touch_your_own_device(client, push_on):
+    _subscribe(client)
+    store = client.application.config["PUSH_STORE"]
+    store.upsert("courier@uni.lu", "https://push.example.com/theirs", "p", "a", {})
+    mine = {"email": "student@uni.lu", "endpoint": PUSH_SUB["endpoint"]}
+    assert client.post("/api/push/prefs", json={**mine, "prefs": {"order": False}}).status_code == 200
+    assert store.subscriptions_for("student@uni.lu", "order") == []
+    # another person's device is a 404, and unsubscribing it is a no-op
+    theirs = {"email": "student@uni.lu", "endpoint": "https://push.example.com/theirs"}
+    assert client.post("/api/push/prefs", json={**theirs, "prefs": {}}).status_code == 404
+    client.post("/api/push/unsubscribe", json=theirs)
+    assert len(store.subscriptions_for("courier@uni.lu", "order")) == 1
+    client.post("/api/push/unsubscribe", json=mine)
+    assert store.subscriptions_for("student@uni.lu", "luni") == []
+
+
+def test_courier_actions_push_the_customer(client):
+    order_id = _create_basic_order(client)
+    log = client.application.config["PUSH_LOG"]
+    log.clear()
+    _claim(client, order_id)
+    _pickup(client, order_id)
+    _mark_delivered(client, order_id)
+    assert [(e, k, t) for e, k, t, _b in log if k == "courier"] == [
+        ("student@uni.lu", "courier", "A courier took your order"),
+        ("student@uni.lu", "courier", "Your order is on its way"),
+        ("student@uni.lu", "courier", "Your order was delivered"),
+    ]
+    log.clear()
+    _mark_delivered(client, order_id)  # tapping it again must not push again
+    assert [k for _e, k, _t, _b in log if k == "courier"] == []
+
+
+def test_admin_price_and_cancel_push_the_customer(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    log = client.application.config["PUSH_LOG"]
+    log.clear()
+    with patch("app.send_order_needs_confirmation", return_value=(True, None)):
+        client.post(f"/admin/orders/{order_id}/set-price?token=correct-token", data={"real_price": "8.50"})
+    assert [(e, k, t) for e, k, t, _b in log] == [("student@uni.lu", "order", "Confirm your order price")]
+    assert "8.50" in log[0][3]
+    log.clear()
+    other = _create_basic_order(client)
+    log.clear()
+    client.post(f"/admin/orders/{other}/cancel?token=correct-token")
+    assert [(k, t) for _e, k, t, _b in log] == [("order", "Your order was cancelled")]
+
+
+def test_an_expired_order_pushes_its_owner(client):
+    order_id = _create_basic_order(client)  # for 2026-09-24
+    log = client.application.config["PUSH_LOG"]
+    log.clear()
+    client.application.config["ORDERABILITY_SERVICE"]._now_override = datetime.datetime(2026, 9, 24, 13, 31, tzinfo=TZINFO)
+    client.get(f"/api/orders/{order_id}")
+    assert [(e, k, t) for e, k, t, _b in log] == [("student@uni.lu", "order", "Your order expired")]
+    client.get(f"/api/orders/{order_id}")
+    assert len(log) == 1  # closed once, told once
+
+
+def test_new_orders_push_registered_couriers_with_the_building_only(client):
+    client.application.config["DELIVERY_SUBSCRIBER_STORE"].add("courier@uni.lu", "en")
+    log = client.application.config["PUSH_LOG"]
+    _create_basic_order(client, delivery_location="Building A — Room 1.01")
+    couriers = [(e, t, b) for e, k, t, b in log if k == "newDelivery"]
+    assert len(couriers) == 1 and couriers[0][0] == "courier@uni.lu"
+    assert "Building A" in couriers[0][2] and "1.01" not in couriers[0][2]
+
+
+def test_earning_luni_pushes_once(client):
+    log = client.application.config["PUSH_LOG"]
+    order_id = _create_basic_order(client)
+    _claim(client, order_id, courier_email="courier@uni.lu")
+    _pickup(client, order_id)
+    log.clear()
+    _mark_delivered(client, order_id)
+    luni = [(e, t) for e, k, t, _b in log if k == "luni"]
+    assert ("courier@uni.lu", "You earned 2 Luni") in luni or any(t.startswith("You earned") for _e, t in luni)
+    log.clear()
+    _mark_delivered(client, order_id)  # award_once: no second payout, no second push
+    assert [k for _e, k, _t, _b in log if k == "luni"] == []
