@@ -139,12 +139,16 @@ svg { display: block; }
   max-width: var(--max-content-width);
   margin: 0 auto;
   display: flex;
-  /* iOS-style translucent material over whatever scrolls beneath it */
-  background: rgba(255, 255, 255, 0.82);
-  -webkit-backdrop-filter: saturate(180%) blur(20px);
-  backdrop-filter: saturate(180%) blur(20px);
+  /* Solid, not the translucent blur material it had: on iPhone, a fixed bar
+     with backdrop-filter is repainted late while the page scrolls, so it
+     lagged and jumped up out of place when scrolling up. It also gets its
+     own compositing layer, which keeps it glued to the bottom edge. */
+  background: var(--color-surface);
   border-top: 0.5px solid rgba(0, 0, 0, 0.12);
   padding-bottom: env(safe-area-inset-bottom);
+  -webkit-transform: translate3d(0, 0, 0);
+  transform: translate3d(0, 0, 0);
+  will-change: transform;
 }
 #bottom-nav .nav-tab {
   flex: 1 1 0;
