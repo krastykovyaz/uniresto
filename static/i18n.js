@@ -5714,6 +5714,51 @@ export function dishTitle(rawName, lang) {
   return trailing || label;
 }
 
+// A dish name is often "the dish" plus what's in it or a note: "Glace
+// (chocolat, fraise, vanille)", "Poulet, sauce aux cacahuètes", "Thé glacé -
+// Black Tea Peach/Hibiscus", "Wrap (from the 2nd napkin)". On a card the TITLE
+// should be just the dish; the rest belongs in the card's body. Splits the
+// (translated, size-free) title into { title, details }:
+//   - every "(...)" (or full-width （...）) is a detail, wherever it is;
+//   - the first comma or SPACED dash (" - ", " – ", " — ") ends the title, and
+//     what follows is a detail -- a decimal comma ("1,5") and a hyphen inside a
+//     word ("mocha-vanilla") never split;
+//   - details are joined with ", ", the text after the comma/dash first.
+// A name with none of these comes back untouched, and a split that would leave
+// the title empty is ignored. Names elsewhere (cart, orders, favorites keys)
+// still use the whole thing -- see dishTitle().
+const _NAME_SPLIT_RE = /[,，、،]|\s[-–—]\s/g;
+
+export function dishNameParts(rawName, lang) {
+  const full = dishTitle(rawName, lang);
+  let head = full;
+  const details = [];
+
+  head = head.replace(/\s*[(（]([^()（）]*)[)）]/g, (_, inner) => {
+    const detail = inner.trim();
+    if (detail) details.push(detail);
+    return "";
+  });
+  head = _tidy(head);
+
+  let rest = "";
+  _NAME_SPLIT_RE.lastIndex = 0;
+  let match;
+  while ((match = _NAME_SPLIT_RE.exec(head)) !== null) {
+    const isComma = match[0].length === 1;
+    const before = head[match.index - 1];
+    const after = head[match.index + 1];
+    if (isComma && /\d/.test(before || "") && /\d/.test(after || "")) continue; // "1,5 l"
+    rest = head.slice(match.index + match[0].length).trim();
+    head = head.slice(0, match.index).trim();
+    break;
+  }
+
+  if (rest) details.unshift(rest);
+  if (!head) return { title: full, details: "" };
+  return { title: head, details: details.join(", ") };
+}
+
 // Title plus the size in brackets -- for plain one-line summaries (a
 // courier's order list, order history) where there's no body line to put
 // the size on but the exact product still matters.
