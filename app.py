@@ -1589,6 +1589,12 @@ def create_app(
     # only ever called when that screen actually renders.
     CLIENT_TRACKED_EVENTS = ("home", "menu")
 
+    # Two addresses, one handler. /api/visit/... is what the app calls now:
+    # ad/content blockers (uBlock, AdGuard, Brave Shields, DNS filters) drop
+    # anything with "track" in the path, which silently lost every visit from
+    # those students -- and from whoever scanned a QR with one on. The old
+    # /api/track/... stays for phones still holding the previous page.
+    @app.post("/api/visit/<event>")
     @app.post("/api/track/<event>")
     def api_track(event):
         """Fired by static/app.js -- "home" once from init(), "menu" from

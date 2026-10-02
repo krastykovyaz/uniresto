@@ -16,7 +16,7 @@ import {
   computeFormulaTotal,
   priceForItem,
 } from "./pricing.js";
-import { LANGUAGES, allergenLabel, categoryLabel, dishSize, dishTitle, dishTitleWithSize, getLanguage, intlLocale, langInfo, setLanguage, t } from "./i18n.js";
+import { LANGUAGES, allergenLabel, categoryLabel, dishNameParts, dishSize, dishTitle, dishTitleWithSize, getLanguage, intlLocale, langInfo, setLanguage, t } from "./i18n.js";
 import {
   CALORIE_BUCKETS,
   WEIGHT_BUCKETS,
@@ -2774,7 +2774,7 @@ async function selectDate(dateInfo) {
     // Part 74: one real "viewed a menu" per day someone actually opens --
     // counted here, not at the API, because renderDates()'s background
     // prefetch hits that same endpoint for every orderable day shown.
-    api("/api/track/menu", { method: "POST" }).catch(() => {});
+    api("/api/visit/menu", { method: "POST" }).catch(() => {});
   } catch (err) {
     state.menuError = { status: err.body && err.body.status, reason: err.message };
   }
@@ -4276,6 +4276,11 @@ function foodCard(item) {
   // item, same as the allergens hidden below (Part 91), and a card with no
   // photo keeps it.
   const metaParts = [hasPhoto ? null : sizeText(item), caloriesText(item)].filter(Boolean);
+  // The title is just the dish; what the name says after a comma or a spaced
+  // dash, or in brackets ("(chocolate, strawberry, vanilla)"), is body text --
+  // shown ahead of Restopolis's own description when there is one.
+  const nameParts = dishNameParts(item.name, state.lang);
+  const bodyText = [nameParts.details, item.description].filter(Boolean).join(" · ");
   const card = el(`
     <article class="food-card ${isSelected ? "is-selected" : ""} ${earlyCutoffPassed ? "is-early-cutoff-passed" : ""}" data-item-id="${item.id}">
       <div class="food-card-photo icon-avatar ${categoryIconClass(item)} ${storedPhotoPath ? "has-custom-photo" : ""}">
@@ -4299,8 +4304,8 @@ function foodCard(item) {
       </div>
       <div class="card-body">
         <div class="card-title">
-          <p class="name">${escapeHtml(dishTitle(item.name, state.lang))}</p>
-          ${item.description ? `<p class="description">${escapeHtml(item.description)}</p>` : ""}
+          <p class="name">${escapeHtml(nameParts.title)}</p>
+          ${bodyText ? `<p class="description">${escapeHtml(bodyText)}</p>` : ""}
         </div>
         ${metaParts.length ? `<p class="meta-row">${metaParts.map((p) => escapeHtml(p)).join(" · ")}</p>` : ""}
         ${
@@ -5864,7 +5869,8 @@ async function init() {
   // never persisted, so it only ever attributes the visit it actually
   // arrived on, not anything the person does afterwards.
   const urlSource = new URLSearchParams(window.location.search).get("src") || undefined;
-  api("/api/track/home", { method: "POST", body: JSON.stringify({ source: urlSource }) }).catch(() => {});
+  // /api/visit, not /api/track: blockers drop anything with "track" in it (see app.py's api_track).
+  api("/api/visit/home", { method: "POST", body: JSON.stringify({ source: urlSource }) }).catch(() => {});
   setInterval(tickStatusClock, 30000);
   app.append(loadingState(tr("loadingRestaurants")));
   try {
