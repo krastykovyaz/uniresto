@@ -2427,7 +2427,7 @@ async function renderDelivery() {
   // by paint() below (not shown for Belval, which has no orders yet).
   const onlineSlot = el(`<div class="courier-online-slot"></div>`);
   screenHeader.append(onlineSlot);
-  app.append(loadingState(tr("loadingOrders")));
+  app.append(loadingState(tr("loadingOrders"), true));
 
   let data;
   try {
@@ -3364,7 +3364,7 @@ function renderOrderHistory() {
   app.append(header({ title: tr(historyMode ? "orderHistorySectionLabel" : "orderHistory"), back: () => goTo(state.subScreenReturnTo) }));
 
   if (state.orderHistoryLoading) {
-    app.append(loadingState(tr("loadingOrderHistory")));
+    app.append(loadingState(tr("loadingOrderHistory"), true));
     return;
   }
 
@@ -6015,8 +6015,8 @@ function emptyState(iconName, title, body) {
 }
 
 // A little burger that builds itself layer by layer (see .burger-loader in
-// app.css), shown only while a restaurant's menu loads -- right after the
-// person chose a restaurant. Every other loading screen stays plain text.
+// app.css), shown while a restaurant's menu loads (right after choosing one) and
+// while the person's orders load. The other loading screens stay plain text.
 function burgerLoaderSvg() {
   return `
     <svg class="burger-loader" viewBox="0 0 32 29" aria-hidden="true" focusable="false">
