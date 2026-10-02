@@ -290,6 +290,39 @@ def _send_photo(photo_url: str, caption: str, buttons: list | None, log_context:
         return False, str(exc)
 
 
+# Telegram's Bot API refuses uploads bigger than this.
+MAX_DOCUMENT_BYTES = 50 * 1024 * 1024
+
+
+def send_admin_document(path, caption: str = "") -> tuple[bool, str | None]:
+    """Uploads one file to the admin chat (sendDocument). Same best-effort
+    contract as every other function here: (True, None) on success,
+    (False, reason) on any failure, never raises."""
+    config = _bot_config()
+    if config is None:
+        return False, "Telegram not configured (TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID unset)"
+    try:
+        size = os.path.getsize(path)
+        if size > MAX_DOCUMENT_BYTES:
+            return False, f"file is {size} bytes, over Telegram's {MAX_DOCUMENT_BYTES}-byte upload limit"
+        with open(path, "rb") as handle:
+            resp = requests.post(
+                f"{TELEGRAM_API_BASE}/bot{config['token']}/sendDocument",
+                data={"chat_id": config["chat_id"], "caption": caption[:1000]},
+                files={"document": (os.path.basename(path), handle)},
+                timeout=120,
+            )
+        body = resp.json()
+        if not body.get("ok"):
+            error = body.get("description") or f"HTTP {resp.status_code}"
+            logger.warning("[TELEGRAM] failed to send document %s: %s", os.path.basename(path), error)
+            return False, error
+        return True, None
+    except Exception as exc:  # noqa: BLE001 -- a backup ping must never crash the backup job
+        logger.warning("[TELEGRAM] failed to send document %s: %s", os.path.basename(path), exc)
+        return False, str(exc)
+
+
 def send_daily_report(counts: dict, report_date) -> tuple[bool, str | None]:
     """Best-effort send, same contract as every other function here --
     the evening admin report (Part 74; see daily_report.py). `counts` is

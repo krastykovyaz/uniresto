@@ -17,4 +17,10 @@ sqlite3 "$APP_DIR/orders.db" ".backup '$BACKUP_DIR/uniresto-orders-$STAMP.db'"
 sqlite3 "$BACKUP_DIR/uniresto-orders-$STAMP.db" "PRAGMA integrity_check;" | grep -qx ok
 tar -czf "$BACKUP_DIR/uniresto-dish-photos-$STAMP.tar.gz" -C "$APP_DIR/static" dish_photos
 
+# A copy off the server: the admin's Telegram chat (see telegram_backup.py).
+# Best effort -- a Telegram hiccup must never make the backup itself "fail".
+"$APP_DIR/.venv/bin/python" "$APP_DIR/scripts/telegram_backup.py" \
+    "$BACKUP_DIR/uniresto-orders-$STAMP.db" "$BACKUP_DIR/uniresto-dish-photos-$STAMP.tar.gz" \
+    || echo "WARNING: backup not sent to Telegram" >&2
+
 find "$BACKUP_DIR" -maxdepth 1 \( -name 'uniresto-orders-*.db' -o -name 'uniresto-dish-photos-*.tar.gz' \) -mtime +"$KEEP_DAYS" -delete
