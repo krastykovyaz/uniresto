@@ -3930,7 +3930,7 @@ def test_visit_and_track_share_one_rate_limit_budget(client):
 # Web push (Profile > Notifications)
 # ---------------------------------------------------------------------------
 
-PUSH_SUB = {"endpoint": "https://push.example.com/dev1", "keys": {"p256dh": "pk", "auth": "ak"}}
+PUSH_SUB = {"endpoint": "https://fcm.googleapis.com/fcm/send/dev1", "keys": {"p256dh": "pk", "auth": "ak"}}
 
 
 @pytest.fixture
@@ -3965,6 +3965,13 @@ def test_subscribe_needs_a_proven_email_not_just_any_email(client, push_on):
     assert client.application.config["PUSH_STORE"].count() == 0
 
 
+def test_subscribe_refuses_an_endpoint_that_is_not_a_push_service(client, push_on):
+    for endpoint in ("https://push.example.com/x", "https://127.0.0.1/x", "http://fcm.googleapis.com/x"):
+        resp = _subscribe(client, subscription={"endpoint": endpoint, "keys": PUSH_SUB["keys"]})
+        assert resp.status_code == 400, endpoint
+    assert client.application.config["PUSH_STORE"].count() == 0
+
+
 def test_subscribe_is_off_without_vapid_keys(client):
     assert _subscribe(client).status_code == 503
 
@@ -3978,12 +3985,12 @@ def test_subscribe_rejects_a_malformed_subscription(client, push_on):
 def test_prefs_and_unsubscribe_only_touch_your_own_device(client, push_on):
     _subscribe(client)
     store = client.application.config["PUSH_STORE"]
-    store.upsert("courier@uni.lu", "https://push.example.com/theirs", "p", "a", {})
+    store.upsert("courier@uni.lu", "https://fcm.googleapis.com/fcm/send/theirs", "p", "a", {})
     mine = {"email": "student@uni.lu", "endpoint": PUSH_SUB["endpoint"]}
     assert client.post("/api/push/prefs", json={**mine, "prefs": {"order": False}}).status_code == 200
     assert store.subscriptions_for("student@uni.lu", "order") == []
     # another person's device is a 404, and unsubscribing it is a no-op
-    theirs = {"email": "student@uni.lu", "endpoint": "https://push.example.com/theirs"}
+    theirs = {"email": "student@uni.lu", "endpoint": "https://fcm.googleapis.com/fcm/send/theirs"}
     assert client.post("/api/push/prefs", json={**theirs, "prefs": {}}).status_code == 404
     client.post("/api/push/unsubscribe", json=theirs)
     assert len(store.subscriptions_for("courier@uni.lu", "order")) == 1

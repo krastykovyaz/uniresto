@@ -15,15 +15,18 @@ whole feature is simply off (`push_config()` is None, sends do nothing).
 
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
 import os
 import sqlite3
 import threading
 from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from orderability_engine.identity import canonical_identity
 
@@ -32,6 +35,17 @@ log = logging.getLogger("uniresto.push")
 # The kinds a person can switch on or off; must match NOTIFICATION_EVENTS in
 # static/notifications.js.
 PUSH_KINDS = ("order", "courier", "newDelivery", "reminder", "luni", "favorite")
+
+# The push services browsers actually use. A subscription's endpoint is a URL OUR SERVER posts
+# to, so anything else would let a (verified) person aim the server at an arbitrary host --
+# internal addresses included. Matched as the host itself or any subdomain of it.
+ALLOWED_PUSH_HOSTS = (
+    "fcm.googleapis.com",  # Chrome, Edge, Brave, Opera, Android
+    "updates.push.services.mozilla.com",  # Firefox
+    "push.services.mozilla.com",
+    "push.apple.com",  # Safari and the iPhone Home Screen app (web.push.apple.com)
+    "notify.windows.com",  # legacy Edge / Windows
+)
 
 MAX_ENDPOINT_LENGTH = 1000
 MAX_KEY_LENGTH = 200
@@ -56,11 +70,30 @@ def sanitize_prefs(prefs) -> dict[str, bool]:
     return {kind: prefs[kind] if isinstance(prefs.get(kind), bool) else True for kind in PUSH_KINDS}
 
 
+def is_allowed_push_endpoint(endpoint) -> bool:
+    """https only, on the default port, no credentials in the URL, and a host that is (a
+    subdomain of) a known push service -- never an IP address."""
+    if not isinstance(endpoint, str) or len(endpoint) > MAX_ENDPOINT_LENGTH:
+        return False
+    try:
+        parts = urlsplit(endpoint)
+        host = (parts.hostname or "").lower()
+        port = parts.port
+    except ValueError:
+        return False
+    if parts.scheme != "https" or parts.username or parts.password or port not in (None, 443) or not host:
+        return False
+    try:
+        ipaddress.ip_address(host)
+        return False  # an IP literal is never a push service
+    except ValueError:
+        pass
+    return any(host == allowed or host.endswith("." + allowed) for allowed in ALLOWED_PUSH_HOSTS)
+
+
 def valid_subscription(endpoint, p256dh, auth) -> bool:
     return (
-        isinstance(endpoint, str)
-        and endpoint.startswith("https://")
-        and len(endpoint) <= MAX_ENDPOINT_LENGTH
+        is_allowed_push_endpoint(endpoint)
         and isinstance(p256dh, str)
         and 0 < len(p256dh) <= MAX_KEY_LENGTH
         and isinstance(auth, str)
@@ -161,6 +194,19 @@ def push_config() -> dict | None:
     return {"private": private, "public": public, "subject": os.environ.get("VAPID_SUBJECT", "").strip() or "https://resto.unilu.space"}
 
 
+def _no_redirect_session():
+    """A requests session that never follows a redirect: the push service answers directly,
+    and a redirect would be another way to steer the server to an arbitrary host."""
+    import requests
+
+    class _Session(requests.Session):
+        def request(self, *args, **kwargs):
+            kwargs["allow_redirects"] = False
+            return super().request(*args, **kwargs)
+
+    return _Session()
+
+
 def _webpush(subscription: dict, payload: str, config: dict):
     """The real send, isolated so tests can replace it."""
     from pywebpush import webpush
@@ -172,6 +218,7 @@ def _webpush(subscription: dict, payload: str, config: dict):
         vapid_claims={"sub": config["subject"]},
         timeout=10,
         ttl=3600,
+        requests_session=_no_redirect_session(),
     )
 
 
@@ -194,6 +241,11 @@ def send_push(
     payload = json.dumps({"title": title, "body": body, "url": url, **({"tag": tag} if tag else {})})
     sent = 0
     for subscription in store.subscriptions_for(email, kind):
+        if not is_allowed_push_endpoint(subscription["endpoint"]):
+            # Stored before the allow-list existed, or written to the database directly: never post to it.
+            store.delete_endpoint(subscription["endpoint"])
+            log.warning("[PUSH] dropped a subscription whose endpoint is not a known push service")
+            continue
         try:
             webpush_fn(subscription, payload, config)
             sent += 1
@@ -207,9 +259,54 @@ def send_push(
     return sent
 
 
+# One small pool per worker process instead of a thread per notification: a burst (many orders
+# expiring at 13:30, a new order for every registered courier) used to start that many threads,
+# each able to wait 10 s per device. Beyond MAX_PENDING queued sends, new ones are dropped and logged
+# rather than piling up without limit.
+POOL_WORKERS = 4
+MAX_PENDING = 500
+_pool_lock = threading.Lock()
+_pool: ThreadPoolExecutor | None = None
+_pending = 0
+
+
+def _get_pool() -> ThreadPoolExecutor:
+    global _pool
+    with _pool_lock:
+        if _pool is None:
+            _pool = ThreadPoolExecutor(max_workers=POOL_WORKERS, thread_name_prefix="push")
+        return _pool
+
+
+def _run_one(args: tuple) -> None:
+    global _pending
+    try:
+        send_push(*args)
+    except Exception:  # noqa: BLE001 -- send_push never raises, but a pool task must never die silently either
+        log.warning("[PUSH] a queued send failed unexpectedly", exc_info=True)
+    finally:
+        with _pool_lock:
+            _pending -= 1
+
+
+def wait_for_pending_pushes() -> None:
+    """Blocks until every queued send has finished (used by tests, and by a clean shutdown)."""
+    global _pool
+    with _pool_lock:
+        pool, _pool = _pool, None
+    if pool is not None:
+        pool.shutdown(wait=True)
+
+
 def notify_in_background(store: PushSubscriptionStore, email: str, kind: str, title: str, body: str, url: str = "/", tag: str | None = None) -> None:
-    """The app's real sender: send_push() on a daemon thread, so an order, a claim or a
+    """The app's real sender: send_push() on a small worker pool, so an order, a claim or a
     delivery never waits on a push service."""
+    global _pending
     if push_config() is None:
         return
-    threading.Thread(target=send_push, args=(store, email, kind, title, body, url, tag), daemon=True).start()
+    with _pool_lock:
+        if _pending >= MAX_PENDING:
+            log.warning("[PUSH] queue full (%s waiting) -- dropping a %s push", _pending, kind)
+            return
+        _pending += 1
+    _get_pool().submit(_run_one, (store, email, kind, title, body, url, tag))
