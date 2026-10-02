@@ -1,8 +1,8 @@
 """The stats the admin gets on request (the "📊 Stats" button in the bot, see
 telegram_notify.py and app.py's /telegram/webhook): the same numbers as the
 evening report (daily_report.py) -- app opens with their per-QR-source split,
-menu views, orders placed, Delivery-screen visits -- for today so far plus the
-STATS_PREVIOUS_DAYS full days before it, and a total across all of them.
+menu views, orders placed, Delivery-screen visits -- for today so far and
+yesterday (STATS_PREVIOUS_DAYS), and a total across both.
 
 Every QR / ?src= label that shows up in the window is listed, in EVERY day's
 block (0 where it wasn't scanned that day), busiest first over the whole
@@ -19,7 +19,7 @@ from orderability_engine.models import TZINFO
 from orderability_engine.orders import OrderStore
 from orderability_engine.page_views import PageViewStore
 
-STATS_PREVIOUS_DAYS = 2  # "last 2 days" -- plus today, which is still in progress
+STATS_PREVIOUS_DAYS = 1  # yesterday -- plus today, which is still in progress
 
 
 def _day_label(day: date, today: date) -> str:
