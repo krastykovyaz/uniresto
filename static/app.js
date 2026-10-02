@@ -1516,6 +1516,12 @@ function openOrderEmailVerifySheet(trigger, email, onVerified) {
 // the Home branch is the real reset, back to the first Home page -- after one
 // stop on the way: if the screen is scrolled down, the first tap scrolls it to the top.
 const TAB_SCREENS = new Set(["favorites", "order-history", "profile"]);
+// Screens reached from inside a tab count as that tab: Profile > Notifications keeps the Home
+// resume point alive and shows Profile as the active tab.
+const SUB_SCREEN_PARENT = { notifications: "profile" };
+function tabOf(screen) {
+  return SUB_SCREEN_PARENT[screen] || screen;
+}
 // Home-branch screens worth coming back to: not the loading/confirming/confirmation
 // ones, which are transient.
 const RESUMABLE_HOME_SCREENS = new Set(["role", "restaurants", "dates", "menu", "review", "smart-lunch", "delivery"]);
@@ -1527,9 +1533,10 @@ function rememberHomeBranch() {
 }
 
 function onHomeTab() {
-  if (homeResume && TAB_SCREENS.has(state.screen)) {
+  if (homeResume && TAB_SCREENS.has(tabOf(state.screen))) {
     const { screen, windowY, scrollerY } = homeResume;
     homeResume = null;
+    navSeq++;
     state.screen = screen;
     render();
     window.scrollTo(0, windowY);
@@ -1585,7 +1592,7 @@ function renderBottomNav() {
   bottomNav.innerHTML = "";
 
   for (const tab of BOTTOM_NAV_TABS) {
-    const isActive = state.screen === tab.screen;
+    const isActive = tabOf(state.screen) === tab.screen;
     const btn = el(`
       <button type="button" class="nav-tab ${isActive ? "is-active" : ""}" aria-label="${escapeHtml(tr(tab.labelKey))}" aria-current="${isActive}">
         ${icon(tab.iconName, 22)}
@@ -1702,7 +1709,14 @@ async function restoreLocation() {
   return false;
 }
 
+// Bumped on every navigation. A screen that loads data (favorites, orders, a restaurant's dates and
+// menu) remembers the value when it starts and, when its fetches finally finish, only draws if
+// nothing else has been navigated to since -- otherwise a slow load would redraw over the Home-tab
+// resume, or yank the person back off the tab they had already switched to.
+let navSeq = 0;
+
 function goTo(screen) {
+  navSeq++;
   state.screen = screen;
   render();
   scrollToTop();
@@ -2722,6 +2736,7 @@ async function selectRestaurant(restaurant) {
   state.targetDate = null;
   state.menu = null;
   goTo("dates-loading");
+  const seq = navSeq;
   // Shows every day in the window, not just orderable ones: a date the
   // orderability API refuses (closed / no_menu / ordering_closed / past /
   // unknown) must stay visible with its reason, per the task's "do not
@@ -2737,7 +2752,7 @@ async function selectRestaurant(restaurant) {
     showToast(err.message);
     state.availableDates = [];
   }
-  goTo("dates");
+  if (seq === navSeq) goTo("dates");
 }
 
 // --------------------------------------------------------------- Screen: dates
@@ -2837,6 +2852,7 @@ async function selectDate(dateInfo) {
   // the tap used to sit there doing nothing -- no loading screen, no
   // feedback -- until they arrived (most noticeable on a phone connection).
   if (!menuCache.has(menuCacheKey(state.slug, state.targetDate)) || !dishPhotosCache.has(state.slug)) goTo("menu-loading");
+  const seq = navSeq;
   try {
     const dishPhotosPromise = getDishPhotos(state.slug);
     state.menu = await getMenu(state.slug, state.targetDate);
@@ -2848,7 +2864,7 @@ async function selectDate(dateInfo) {
   } catch (err) {
     state.menuError = { status: err.body && err.body.status, reason: err.message };
   }
-  goTo("menu");
+  if (seq === navSeq) goTo("menu");
 }
 
 // ------------------------------------------------------------ Favorites
@@ -2900,6 +2916,7 @@ async function orderFavoriteNow(fav, dateInfo) {
 async function openFavorites() {
   state.favoritesLoading = true;
   goTo("favorites");
+  const seq = navSeq;
 
   const today = new Date().toISOString().slice(0, 10);
   const uniqueSlugs = [...new Set(state.favorites.map((f) => f.slug))];
@@ -2926,7 +2943,7 @@ async function openFavorites() {
 
   state.favoritesData = data;
   state.favoritesLoading = false;
-  render();
+  if (seq === navSeq) render();
 }
 
 function renderFavorites() {
@@ -3232,6 +3249,7 @@ async function openOrderHistory(mode = "basket") {
   state.courierDeliveries = [];
   state.courierDeliveriesNeedEmail = false;
   goTo("order-history");
+  const seq = navSeq;
 
   const deliveriesLoaded = mode === "history" ? loadCourierDeliveries() : Promise.resolve();
   const ids = loadOrderHistoryIds();
@@ -3252,7 +3270,7 @@ async function openOrderHistory(mode = "basket") {
 
   state.orderHistoryOrders = orders;
   state.orderHistoryLoading = false;
-  render();
+  if (seq === navSeq) render();
 }
 
 // "confirmed"/"cancelled" are the only two terminal states in the Part
@@ -3536,7 +3554,7 @@ function urlBase64ToUint8Array(base64) {
 // Subscribes THIS device with the browser's push service and tells the server, under
 // the verified University email, which kinds it wants (the switches). Safe to repeat:
 // the browser hands back the same subscription and the server just refreshes it.
-async function subscribeThisDevice(prefs) {
+async function subscribeThisDevice() {
   const registration = await registerServiceWorker();
   await navigator.serviceWorker.ready;
   const { key } = await api("/api/push/key");
@@ -3546,20 +3564,38 @@ async function subscribeThisDevice(prefs) {
     (await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(key) }));
   await api("/api/push/subscribe", {
     method: "POST",
-    body: JSON.stringify({ email: state.registeredEmail, subscription: subscription.toJSON(), prefs }),
+    // read at the moment of sending, so a switch flipped while this was in flight isn't overwritten
+    body: JSON.stringify({ email: state.registeredEmail, subscription: subscription.toJSON(), prefs: loadNotificationPrefs(safeLocalStorage()) }),
   });
   return subscription;
 }
 
-async function syncNotificationPrefs(prefs) {
-  try {
-    const registration = await navigator.serviceWorker.ready;
-    const subscription = await registration.pushManager.getSubscription();
-    if (!subscription) return;
-    await api("/api/push/prefs", { method: "POST", body: JSON.stringify({ email: state.registeredEmail, endpoint: subscription.endpoint, prefs }) });
-  } catch {
-    /* best effort: the choice is still saved on this device and re-sent next time the screen opens */
-  }
+// Opening the screen only subscribes a device that has no subscription yet (e.g. the browser dropped
+// it); an existing one is left alone -- no network call and no database write per visit.
+async function ensureSubscribed() {
+  const registration = await registerServiceWorker();
+  await navigator.serviceWorker.ready;
+  if (await registration.pushManager.getSubscription()) return;
+  await subscribeThisDevice();
+}
+
+// Switch changes are sent one after another, so the last flip is always the one the server ends with.
+let prefsSyncChain = Promise.resolve();
+function syncNotificationPrefs() {
+  prefsSyncChain = prefsSyncChain
+    .then(async () => {
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.getSubscription();
+      if (!subscription) return;
+      await api("/api/push/prefs", {
+        method: "POST",
+        body: JSON.stringify({ email: state.registeredEmail, endpoint: subscription.endpoint, prefs: loadNotificationPrefs(safeLocalStorage()) }),
+      });
+    })
+    .catch(() => {
+      /* best effort: the choice is still saved on this device */
+    });
+  return prefsSyncChain;
 }
 
 function renderNotifications() {
@@ -3572,7 +3608,7 @@ function renderNotifications() {
 
   // Push needs to know whose notifications these are: the verified University email.
   const needEmail = !state.registeredEmail;
-  if (status === "granted" && !needEmail) subscribeThisDevice(prefs).catch(() => {});
+  if (status === "granted" && !needEmail) ensureSubscribed().catch(() => {});
 
   const cards = {
     default: { cls: "is-ok", title: "notifIntroTitle", body: "notifIntroBody" },
@@ -3603,7 +3639,7 @@ function renderNotifications() {
       enable.disabled = true;
       try {
         if (Notification.permission !== "granted") await Notification.requestPermission();
-        if (Notification.permission === "granted") await subscribeThisDevice(prefs);
+        if (Notification.permission === "granted") await subscribeThisDevice();
       } catch {
         showToast(tr("notifUnsupported"));
       }
@@ -3630,7 +3666,7 @@ function renderNotifications() {
         prefs[item.key] = !prefs[item.key];
         saveNotificationPrefs(storage, prefs);
         e.currentTarget.setAttribute("aria-checked", String(prefs[item.key]));
-        syncNotificationPrefs(prefs);
+        syncNotificationPrefs();
       });
       rows.append(row);
     }
@@ -6017,7 +6053,7 @@ function render() {
   offScroll(updateCategoryNavHighlight);
   // Back on the Home branch by any route (the back button, a restaurant tap, ...):
   // there's nothing left to "resume" -- see onHomeTab().
-  if (!TAB_SCREENS.has(state.screen)) homeResume = null;
+  if (!TAB_SCREENS.has(tabOf(state.screen))) homeResume = null;
 
   switch (state.screen) {
     case "role":
