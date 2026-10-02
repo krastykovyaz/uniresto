@@ -16,7 +16,7 @@ import {
   computeFormulaTotal,
   priceForItem,
 } from "./pricing.js";
-import { LANGUAGES, allergenLabel, categoryLabel, dishSize, dishTitle, dishTitleWithSize, getLanguage, intlLocale, langInfo, setLanguage, t } from "./i18n.js";
+import { LANGUAGES, allergenLabel, categoryLabel, dishNameParts, dishSize, dishTitle, dishTitleWithSize, getLanguage, intlLocale, langInfo, setLanguage, t } from "./i18n.js";
 import {
   CALORIE_BUCKETS,
   WEIGHT_BUCKETS,
@@ -4270,6 +4270,12 @@ function foodCard(item) {
   // photo card shows only its title, and everything else is one tap away in
   // the detail sheet (openDishDetailSheet()).
   const metaParts = hasPhoto ? [] : [sizeText(item), caloriesText(item)].filter(Boolean);
+  // The title is just the dish; what the name says after a comma or a spaced
+  // dash, or in brackets ("(chocolate, strawberry, vanilla)"), is body text --
+  // ahead of Restopolis's own description. A photo card shows only the title
+  // (that text then lives in the detail sheet, like the description).
+  const nameParts = dishNameParts(item.name, state.lang);
+  const bodyText = [nameParts.details, item.description].filter(Boolean).join(" · ");
   const card = el(`
     <article class="food-card ${isSelected ? "is-selected" : ""} ${earlyCutoffPassed ? "is-early-cutoff-passed" : ""}" data-item-id="${item.id}">
       <div class="food-card-photo icon-avatar ${categoryIconClass(item)} ${storedPhotoPath ? "has-custom-photo" : ""}">
@@ -4294,8 +4300,8 @@ function foodCard(item) {
       </div>
       <div class="card-body">
         <div class="card-title">
-          <p class="name">${escapeHtml(dishTitle(item.name, state.lang))}</p>
-          ${item.description && !hasPhoto ? `<p class="description">${escapeHtml(item.description)}</p>` : ""}
+          <p class="name">${escapeHtml(nameParts.title)}</p>
+          ${bodyText && !hasPhoto ? `<p class="description">${escapeHtml(bodyText)}</p>` : ""}
         </div>
         ${metaParts.length ? `<p class="meta-row">${metaParts.map((p) => escapeHtml(p)).join(" · ")}</p>` : ""}
         ${
@@ -4681,6 +4687,9 @@ function openDishDetailSheet(item, trigger, earlyCutoffPassed = false) {
     trigger?.querySelector(".food-card-custom-photo")?.src ||
     "";
   const name = dishTitle(item.name, state.lang);
+  // Same split as the card: heading = the dish, the rest of the name leads the description.
+  const nameParts = dishNameParts(item.name, state.lang);
+  const descriptionText = [nameParts.details, item.description].filter(Boolean).join(" · ");
 
   const bullets = [];
   if (item.vegan) bullets.push(tr("vegan"));
@@ -4708,8 +4717,8 @@ function openDishDetailSheet(item, trigger, earlyCutoffPassed = false) {
           </div>
         </div>
         <div class="dish-detail-body">
-          <h2 class="dish-detail-name">${escapeHtml(name)}</h2>
-          ${item.description ? `<p class="dish-detail-description">${escapeHtml(item.description)}</p>` : ""}
+          <h2 class="dish-detail-name">${escapeHtml(nameParts.title)}</h2>
+          ${descriptionText ? `<p class="dish-detail-description">${escapeHtml(descriptionText)}</p>` : ""}
           ${
             bullets.length
               ? `<ul class="dish-detail-bullets">${bullets.map((b) => `<li>${escapeHtml(b)}</li>`).join("")}</ul>`
