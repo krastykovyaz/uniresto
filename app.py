@@ -133,7 +133,7 @@ OG_CACHE_MAX_FILES = 1000
 # first place.
 OG_PREVIEW_TEXT = {
     "en": {
-        "title": "UniResto · Campus Kirchberg",
+        "title": "UniResto · Cluster Kirchberg",
         "description": "Order lunch from Kirchberg restaurants — real menus, real prices.",
     },
     "zh": {
@@ -145,11 +145,11 @@ OG_PREVIEW_TEXT = {
         "description": "किरखबर्ग के रेस्तराँ से लंच ऑर्डर करें — असली मेनू, असली कीमतें।",
     },
     "es": {
-        "title": "UniResto · Campus Kirchberg",
+        "title": "UniResto · Cluster Kirchberg",
         "description": "Pide el almuerzo en los restaurantes de Kirchberg — menús reales, precios reales.",
     },
     "fr": {
-        "title": "UniResto · Campus Kirchberg",
+        "title": "UniResto · Cluster Kirchberg",
         "description": "Commandez votre déjeuner dans les restaurants de Kirchberg — vrais menus, vrais prix.",
     },
     "ar": {
@@ -161,7 +161,7 @@ OG_PREVIEW_TEXT = {
         "description": "কির্শবের্গের রেস্তোরাঁ থেকে দুপুরের খাবার অর্ডার করুন — আসল মেনু, আসল দাম।",
     },
     "pt": {
-        "title": "UniResto · Campus Kirchberg",
+        "title": "UniResto · Cluster Kirchberg",
         "description": "Peça o seu almoço nos restaurantes de Kirchberg — menus reais, preços reais.",
     },
     "ru": {
@@ -173,7 +173,7 @@ OG_PREVIEW_TEXT = {
         "description": "کِرشبرگ کے ریستورانوں سے لنچ آرڈر کریں — حقیقی مینو، حقیقی قیمتیں۔",
     },
     "lb": {
-        "title": "UniResto · Campus Kirchberg",
+        "title": "UniResto · Cluster Kirchberg",
         "description": "Bestell Mëttegiessen bei de Restauranten um Kirchberg — richtege Menüen, richtege Präisser.",
     },
 }

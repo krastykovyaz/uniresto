@@ -3479,7 +3479,7 @@ def _item(client, category_startswith, name_contains=""):
 
 def test_the_plain_link_keeps_the_generic_preview(client):
     html = client.get("/").data.decode()
-    assert _meta(html, "og:title") == "UniResto · Campus Kirchberg"
+    assert _meta(html, "og:title") == "UniResto · Cluster Kirchberg"
     assert _meta(html, "og:image").endswith("/static/og-image.png")
 
 
@@ -3534,7 +3534,7 @@ def test_a_broken_dish_link_falls_back_to_the_generic_preview(client, query):
     resp = client.get("/" + query)
     assert resp.status_code == 200
     html = resp.data.decode()
-    assert _meta(html, "og:title") == "UniResto · Campus Kirchberg"
+    assert _meta(html, "og:title") == "UniResto · Cluster Kirchberg"
     assert "<script>alert(1)" not in html
 
 

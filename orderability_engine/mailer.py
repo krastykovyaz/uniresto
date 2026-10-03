@@ -114,7 +114,7 @@ def _html_shell(preheader: str, body_html: str, config: dict) -> str:
       <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width:480px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;">
         <tr><td style="background:{_BRAND_GREEN};padding:20px 28px;">
           <span style="color:#ffffff;font-size:18px;font-weight:700;letter-spacing:0.02em;">UniResto</span>
-          <span style="color:#ffffff;font-size:12px;opacity:0.85;display:block;margin-top:2px;">Campus Kirchberg</span>
+          <span style="color:#ffffff;font-size:12px;opacity:0.85;display:block;margin-top:2px;">Cluster Kirchberg</span>
         </td></tr>
         <tr><td style="padding:28px;color:{_BRAND_TEXT};font-size:15px;line-height:1.55;">
           {body_html}

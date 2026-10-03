@@ -34,8 +34,8 @@ const STORAGE_KEY = "uniresto.lang";
 
 export const translations = {
   en: {
-    tagline: "UniResto · Campus Kirchberg",
-    campusKirchbergFilter: "UniResto · Campus Kirchberg",
+    tagline: "UniResto · Cluster Kirchberg",
+    campusKirchbergFilter: "UniResto · Cluster Kirchberg",
     campusBelvalFilter: "UniResto · Campus Belval",
     deliveryBelvalComingSoonTitle: "Campus Belval is coming soon",
     deliveryBelvalComingSoonBody: "Food House, Food Café, Food Lab, and Food Zone aren't live yet — check back soon.",
@@ -388,8 +388,8 @@ export const translations = {
     back: "Back",
   },
   zh: {
-    tagline: "UniResto · Kirchberg 校区",
-    campusKirchbergFilter: "UniResto · Kirchberg 校区",
+    tagline: "UniResto · Cluster Kirchberg",
+    campusKirchbergFilter: "UniResto · Cluster Kirchberg",
     campusBelvalFilter: "UniResto · Belval 校区",
     deliveryBelvalComingSoonTitle: "Belval 校区即将开放",
     deliveryBelvalComingSoonBody: "Food House、Food Café、Food Lab 和 Food Zone 尚未上线——请稍后再来查看。",
@@ -742,8 +742,8 @@ export const translations = {
     back: "返回",
   },
   hi: {
-    tagline: "UniResto · कैम्पस किरखबर्ग",
-    campusKirchbergFilter: "UniResto · कैम्पस किरखबर्ग",
+    tagline: "UniResto · Cluster Kirchberg",
+    campusKirchbergFilter: "UniResto · Cluster Kirchberg",
     campusBelvalFilter: "UniResto · कैम्पस बेलवाल",
     deliveryBelvalComingSoonTitle: "कैम्पस बेलवाल जल्द आ रहा है",
     deliveryBelvalComingSoonBody: "Food House, Food Café, Food Lab और Food Zone अभी लाइव नहीं हैं — जल्द ही देखें।",
@@ -1096,8 +1096,8 @@ export const translations = {
     back: "वापस",
   },
   es: {
-    tagline: "UniResto · Campus Kirchberg",
-    campusKirchbergFilter: "UniResto · Campus Kirchberg",
+    tagline: "UniResto · Cluster Kirchberg",
+    campusKirchbergFilter: "UniResto · Cluster Kirchberg",
     campusBelvalFilter: "UniResto · Campus Belval",
     deliveryBelvalComingSoonTitle: "Campus Belval está por llegar",
     deliveryBelvalComingSoonBody: "Food House, Food Café, Food Lab y Food Zone aún no están activos — vuelve pronto.",
@@ -1450,8 +1450,8 @@ export const translations = {
     back: "Atrás",
   },
   fr: {
-    tagline: "UniResto · Campus Kirchberg",
-    campusKirchbergFilter: "UniResto · Campus Kirchberg",
+    tagline: "UniResto · Cluster Kirchberg",
+    campusKirchbergFilter: "UniResto · Cluster Kirchberg",
     campusBelvalFilter: "UniResto · Campus Belval",
     deliveryBelvalComingSoonTitle: "Le Campus Belval arrive bientôt",
     deliveryBelvalComingSoonBody: "Food House, Food Café, Food Lab et Food Zone ne sont pas encore actifs — revenez bientôt.",
@@ -1804,8 +1804,8 @@ export const translations = {
     back: "Retour",
   },
   ar: {
-    tagline: "UniResto · حرم كيرشبرغ",
-    campusKirchbergFilter: "UniResto · حرم كيرشبرغ",
+    tagline: "UniResto · Cluster Kirchberg",
+    campusKirchbergFilter: "UniResto · Cluster Kirchberg",
     campusBelvalFilter: "UniResto · حرم بلفال",
     deliveryBelvalComingSoonTitle: "حرم بلفال قادم قريبًا",
     deliveryBelvalComingSoonBody: "Food House وFood Café وFood Lab وFood Zone ليست نشطة بعد — تفقد الصفحة قريبًا.",
@@ -2158,8 +2158,8 @@ export const translations = {
     back: "رجوع",
   },
   bn: {
-    tagline: "UniResto · ক্যাম্পাস কির্শবের্গ",
-    campusKirchbergFilter: "UniResto · ক্যাম্পাস কির্শবের্গ",
+    tagline: "UniResto · Cluster Kirchberg",
+    campusKirchbergFilter: "UniResto · Cluster Kirchberg",
     campusBelvalFilter: "UniResto · ক্যাম্পাস বেলভাল",
     deliveryBelvalComingSoonTitle: "ক্যাম্পাস বেলভাল শীঘ্রই আসছে",
     deliveryBelvalComingSoonBody: "Food House, Food Café, Food Lab এবং Food Zone এখনও চালু হয়নি — শীঘ্রই আবার দেখুন।",
@@ -2512,8 +2512,8 @@ export const translations = {
     back: "পেছনে",
   },
   pt: {
-    tagline: "UniResto · Campus Kirchberg",
-    campusKirchbergFilter: "UniResto · Campus Kirchberg",
+    tagline: "UniResto · Cluster Kirchberg",
+    campusKirchbergFilter: "UniResto · Cluster Kirchberg",
     campusBelvalFilter: "UniResto · Campus Belval",
     deliveryBelvalComingSoonTitle: "O Campus Belval está a chegar",
     deliveryBelvalComingSoonBody: "Food House, Food Café, Food Lab e Food Zone ainda não estão ativos — volte em breve.",
@@ -2866,8 +2866,8 @@ export const translations = {
     back: "Voltar",
   },
   ru: {
-    tagline: "UniResto · Кампус Кирхберг",
-    campusKirchbergFilter: "UniResto · Кампус Кирхберг",
+    tagline: "UniResto · Cluster Kirchberg",
+    campusKirchbergFilter: "UniResto · Cluster Kirchberg",
     campusBelvalFilter: "UniResto · Кампус Бельваль",
     deliveryBelvalComingSoonTitle: "Кампус Бельваль скоро откроется",
     deliveryBelvalComingSoonBody: "Food House, Food Café, Food Lab и Food Zone ещё не работают — загляните позже.",
@@ -3220,8 +3220,8 @@ export const translations = {
     back: "Назад",
   },
   ur: {
-    tagline: "UniResto · کیمپس کِرشبرگ",
-    campusKirchbergFilter: "UniResto · کیمپس کِرشبرگ",
+    tagline: "UniResto · Cluster Kirchberg",
+    campusKirchbergFilter: "UniResto · Cluster Kirchberg",
     campusBelvalFilter: "UniResto · کیمپس بیلوال",
     deliveryBelvalComingSoonTitle: "کیمپس بیلوال جلد آ رہا ہے",
     deliveryBelvalComingSoonBody: "Food House، Food Café، Food Lab اور Food Zone ابھی فعال نہیں ہیں — جلد دوبارہ دیکھیں۔",
@@ -3574,8 +3574,8 @@ export const translations = {
     back: "پیچھے",
   },
   lb: {
-    tagline: "UniResto · Campus Kirchberg",
-    campusKirchbergFilter: "UniResto · Campus Kirchberg",
+    tagline: "UniResto · Cluster Kirchberg",
+    campusKirchbergFilter: "UniResto · Cluster Kirchberg",
     campusBelvalFilter: "UniResto · Campus Belval",
     deliveryBelvalComingSoonTitle: "Campus Belval kënnt geschwënn",
     deliveryBelvalComingSoonBody: "Food House, Food Café, Food Lab a Food Zone sinn nach net aktiv — kuckt geschwënn erëm laanscht.",
