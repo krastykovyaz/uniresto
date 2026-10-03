@@ -2705,14 +2705,14 @@ def test_root_localizes_the_open_graph_preview_to_the_lang_param(client):
     body = resp.data.decode()
     assert 'lang="fr"' in body
     assert "Commandez votre déjeuner" in body
-    assert "Order lunch from University" not in body
+    assert "Order lunch from Kirchberg restaurants" not in body
 
 
 def test_root_falls_back_to_english_for_an_unknown_lang_param(client):
     resp = client.get("/?lang=klingon")
     body = resp.data.decode()
     assert 'lang="en"' in body
-    assert "Order lunch from University" in body
+    assert "Order lunch from Kirchberg restaurants" in body
 
 
 def test_service_worker_is_served_from_the_root_with_site_wide_scope(client):
