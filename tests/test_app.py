@@ -161,7 +161,7 @@ def test_api_restaurants(client):
     resp = client.get("/api/restaurants")
     assert resp.status_code == 200
     slugs = {r["slug"] for r in resp.get_json()}
-    assert slugs == {"altius", "brasserie-johns"}
+    assert slugs == {"altius", "brasserie-johns", "ltc-k"}
 
 
 def test_api_restaurants_includes_building(client):
@@ -169,6 +169,14 @@ def test_api_restaurants_includes_building(client):
     by_slug = {r["slug"]: r for r in resp.get_json()}
     assert by_slug["altius"]["building"] == "Main building"
     assert by_slug["brasserie-johns"]["building"] == "JFK building"
+    assert by_slug["ltc-k"]["building"] == "Annexe Kirchberg"
+
+
+def test_api_restaurants_carries_display_name_and_kind_only_where_set(client):
+    by_slug = {r["slug"]: r for r in client.get("/api/restaurants").get_json()}
+    assert (by_slug["ltc-k"]["display_name"], by_slug["ltc-k"]["kind"]) == ("Lycée Technique du Centre", "school")
+    for campus in ("altius", "brasserie-johns"):
+        assert by_slug[campus]["display_name"] is None and by_slug[campus]["kind"] is None
 
 
 def test_api_status_available(client):
