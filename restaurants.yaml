@@ -34,3 +34,19 @@ restaurants:
     restaurant_id: 160
     service_id: 178
     building: "JFK building"
+
+  # Restopolis lists this one as "Lycée technique du Centre - Annexe Kirchberg" (site 64); its
+  # restaurant is "LTC-K - Restaurant". Ids read from the live site on 2026-10-03: the restaurant
+  # picker link gives pRestaurantSelection=36, and selecting it sets the SelectedService cookie to
+  # 62 (its one service tab is "Service 11:00 - 15:00"). Same page structure as the campus
+  # restaurants -- a daily "Menu" plus the shared "Constant products" -- with one extra daily
+  # category, "Pasta".
+  - code: LTC-K
+    name: "LTC-K - Restaurant"
+    site_name: "Lycée technique du Centre - Annexe Kirchberg"
+    site_id: 64
+    restaurant_id: 36
+    service_id: 62
+    building: "Annexe Kirchberg"
+    display_name: "Lycée Technique du Centre"
+    kind: school

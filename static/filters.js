@@ -37,6 +37,7 @@ const CATEGORY_DISPLAY_PRIORITY = [
   "Non-végétarien",
   "Végétarien",
   "Végan",
+  "Pasta",
   "Entrée",
   "Féculents",
   "Légumes",

@@ -31,8 +31,11 @@ logger = logging.getLogger("restopolis.scraper")
 
 
 def slug_for(code: str) -> str:
-    """UDL-CKB-ALTIUS -> altius, UDL-CKB-BRASSERIE-JOHNS -> brasserie-johns."""
-    return code.split("-", 2)[-1].lower()
+    """UDL-CKB-ALTIUS -> altius, UDL-CKB-BRASSERIE-JOHNS -> brasserie-johns.
+    Any other code is its own slug, lower-cased: LTC-K -> ltc-k."""
+    if code.startswith("UDL-CKB-"):
+        return code.split("-", 2)[-1].lower()
+    return code.lower()
 
 
 def week_start(d: date) -> date:

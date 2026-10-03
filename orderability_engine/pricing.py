@@ -103,7 +103,9 @@ def _lookup_price(categories: set, prices: dict, name: str) -> float | None:
     return value
 
 
-MAIN_CATEGORIES = {"Non-végétarien", "Végétarien", "Végan"}
+# "Pasta" is a daily category only the Lycée Technique du Centre restaurant (LTC-K) has so far: a
+# pasta dish is that day's main course, so it is priced and counted exactly like one.
+MAIN_CATEGORIES = {"Non-végétarien", "Végétarien", "Végan", "Pasta"}
 STARTER_CATEGORIES = {"Entrée"}
 DESSERT_CATEGORIES = {"Dessert"}
 SNACK_CATEGORIES = {"Snack à emporter"}

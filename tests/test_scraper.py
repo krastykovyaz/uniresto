@@ -10,6 +10,7 @@ from scraper import resolve_restaurants, resolve_target_dates, slug_for, week_st
 def test_slug_for():
     assert slug_for("UDL-CKB-ALTIUS") == "altius"
     assert slug_for("UDL-CKB-BRASSERIE-JOHNS") == "brasserie-johns"
+    assert slug_for("LTC-K") == "ltc-k"
 
 
 def test_week_start():
@@ -63,7 +64,7 @@ def test_resolve_target_dates_defaults_to_today():
 def test_resolve_restaurants_defaults_to_all():
     all_restaurants = load_restaurants()
     result = resolve_restaurants(argparse.Namespace(restaurant=None), all_restaurants)
-    assert len(result) == 2
+    assert len(result) == 3  # Altius, Brasserie John's and the Lycée Technique du Centre annexe
 
 
 def test_resolve_restaurants_filters_by_slug():

@@ -732,7 +732,10 @@ def create_app(
     @app.get("/api/restaurants")
     def api_restaurants():
         return jsonify(
-            [{"slug": slug, "code": r.code, "name": r.name, "building": r.building} for slug, r in by_slug.items()]
+            [
+                {"slug": slug, "code": r.code, "name": r.name, "building": r.building, "display_name": r.display_name, "kind": r.kind}
+                for slug, r in by_slug.items()
+            ]
         )
 
     @app.get("/api/restaurants/<slug>/status")

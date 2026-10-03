@@ -2592,7 +2592,7 @@ function restaurantGridContent() {
           <div class="icon-avatar is-other">${icon("fork", 20)}</div>
           <div>
             <h2>${escapeHtml(shortName(r.name))}</h2>
-            <p class="kind">${escapeHtml(tr("universityRestaurant"))}${r.building ? ` · ${escapeHtml(buildingLabel(r.building))}` : ""}</p>
+            <p class="kind">${escapeHtml(tr(r.kind === "school" ? "schoolRestaurant" : "universityRestaurant"))}${r.building ? ` · ${escapeHtml(buildingLabel(r.building))}` : ""}</p>
           </div>
         </div>
       </button>
@@ -2637,6 +2637,10 @@ const COMING_SOON_LOCATIONS = [
 ];
 
 function shortName(fullName) {
+  // A restaurant with its own display name ("LTC-K - Restaurant" -> "Lycée Technique du Centre",
+  // from restaurants.yaml via /api/restaurants) uses it wherever its raw name is shown.
+  const known = state.restaurants && state.restaurants.find((r) => r.name === fullName);
+  if (known && known.display_name) return known.display_name;
   // "UDL-CKB - Altius - Restaurant" -> "Altius" (Restopolis's own name,
   // never translated -- only split for a shorter title).
   const parts = fullName.split(" - ");
