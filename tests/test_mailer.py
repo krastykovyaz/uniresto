@@ -437,3 +437,29 @@ def test_send_order_needs_confirmation_omits_approximate_price_when_unknown(monk
 
     payload = mock_post.call_args.kwargs["json"]
     assert "Approximate price" not in payload["text"]
+
+
+def test_send_in_background_runs_the_job_and_survives_one_that_raises():
+    from orderability_engine import mailer
+
+    done = []
+    assert mailer.send_in_background(lambda: (_ for _ in ()).throw(RuntimeError("boom")))
+    assert mailer.send_in_background(done.append, "sent")
+    mailer.wait_for_pending_mail()
+    assert done == ["sent"]
+
+
+def test_send_in_background_drops_jobs_past_the_queue_cap(monkeypatch):
+    import threading
+
+    from orderability_engine import mailer
+
+    monkeypatch.setattr(mailer, "MAX_PENDING_MAIL", 2)
+    gate = threading.Event()
+    assert mailer.send_in_background(gate.wait)
+    assert mailer.send_in_background(gate.wait)
+    assert mailer.send_in_background(gate.wait) is False  # dropped, not queued
+    gate.set()
+    mailer.wait_for_pending_mail()
+    assert mailer.send_in_background(lambda: None)  # room again once drained
+    mailer.wait_for_pending_mail()

@@ -39,6 +39,8 @@ import html
 import logging
 import os
 import secrets
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 import requests
 
@@ -596,3 +598,56 @@ def send_order_needs_confirmation(
     subject = f"Confirm your UniResto order -- {order['restaurant_name']}"
     html_body = _html_shell(f"Real price for order #{order['id']} is €{real_price:.2f} -- please confirm.", body_html, config)
     return _send(to_email, subject, text_body, html_body)
+
+
+# ---------------------------------------------------------------------------
+# Background sending
+# ---------------------------------------------------------------------------
+# Each Resend call can take up to its 10 s timeout, and gunicorn runs only two
+# sync workers: a loop of them inside a request (one email per registered
+# courier when an order is placed) could hold a worker for minutes while Resend
+# is slow, and two such orders would freeze the whole site. Work handed to
+# send_in_background() runs on a small shared pool instead. It is bounded the
+# same way as push_notify's pool: past MAX_PENDING_MAIL queued jobs a new one is
+# dropped with a warning rather than piling up without limit.
+MAIL_POOL_WORKERS = 2
+MAX_PENDING_MAIL = 200
+_mail_pool_lock = threading.Lock()
+_mail_pool: ThreadPoolExecutor | None = None
+_mail_pending = 0
+
+
+def _run_mail_job(fn, args, kwargs) -> None:
+    global _mail_pending
+    try:
+        fn(*args, **kwargs)
+    except Exception:  # noqa: BLE001 -- a pool job must never die silently
+        logger.warning("[MAIL] a background send failed unexpectedly", exc_info=True)
+    finally:
+        with _mail_pool_lock:
+            _mail_pending -= 1
+
+
+def send_in_background(fn, *args, **kwargs) -> bool:
+    """Runs fn(*args, **kwargs) on the mail pool. False if the queue is full
+    and the job was dropped."""
+    global _mail_pool, _mail_pending
+    with _mail_pool_lock:
+        if _mail_pending >= MAX_PENDING_MAIL:
+            logger.warning("[MAIL] background queue full (%d); dropping %s", _mail_pending, getattr(fn, "__name__", fn))
+            return False
+        if _mail_pool is None:
+            _mail_pool = ThreadPoolExecutor(max_workers=MAIL_POOL_WORKERS, thread_name_prefix="mail")
+        _mail_pending += 1
+        pool = _mail_pool
+    pool.submit(_run_mail_job, fn, args, kwargs)
+    return True
+
+
+def wait_for_pending_mail() -> None:
+    """Blocks until every queued send has finished (tests, clean shutdown)."""
+    global _mail_pool
+    with _mail_pool_lock:
+        pool, _mail_pool = _mail_pool, None
+    if pool is not None:
+        pool.shutdown(wait=True)

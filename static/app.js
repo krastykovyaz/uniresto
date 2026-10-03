@@ -2419,7 +2419,15 @@ async function loadDeliveryData() {
   return { orders, mine: mine || [] };
 }
 
+// Bumped by every renderDelivery() call. navSeq alone isn't enough here: a
+// plain render() (a language switch, say) redraws this screen without a
+// goTo(), so two loads can be in flight under the same navSeq -- each must
+// only draw if it is still the newest one.
+let deliveryRenderSeq = 0;
+
 async function renderDelivery() {
+  const seq = ++deliveryRenderSeq;
+  const stale = () => seq !== deliveryRenderSeq || state.screen !== "delivery";
   app.innerHTML = "";
   const screenHeader = header({ title: tr("deliveryOrdersTitle"), back: () => goTo("role") });
   app.append(screenHeader);
@@ -2433,11 +2441,11 @@ async function renderDelivery() {
   try {
     data = await loadDeliveryData();
   } catch {
-    if (state.screen !== "delivery") return; // navigated away while this was in flight
+    if (stale()) return; // navigated away, or a newer load took over, while this was in flight
     app.querySelector(".loading-state")?.replaceWith(emptyState("receipt", tr("deliveryOrdersLoadFailedTitle"), tr("deliveryOrdersLoadFailedBody")));
     return;
   }
-  if (state.screen !== "delivery") return; // navigated away while this was in flight
+  if (stale()) return; // navigated away, or a newer load took over, while this was in flight
   app.querySelector(".loading-state")?.remove();
 
   const body = el(`<div class="delivery-campus-body"></div>`);
@@ -2462,7 +2470,7 @@ async function renderDelivery() {
     } catch {
       return; // keep what's on screen
     }
-    if (state.screen === "delivery") paint();
+    if (!stale()) paint();
   };
   app.append(campusFilterRow("deliveryCampusFilter", paint));
   paint();
@@ -2922,7 +2930,7 @@ async function openFavorites() {
   goTo("favorites");
   const seq = navSeq;
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateString(); // not toISOString(): UTC names yesterday until 01:00/02:00 here
   const uniqueSlugs = [...new Set(state.favorites.map((f) => f.slug))];
   const data = {};
   await Promise.all(
@@ -3054,6 +3062,8 @@ function orderStatusLabel(status) {
 
 // Strings for the Basket / Order History split. Kept beside their only user
 // (not in i18n.js) with an English fallback per key.
+// Texts for the courier screens. The hi, ar, bn and ur courier texts (yourDelivery
+// onward) were drafted by Claude on 2026-10-03 and still need a native speaker's review.
 const HISTORY_STRINGS = {
   en: {
     myOrders: "My orders",
@@ -3190,6 +3200,14 @@ const HISTORY_STRINGS = {
     noDeliveriesBody: "जो ऑर्डर आप लेंगे और पहुँचाएँगे वे यहाँ दिखेंगे।",
     deliveriesNeedEmail: "अपनी डिलीवरी देखने के लिए प्रोफ़ाइल में यूनिवर्सिटी ईमेल सत्यापित करें।",
     basketOrdersInProgress: "{n} जारी — प्रोफ़ाइल → ऑर्डर इतिहास देखें",
+    yourDelivery: "आपकी डिलीवरी",
+    stepAccepted: "स्वीकार किया",
+    stepPickedUp: "उठा लिया",
+    online: "ऑनलाइन",
+    offline: "ऑफ़लाइन",
+    offlineMessage: "आप ऑफ़लाइन हैं। नए ऑर्डर देखने के लिए «ऑनलाइन» चालू करें।",
+    noOffers: "अभी कोई नया ऑर्डर नहीं।",
+    orderEmailsTitle: "नए ऑर्डर के ईमेल",
   },
   ar: {
     myOrders: "طلباتي",
@@ -3200,6 +3218,14 @@ const HISTORY_STRINGS = {
     noDeliveriesBody: "ستظهر هنا الطلبات التي تقبلها وتسلّمها.",
     deliveriesNeedEmail: "أكّد بريدك الجامعي في الملف الشخصي لرؤية توصيلاتك.",
     basketOrdersInProgress: "{n} قيد التنفيذ — انظر الملف الشخصي ← سجل الطلبات",
+    yourDelivery: "توصيلتك",
+    stepAccepted: "تم القبول",
+    stepPickedUp: "تم الاستلام",
+    online: "متصل",
+    offline: "غير متصل",
+    offlineMessage: "أنت غير متصل. فعّل «متصل» لرؤية الطلبات الجديدة.",
+    noOffers: "لا توجد طلبات جديدة حاليًا.",
+    orderEmailsTitle: "رسائل الطلبات الجديدة",
   },
   bn: {
     myOrders: "আমার অর্ডার",
@@ -3210,6 +3236,14 @@ const HISTORY_STRINGS = {
     noDeliveriesBody: "আপনি যে অর্ডার নেবেন ও পৌঁছে দেবেন তা এখানে দেখা যাবে।",
     deliveriesNeedEmail: "আপনার ডেলিভারি দেখতে প্রোফাইলে বিশ্ববিদ্যালয়ের ইমেইল যাচাই করুন।",
     basketOrdersInProgress: "{n} চলমান — প্রোফাইল → অর্ডার ইতিহাস দেখুন",
+    yourDelivery: "আপনার ডেলিভারি",
+    stepAccepted: "গৃহীত",
+    stepPickedUp: "সংগ্রহ করা হয়েছে",
+    online: "অনলাইন",
+    offline: "অফলাইন",
+    offlineMessage: "আপনি অফলাইনে আছেন। নতুন অর্ডার দেখতে «অনলাইন» চালু করুন।",
+    noOffers: "এই মুহূর্তে কোনো নতুন অর্ডার নেই।",
+    orderEmailsTitle: "নতুন অর্ডারের ইমেইল",
   },
   ur: {
     myOrders: "میرے آرڈر",
@@ -3220,6 +3254,14 @@ const HISTORY_STRINGS = {
     noDeliveriesBody: "جو آرڈر آپ لیں گے اور پہنچائیں گے وہ یہاں نظر آئیں گے۔",
     deliveriesNeedEmail: "اپنی ڈیلیوریاں دیکھنے کے لیے پروفائل میں یونیورسٹی ای میل کی تصدیق کریں۔",
     basketOrdersInProgress: "{n} جاری — پروفائل ← آرڈر ہسٹری دیکھیں",
+    yourDelivery: "آپ کی ڈیلیوری",
+    stepAccepted: "قبول کر لیا",
+    stepPickedUp: "اٹھا لیا گیا",
+    online: "آن لائن",
+    offline: "آف لائن",
+    offlineMessage: "آپ آف لائن ہیں۔ نئے آرڈر دیکھنے کے لیے «آن لائن» آن کریں۔",
+    noOffers: "ابھی کوئی نیا آرڈر نہیں۔",
+    orderEmailsTitle: "نئے آرڈرز کی ای میلز",
   },
 };
 
@@ -4040,7 +4082,7 @@ async function reorderPastOrder(order) {
   state.orderComment = order.customer_note || "";
 
   const notices = [];
-  if (dateInfo.date !== new Date().toISOString().slice(0, 10)) notices.push(tr("reorderMovedToDate", { date: fmtLong(dateInfo.date) }));
+  if (dateInfo.date !== localDateString()) notices.push(tr("reorderMovedToDate", { date: fmtLong(dateInfo.date) }));
   if (substitutedCount > 0) notices.push(tr("reorderItemsSubstituted", { n: substitutedCount }));
   if (droppedCount > 0) notices.push(tr("reorderItemsUnavailable", { n: droppedCount }));
   if (notices.length > 0) showToast(notices.join(" "), 2500 + 1200 * (notices.length - 1));

@@ -39,6 +39,7 @@ from orderability_engine.feedback import FeedbackStore
 from orderability_engine.mailer import (
     generate_verification_code,
     send_delivery_notification,
+    send_in_background,
     send_order_accepted,
     send_order_confirmation,
     send_order_needs_confirmation,
@@ -226,6 +227,11 @@ MAX_DELIVERY_LOCATION_LENGTH = 200
 MAX_CUSTOMER_PHONE_LENGTH = 32
 MAX_FEEDBACK_LENGTH = 500
 DELIVERY_LIST_DAYS = 14
+# An order a courier delivered before the admin priced it (or the customer
+# confirmed) stays open this many days after its order date, so the admin can
+# still record the price; then it closes like any other (see
+# _close_expired_orders()).
+DELIVERED_UNPRICED_GRACE_DAYS = 7
 
 
 def _as_utc(iso_timestamp: str) -> datetime:
@@ -329,6 +335,7 @@ def create_app(
     rate_limit_store: RateLimitStore | None = None,
     push_store: PushSubscriptionStore | None = None,
     push_sender=None,
+    mail_runner=None,
     enable_menu_refresh_scheduler: bool = True,
     enable_daily_report_scheduler: bool = True,
 ) -> Flask:
@@ -355,6 +362,10 @@ def create_app(
             app.config["PUSH_STORE"], email, kind, title, body, url, tag
         )
     )
+    # Runs a mail job off the request thread (mailer.send_in_background).
+    # Tests pass a runner that calls the job at once, so what they check has
+    # already happened when the request returns.
+    app.config["MAIL_RUNNER"] = mail_runner or send_in_background
     # Real file paths (not EmailVerificationStore's own ":memory:"
     # default) so a code issued by one gunicorn worker process is
     # visible to whichever worker handles the matching /verify-code
@@ -647,9 +658,10 @@ def create_app(
         (status still pending/reviewing -- the customer had nothing to
         confirm), a cancelled one, and a courier who released it in time
         (claimed_at is cleared again). Idempotent -- award_once keys each
-        penalty by order id -- so it's simply re-run wherever it might
-        change what a person sees (their balance, the Delivery list) rather
-        than on a scheduler."""
+        penalty by order id. Only ever called from _close_expired_orders(),
+        right before it closes the day's orders: the customer penalty needs
+        to still see the order as 'awaiting_confirmation', so whichever
+        request happens to close it first must have applied this already."""
         now = datetime.now(TZINFO)
         for order in store().list_open_claimed_orders():
             if not is_delivery_expired(date.fromisoformat(order["order_date"]), now):
@@ -664,17 +676,24 @@ def create_app(
                 courier = (order.get("courier_email") or "").strip()
                 if courier:
                     _award_once(courier, f"{COURIER_NO_SHOW}:{order['id']}", REWARD_POINTS[COURIER_NO_SHOW])
-        # Only after the penalties above, which still need to see an unconfirmed
-        # order as 'awaiting_confirmation'.
-        _close_expired_orders()
 
     def _close_expired_orders() -> None:
         """Moves open orders for a day whose delivery window is over
         (is_delivery_expired: past 13:30 Luxembourg on that day) to
-        'expired' -- see OrderStore.expire_open_orders()."""
+        'expired' -- see OrderStore.expire_open_orders(). Applies the
+        no-show penalties first, every time, so the outcome never depends
+        on which request (Delivery list, Order History, admin panel, a
+        balance) happens to run this first after 13:30. An order that was
+        already delivered before anyone priced it gets a week's grace
+        (DELIVERED_UNPRICED_GRACE_DAYS) and no "expired" push: the food
+        did arrive."""
+        _apply_expired_order_penalties()
         now = svc().now()
         last_expired_day = now.date() if is_delivery_expired(now.date(), now) else now.date() - timedelta(days=1)
-        for order in store().expire_open_orders(last_expired_day.isoformat()):
+        last_delivered_day = last_expired_day - timedelta(days=DELIVERED_UNPRICED_GRACE_DAYS)
+        for order in store().expire_open_orders(last_expired_day.isoformat(), last_delivered_day.isoformat()):
+            if order.get("delivered_at"):
+                continue
             push_to(
                 order_people(order),
                 "order",
@@ -924,7 +943,7 @@ def create_app(
         # some other address is known).
         if not _is_proven(email):
             return jsonify({"error": "email_not_verified", "message": "Your University email must be verified first"}), 403
-        _apply_expired_order_penalties()
+        _close_expired_orders()
         return jsonify({"points": rewards().get_points(email)})
 
     # Part 90: Communication email and phone number are BOTH still purely
@@ -972,7 +991,7 @@ def create_app(
             abort(400, description=f"'action' must be one of {sorted(_CLAIMABLE_REWARD_ACTIONS)}")
         if not _is_proven(email):
             return jsonify({"error": "email_not_verified", "message": "Your University email must be verified first"}), 403
-        _apply_expired_order_penalties()
+        _close_expired_orders()
 
         if action == UNIVERSITY_EMAIL_VERIFIED:
             outcome = CLAIM_AWARDED if _award_once(email, action, REWARD_POINTS[action]) else CLAIM_ALREADY_AWARDED
@@ -1238,22 +1257,29 @@ def create_app(
         # -- wrapped here (unlike send_order_confirmation/
         # send_admin_notification above) because this one loops over an
         # unbounded, admin-uncontrolled list of addresses, so a single
-        # unexpected exception must not take down order creation OR skip
-        # notifying the remaining couriers.
+        # unexpected exception must not skip the remaining couriers. The
+        # loop runs off the request (MAIL_RUNNER): one Resend call per
+        # courier, each up to 10 s, must never hold a gunicorn worker.
+        subscribers = delivery_subscribers().list_subscribers()
         push_to(
-            [courier_email for courier_email, _lang in delivery_subscribers().list_subscribers()],
+            [courier_email for courier_email, _lang in subscribers],
             "newDelivery",
             "New order to deliver",
             f"{order['restaurant_name']}, {_building_only(order.get('delivery_location')) or 'Belval'}.",
             tag=f"delivery-{order['id']}",
         )
-        for courier_email, courier_lang in delivery_subscribers().list_subscribers():
-            try:
-                send_delivery_notification(courier_email, order, restopolis_url=restopolis_url, courier_lang=courier_lang)
-            except Exception:  # noqa: BLE001 -- see comment above: must never fail the order or the remaining sends
-                logging.getLogger("uniresto.mailer").warning(
-                    "[MAIL] failed to notify courier %s about order #%s", courier_email, order["id"], exc_info=True
-                )
+
+        def notify_couriers():
+            for courier_email, courier_lang in subscribers:
+                try:
+                    send_delivery_notification(courier_email, order, restopolis_url=restopolis_url, courier_lang=courier_lang)
+                except Exception:  # noqa: BLE001 -- see comment above: must never stop the remaining sends
+                    logging.getLogger("uniresto.mailer").warning(
+                        "[MAIL] failed to notify courier %s about order #%s", courier_email, order["id"], exc_info=True
+                    )
+
+        if subscribers:
+            app.config["MAIL_RUNNER"](notify_couriers)
 
         return jsonify(order), 201
 
@@ -1499,7 +1525,7 @@ def create_app(
         # an ever-growing history of rooms food was brought to is not
         # something any courier needs.
         oldest = now - timedelta(days=DELIVERY_LIST_DAYS)
-        _apply_expired_order_penalties()
+        _close_expired_orders()
         orders = [o for o in store().list_recent_orders() if _as_utc(o["created_at"]) >= oldest]
         for order in orders:
             # Part 81: the claiming courier's own contact info is exactly

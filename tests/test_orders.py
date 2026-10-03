@@ -598,6 +598,42 @@ def test_expire_open_orders_closes_only_past_unfinished_orders(store):
     assert store.confirm_order(awaiting, token) is False
 
 
+
+def test_delivered_but_unpriced_orders_close_only_after_the_grace_date(store):
+    def order(day):
+        return store.create_order("A", "A", day, [{"category": "x", "name": "y"}])
+
+    recent, old = order(datetime.date(2026, 9, 24)), order(datetime.date(2026, 9, 16))
+    for order_id in (recent, old):
+        store.mark_delivered(order_id)
+    open_one = order(datetime.date(2026, 9, 24))
+
+    closed = store.expire_open_orders("2026-09-24", delivered_up_to_date="2026-09-17")
+    assert {o["id"] for o in closed} == {old, open_one}
+    assert store.get_order(old)["status"] == "expired"
+    assert store.get_order(old)["delivered_at"] is not None  # the delivery fact stays
+    assert store.get_order(recent)["status"] == "pending"  # still inside its grace week
+
+
+def test_a_delivered_confirmed_order_is_never_expired(store):
+    order_id = store.create_order("A", "A", datetime.date(2026, 9, 1), [{"category": "x", "name": "y"}])
+    store.confirm_order(order_id, store.set_real_price(order_id, 5.0))
+    store.mark_delivered(order_id)
+    assert store.expire_open_orders("2026-09-24", delivered_up_to_date="2026-09-17") == []
+    assert store.get_order(order_id)["status"] == "confirmed"
+
+
+@pytest.mark.parametrize("close", ["cancel", "expire"])
+def test_mark_picked_up_refuses_a_cancelled_or_expired_order(store, close):
+    order_id = _basic_order_id(store)
+    store.mark_claimed(order_id)
+    if close == "cancel":
+        assert store.admin_cancel_order(order_id)
+    else:
+        assert store.expire_open_orders("2099-01-01")
+    assert store.mark_picked_up(order_id) is False
+    assert store.get_order(order_id)["picked_up_at"] is None
+
 class _Rows:
     def __init__(self, rows):
         self._rows = rows
@@ -615,7 +651,7 @@ class _AfterSelect:
         self._conn, self._hook, self._done = conn, hook, False
 
     def execute(self, sql, *args):
-        if not self._done and sql.lstrip().startswith("SELECT id FROM orders WHERE delivered_at IS NULL"):
+        if not self._done and sql.lstrip().startswith("SELECT id FROM orders WHERE status IN ('pending'"):
             self._done = True
             rows = self._conn.execute(sql, *args).fetchall()
             self._hook()

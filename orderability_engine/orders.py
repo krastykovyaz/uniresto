@@ -427,22 +427,23 @@ class OrderStore:
             return 0
         marks = ",".join("?" * len(addresses))
         return conn.execute(
-            f"SELECT COUNT(*) FROM orders WHERE order_date = ? AND status != 'cancelled' "
+            f"SELECT COUNT(*) FROM orders WHERE order_date = ? AND status NOT IN ('cancelled', 'expired') "
             f"AND (lower(customer_email) IN ({marks}) OR lower(reward_email) IN ({marks}))",
             (order_date.isoformat(), *addresses, *addresses),
         ).fetchone()[0]
 
     @staticmethod
     def _live_order_dates(conn: sqlite3.Connection, emails: list[str | None], from_date: date) -> set[str]:
-        """Distinct order_dates (today onward) this client has non-cancelled
-        orders for -- past days stop counting, or two old orders would
-        block ordering forever."""
+        """Distinct order_dates (today onward) this client has live orders
+        for -- cancelled and expired ones don't count (both are terminal:
+        nothing is still coming), and past days stop counting, or two old
+        orders would block ordering forever."""
         addresses = OrderStore._identity_addresses(emails)
         if not addresses:
             return set()
         marks = ",".join("?" * len(addresses))
         rows = conn.execute(
-            f"SELECT DISTINCT order_date FROM orders WHERE order_date >= ? AND status != 'cancelled' "
+            f"SELECT DISTINCT order_date FROM orders WHERE order_date >= ? AND status NOT IN ('cancelled', 'expired') "
             f"AND (lower(customer_email) IN ({marks}) OR lower(reward_email) IN ({marks}))",
             (from_date.isoformat(), *addresses, *addresses),
         ).fetchall()
@@ -541,7 +542,7 @@ class OrderStore:
             ids = [r[0] for r in self._conn.execute("SELECT id FROM orders ORDER BY id DESC LIMIT ?", (limit,)).fetchall()]
         return [self.get_order(i) for i in ids]
 
-    def expire_open_orders(self, up_to_date: str) -> list[dict]:
+    def expire_open_orders(self, up_to_date: str, delivered_up_to_date: str | None = None) -> list[dict]:
         """Closes every order for a day that's already over (order_date up
         to and including `up_to_date`, an ISO date) that never got past the
         admin/customer steps -- still pending, reviewing or awaiting the
@@ -558,23 +559,25 @@ class OrderStore:
         repeats the status/delivered guard itself -- SQLite evaluates it under the
         write lock -- and only rows it really changed (rowcount 1) are returned:
         a just-confirmed order is never overwritten, and an order closed by the
-        other worker is not reported (and pushed) a second time."""
+        other worker is not reported (and pushed) a second time.
+
+        An order a courier already delivered before the admin priced it (or
+        the customer confirmed) is real food in someone's hands: the admin
+        may still price it later that day or the next, so it is not closed at
+        13:30 with the rest. It only closes once its day is on or before
+        `delivered_up_to_date` (the caller passes a date a week back), so it
+        can't sit open forever either. None leaves delivered orders alone."""
         closed = []
         with self._lock, self._transaction() as conn:
-            ids = [
-                r[0]
-                for r in conn.execute(
-                    "SELECT id FROM orders WHERE delivered_at IS NULL AND order_date <= ? "
-                    "AND status IN ('pending', 'reviewing', 'awaiting_confirmation')",
-                    (up_to_date,),
-                ).fetchall()
-            ]
+            # delivered_up_to_date None: "" sorts before every ISO date, so no delivered row matches.
+            due = (
+                "status IN ('pending', 'reviewing', 'awaiting_confirmation') AND ("
+                "(delivered_at IS NULL AND order_date <= ?) OR (delivered_at IS NOT NULL AND order_date <= ?))"
+            )
+            dates = (up_to_date, delivered_up_to_date or "")
+            ids = [r[0] for r in conn.execute(f"SELECT id FROM orders WHERE {due}", dates).fetchall()]
             for order_id in ids:
-                cur = conn.execute(
-                    "UPDATE orders SET status = 'expired' WHERE id = ? AND delivered_at IS NULL "
-                    "AND status IN ('pending', 'reviewing', 'awaiting_confirmation')",
-                    (order_id,),
-                )
+                cur = conn.execute(f"UPDATE orders SET status = 'expired' WHERE id = ? AND {due}", (order_id, *dates))
                 if cur.rowcount == 1:
                     closed.append(order_id)
         return [self.get_order(i) for i in closed]
@@ -666,14 +669,18 @@ class OrderStore:
         claimed_at (claiming is just "I'll do this", not "I have it in
         hand"). True only the FIRST time this succeeds for a given order
         (claimed_at must already be set, picked_up_at must still be NULL,
-        and it must not already be delivered) -- app.py uses that to
-        decide whether to send the customer's "on its way" email, so a
-        double-tap can't send it twice."""
+        it must not already be delivered, and it must not be cancelled or
+        expired) -- app.py uses that to decide whether to send the
+        customer's "on its way" email, so a double-tap can't send it twice
+        and a stale courier screen can't send it for a called-off order.
+        The status is checked in the UPDATE itself, not by the caller, so
+        a cancel or expiry by the other worker in between still counts."""
         now = datetime.now(timezone.utc).isoformat()
         with self._lock, self._transaction() as conn:
             cur = conn.execute(
                 "UPDATE orders SET picked_up_at = ? WHERE id = ? AND claimed_at IS NOT NULL "
-                "AND picked_up_at IS NULL AND delivered_at IS NULL",
+                "AND picked_up_at IS NULL AND delivered_at IS NULL "
+                "AND status NOT IN ('cancelled', 'expired')",
                 (now, order_id),
             )
             return cur.rowcount > 0

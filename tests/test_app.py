@@ -126,6 +126,9 @@ def _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, 
         rate_limit_store=rate_limit_store,
         push_store=PushSubscriptionStore(tmp_path / "orders.db"),
         push_sender=lambda email, kind, title, body, url="/", tag=None: pushes.append((email, kind, title, body)),
+        # Courier emails normally go out on a background pool; here they
+        # run at once, so a test sees them as soon as the request returns.
+        mail_runner=lambda fn, *args, **kwargs: fn(*args, **kwargs),
         # Explicit ":memory:" instances -- isolated per test, never the
         # real email_verification.db/delivery_email_verification.db/
         # checkout_email_verification.db files create_app() defaults to
@@ -4243,3 +4246,118 @@ def test_a_verified_ltc_address_can_act_as_a_courier(client):
 def test_an_unverified_ltc_address_still_cannot(client):
     order_id = _create_basic_order(client)
     assert _claim(client, order_id, courier_email="nobody@ltc.lu").status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Audit fixes 3, 4, 5, 10, 11
+# ---------------------------------------------------------------------------
+
+
+def _at(client, when):
+    client.application.config["ORDERABILITY_SERVICE"]._now_override = when
+
+
+def test_order_history_closing_the_order_first_still_charges_the_no_confirm_penalty(client):
+    # The penalty used to depend on which request expired the order first:
+    # Order History closed it without looking, so the -1 Luni never came.
+    _give(client, "student@uni.lu", 3)
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    _claim_quietly(client, order_id)
+    _price(client, order_id)
+    _at(client, datetime.datetime(2026, 9, 24, 13, 31, tzinfo=TZINFO))
+    assert client.get(f"/api/orders/{order_id}").get_json()["status"] == "expired"
+    assert _points(client, "student@uni.lu") == 2
+
+
+def test_the_admin_panel_closing_the_order_first_still_charges_the_no_confirm_penalty(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    _give(client, "student@uni.lu", 3)
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    _claim_quietly(client, order_id)
+    _price(client, order_id)
+    _at(client, datetime.datetime(2026, 9, 24, 13, 31, tzinfo=TZINFO))
+    client.get("/admin/orders?token=correct-token")
+    assert client.application.config["ORDER_STORE"].get_order(order_id)["status"] == "expired"
+    assert _points(client, "student@uni.lu") == 2
+
+
+@pytest.mark.parametrize("close", ["cancelled", "expired"])
+def test_a_stale_courier_screen_cannot_pick_up_a_called_off_order(client, close):
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    _claim_quietly(client, order_id)
+    store = client.application.config["ORDER_STORE"]
+    if close == "cancelled":
+        store.admin_cancel_order(order_id)
+    else:
+        _at(client, datetime.datetime(2026, 9, 24, 13, 31, tzinfo=TZINFO))
+        client.get("/api/delivery/orders")
+    assert store.get_order(order_id)["status"] == close
+    pushes_before = len(client.application.config["PUSH_LOG"])
+    with patch("app.send_order_out_for_delivery") as mock_email:
+        resp = _pickup(client, order_id)
+    assert resp.status_code == 409
+    mock_email.assert_not_called()
+    assert len(client.application.config["PUSH_LOG"]) == pushes_before
+
+
+def test_an_expired_order_no_longer_counts_against_the_days_limit(client):
+    first = _seed_order_on(client, "2026-09-30")
+    _seed_order_on(client, "2026-10-01")
+    with patch("app.send_admin_notification", return_value=(True, None)):
+        assert client.post("/api/orders", json=_bare_order()).status_code == 409
+        client.application.config["ORDER_STORE"].expire_open_orders("2026-09-30")
+        assert client.application.config["ORDER_STORE"].get_order(first)["status"] == "expired"
+        assert client.post("/api/orders", json=_bare_order()).status_code == 201
+
+
+def test_an_order_delivered_before_pricing_stays_open_for_a_week_then_closes_quietly(client):
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")  # for 2026-09-24
+    store = client.application.config["ORDER_STORE"]
+    store.mark_delivered(order_id)
+    pushes = client.application.config["PUSH_LOG"]
+
+    _at(client, datetime.datetime(2026, 9, 24, 13, 31, tzinfo=TZINFO))
+    client.get("/api/delivery/orders")
+    assert store.get_order(order_id)["status"] == "pending"  # the admin can still price it
+
+    _at(client, datetime.datetime(2026, 10, 1, 13, 31, tzinfo=TZINFO))  # 7 days after
+    client.get("/api/delivery/orders")
+    assert store.get_order(order_id)["status"] == "expired"
+    assert store.get_order(order_id)["delivered_at"] is not None
+    assert not [p for p in pushes if p[2] == "Your order expired"]
+
+
+def test_courier_emails_are_handed_to_the_background_sender(client):
+    client.application.config["DELIVERY_SUBSCRIBER_STORE"].add("courier@uni.lu", "en")
+    queued = []
+    client.application.config["MAIL_RUNNER"] = lambda fn, *a, **kw: queued.append((fn, a, kw))
+    with patch("app.send_admin_notification", return_value=(True, None)), patch(
+        "app.send_order_confirmation", return_value=(True, None)
+    ), patch("app.send_delivery_notification", return_value=(True, None)) as mock_courier:
+        resp = client.post("/api/orders", json=_bare_order())
+        assert resp.status_code == 201
+        mock_courier.assert_not_called()  # nothing sent inside the request
+        assert len(queued) == 1
+        fn, a, kw = queued[0]
+        fn(*a, **kw)
+    mock_courier.assert_called_once()
+    assert mock_courier.call_args[0][0] == "courier@uni.lu"
+
+
+def test_a_courier_email_that_raises_does_not_stop_the_others(client):
+    store = client.application.config["DELIVERY_SUBSCRIBER_STORE"]
+    store.add("courier@uni.lu", "en")
+    store.add("other.courier@uni.lu", "en")
+    calls = []
+
+    def flaky(email, order, **kwargs):
+        calls.append(email)
+        if len(calls) == 1:
+            raise RuntimeError("boom")
+        return True, None
+
+    with patch("app.send_admin_notification", return_value=(True, None)), patch(
+        "app.send_order_confirmation", return_value=(True, None)
+    ), patch("app.send_delivery_notification", side_effect=flaky):
+        assert client.post("/api/orders", json=_bare_order()).status_code == 201
+    assert sorted(calls) == ["courier@uni.lu", "other.courier@uni.lu"]

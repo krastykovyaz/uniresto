@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 # app.py calls load_dotenv() at import time, which picks up the server's real
-# .env (admin token, Resend key, Telegram bot) and made tests send real emails
+# .env (admin token, Resend key, Telegram bot, push keys) and made tests send real emails
 # and Telegram messages. load_dotenv() never overrides a key that's already
 # set, and every reader treats "" as unset -- so blanking them here, before
 # any test module imports app, keeps the real values out of the test run.
@@ -18,6 +18,11 @@ SECRET_ENV_KEYS = (
     "RESEND_FROM_NAME",
     "TELEGRAM_BOT_TOKEN",
     "TELEGRAM_CHAT_ID",
+    # Web push: the private key signs real pushes, and with these set the
+    # push routes behave differently from a machine without .env.
+    "VAPID_PRIVATE_KEY",
+    "VAPID_PUBLIC_KEY",
+    "VAPID_SUBJECT",
 )
 for _key in SECRET_ENV_KEYS:
     os.environ[_key] = ""
