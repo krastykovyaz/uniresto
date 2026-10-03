@@ -5604,6 +5604,9 @@ const DELIVERY_BUILDINGS = [
   { code: "building_g", key: "deliveryBuildingG", suffixKey: null, label: "Building G" },
   { code: "jfk_building", key: "deliveryBuildingJfk", suffixKey: "deliveryBuildingNearTram", label: "JFK Building (near Tram stop)" },
   { code: "weicker_building", key: "deliveryBuildingWeicker", suffixKey: null, label: "Weicker Building" },
+  // The Lycée Technique du Centre's Annexe Kirchberg (6, rue Coudenhove-Kalergi), whose restaurant is on
+  // the app too: pupils and staff there can have an order brought to their own building.
+  { code: "ltc_annex", key: "deliveryBuildingLtc", suffixKey: "deliveryBuildingKirchbergAnnex", label: "Lycée Technique du Centre (Kirchberg annex)" },
 ];
 
 function buildingOptionLabel(building) {
