@@ -596,3 +596,54 @@ def test_expire_open_orders_closes_only_past_unfinished_orders(store):
     assert store.get_order(future)["status"] == "pending"
     # An expired order's old email link no longer works.
     assert store.confirm_order(awaiting, token) is False
+
+
+class _Rows:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def fetchall(self):
+        return self._rows
+
+
+class _AfterSelect:
+    """Wraps a sqlite connection and runs `hook` right after the first order-listing SELECT of
+    expire_open_orders has been read in full -- the moment another gunicorn worker could act on
+    the same orders (the SELECT is fully fetched first so it holds no lock while the hook writes)."""
+
+    def __init__(self, conn, hook):
+        self._conn, self._hook, self._done = conn, hook, False
+
+    def execute(self, sql, *args):
+        if not self._done and sql.lstrip().startswith("SELECT id FROM orders WHERE delivered_at IS NULL"):
+            self._done = True
+            rows = self._conn.execute(sql, *args).fetchall()
+            self._hook()
+            return _Rows(rows)
+        return self._conn.execute(sql, *args)
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+
+def test_expiry_never_overwrites_an_order_confirmed_at_the_same_moment(tmp_path):
+    a, b = OrderStore(tmp_path / "orders.db"), OrderStore(tmp_path / "orders.db")
+    day = datetime.date(2026, 9, 24)
+    order = a.create_order("A", "A", day, [{"category": "x", "name": "y"}])
+    token = a.set_real_price(order, 5.0)
+    # worker B's customer confirms after worker A listed the order as still open
+    a._conn = _AfterSelect(a._conn, lambda: b.confirm_order(order, token))
+    assert a.expire_open_orders("2026-09-24") == []
+    a._conn = a._conn._conn
+    assert a.get_order(order)["status"] == "confirmed"
+
+
+def test_two_workers_expiring_the_same_order_report_it_once(tmp_path):
+    a, b = OrderStore(tmp_path / "orders.db"), OrderStore(tmp_path / "orders.db")
+    order = a.create_order("A", "A", datetime.date(2026, 9, 24), [{"category": "x", "name": "y"}])
+    # worker B closes it after worker A selected it
+    a._conn = _AfterSelect(a._conn, lambda: b.expire_open_orders("2026-09-24"))
+    assert a.expire_open_orders("2026-09-24") == []
+    a._conn = a._conn._conn
+    assert a.get_order(order)["status"] == "expired"
+    assert b.expire_open_orders("2026-09-24") == []  # and nothing left for a later call

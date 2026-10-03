@@ -114,8 +114,11 @@ ADMIN_LOOKAHEAD_DAYS = 10
 # Campus-only audience: the checkout email field (Part 23) must be a
 # University of Luxembourg address. Both domains Restopolis itself is
 # scoped to (student and staff/general uni.lu accounts) -- not derived
-# from any Restopolis data, this is OUR OWN validation rule.
-ALLOWED_EMAIL_DOMAINS = ("@uni.lu", "@student.uni.lu")
+# from any Restopolis data, this is OUR OWN validation rule. "@ltc.lu" (Lycée Technique du
+# Centre, whose Annexe Kirchberg restaurant is on the app too) was added on the owner's say-so
+# 2026-10-03; the address is still proven by the emailed code like any other. Kept identical to
+# ALLOWED_EMAIL_DOMAINS in static/app.js (tests_js/email-domains.test.mjs checks it).
+ALLOWED_EMAIL_DOMAINS = ("@uni.lu", "@student.uni.lu", "@ltc.lu")
 # Most cached dish share cards kept on disk (see _og_image_file).
 OG_CACHE_MAX_FILES = 1000
 
@@ -130,48 +133,48 @@ OG_CACHE_MAX_FILES = 1000
 # first place.
 OG_PREVIEW_TEXT = {
     "en": {
-        "title": "UniResto · Campus Kirchberg",
-        "description": "Order lunch from University of Luxembourg Campus Kirchberg restaurants — real menus, real prices.",
+        "title": "UniResto · Cluster Kirchberg",
+        "description": "Order lunch from Kirchberg restaurants — real menus, real prices.",
     },
     "zh": {
         "title": "UniResto · Kirchberg 校区",
-        "description": "从卢森堡大学基希贝格校区的餐厅订午餐——真实菜单，真实价格。",
+        "description": "从基希贝格的餐厅订午餐——真实菜单，真实价格。",
     },
     "hi": {
         "title": "UniResto · कैम्पस किरखबर्ग",
-        "description": "लक्ज़मबर्ग विश्वविद्यालय, कैंपस किरखबर्ग के रेस्तराँ से लंच ऑर्डर करें — असली मेनू, असली कीमतें।",
+        "description": "किरखबर्ग के रेस्तराँ से लंच ऑर्डर करें — असली मेनू, असली कीमतें।",
     },
     "es": {
-        "title": "UniResto · Campus Kirchberg",
-        "description": "Pide el almuerzo en los restaurantes de la Universidad de Luxemburgo, Campus Kirchberg — menús reales, precios reales.",
+        "title": "UniResto · Cluster Kirchberg",
+        "description": "Pide el almuerzo en los restaurantes de Kirchberg — menús reales, precios reales.",
     },
     "fr": {
-        "title": "UniResto · Campus Kirchberg",
-        "description": "Commandez votre déjeuner dans les restaurants de l'Université du Luxembourg, Campus Kirchberg — vrais menus, vrais prix.",
+        "title": "UniResto · Cluster Kirchberg",
+        "description": "Commandez votre déjeuner dans les restaurants de Kirchberg — vrais menus, vrais prix.",
     },
     "ar": {
         "title": "UniResto · حرم كيرشبرغ",
-        "description": "اطلب غداءك من مطاعم جامعة لوكسمبورغ، حرم كيرشبرغ — قوائم حقيقية وأسعار حقيقية.",
+        "description": "اطلب غداءك من مطاعم كيرشبرغ — قوائم حقيقية وأسعار حقيقية.",
     },
     "bn": {
         "title": "UniResto · ক্যাম্পাস কির্শবের্গ",
-        "description": "লুক্সেমবার্গ বিশ্ববিদ্যালয়ের কির্শবের্গ ক্যাম্পাসের রেস্তোরাঁ থেকে লাঞ্চ অর্ডার করুন — সত্যিকারের মেনু, সত্যিকারের দাম।",
+        "description": "কির্শবের্গের রেস্তোরাঁ থেকে দুপুরের খাবার অর্ডার করুন — আসল মেনু, আসল দাম।",
     },
     "pt": {
-        "title": "UniResto · Campus Kirchberg",
-        "description": "Peça o seu almoço nos restaurantes da Universidade do Luxemburgo, Campus Kirchberg — menus reais, preços reais.",
+        "title": "UniResto · Cluster Kirchberg",
+        "description": "Peça o seu almoço nos restaurantes de Kirchberg — menus reais, preços reais.",
     },
     "ru": {
         "title": "UniResto · Кампус Кирхберг",
-        "description": "Заказывайте обед в ресторанах Люксембургского университета, кампус Кирхберг — настоящие меню, настоящие цены.",
+        "description": "Заказывайте обед в ресторанах Кирхберга — настоящие меню, настоящие цены.",
     },
     "ur": {
         "title": "UniResto · کیمپس کِرشبرگ",
-        "description": "لکسمبرگ یونیورسٹی، کیمپس کِرشبرگ کے ریستورانوں سے لنچ آرڈر کریں — حقیقی مینو، حقیقی قیمتیں۔",
+        "description": "کِرشبرگ کے ریستورانوں سے لنچ آرڈر کریں — حقیقی مینو، حقیقی قیمتیں۔",
     },
     "lb": {
-        "title": "UniResto · Campus Kirchberg",
-        "description": "Bestell Mëttegiessen bei de Restauranten vun der Uni Lëtzebuerg, Campus Kirchberg — richtege Menüen, richtege Präisser.",
+        "title": "UniResto · Cluster Kirchberg",
+        "description": "Bestell Mëttegiessen bei de Restauranten um Kirchberg — richtege Menüen, richtege Präisser.",
     },
 }
 
@@ -732,7 +735,10 @@ def create_app(
     @app.get("/api/restaurants")
     def api_restaurants():
         return jsonify(
-            [{"slug": slug, "code": r.code, "name": r.name, "building": r.building} for slug, r in by_slug.items()]
+            [
+                {"slug": slug, "code": r.code, "name": r.name, "building": r.building, "display_name": r.display_name, "kind": r.kind}
+                for slug, r in by_slug.items()
+            ]
         )
 
     @app.get("/api/restaurants/<slug>/status")

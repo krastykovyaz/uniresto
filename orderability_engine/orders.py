@@ -550,7 +550,16 @@ class OrderStore:
         the admin panel, the customer's orders and the delivery list.
         Confirmed orders are left alone: those are real deliveries (or
         courier no-shows) and keep their status. Returns the orders it just closed
-        (so the caller can tell their owners)."""
+        (so the caller can tell their owners).
+
+        Both gunicorn workers run this, and self._lock only serialises threads of
+        ONE process, so between the SELECT and an UPDATE another worker can
+        confirm, cancel or already expire the same order. Each UPDATE therefore
+        repeats the status/delivered guard itself -- SQLite evaluates it under the
+        write lock -- and only rows it really changed (rowcount 1) are returned:
+        a just-confirmed order is never overwritten, and an order closed by the
+        other worker is not reported (and pushed) a second time."""
+        closed = []
         with self._lock, self._transaction() as conn:
             ids = [
                 r[0]
@@ -561,8 +570,14 @@ class OrderStore:
                 ).fetchall()
             ]
             for order_id in ids:
-                conn.execute("UPDATE orders SET status = 'expired' WHERE id = ?", (order_id,))
-        return [self.get_order(i) for i in ids]
+                cur = conn.execute(
+                    "UPDATE orders SET status = 'expired' WHERE id = ? AND delivered_at IS NULL "
+                    "AND status IN ('pending', 'reviewing', 'awaiting_confirmation')",
+                    (order_id,),
+                )
+                if cur.rowcount == 1:
+                    closed.append(order_id)
+        return [self.get_order(i) for i in closed]
 
     def list_open_claimed_orders(self) -> list[dict]:
         """Orders a courier claimed that were never delivered and are

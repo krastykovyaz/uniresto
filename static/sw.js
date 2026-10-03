@@ -23,15 +23,37 @@ self.addEventListener("push", (event) => {
   );
 });
 
+// A tap opens the notification's page in the app's own window: a visible one if there is one, taking it
+// to the page; otherwise a new window. Only UniResto's own origin (never /admin, never another site) --
+// anything else falls back to the start page.
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = (event.notification.data && event.notification.data.url) || "/";
+  const origin = self.location.origin;
+  let target = origin + "/";
+  try {
+    const wanted = new URL((event.notification.data && event.notification.data.url) || "/", origin);
+    if (wanted.origin === origin) target = wanted.href;
+  } catch {
+    /* unparseable url -- the start page */
+  }
   event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
-      for (const w of windows) {
-        if ("focus" in w) return w.focus();
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(async (windows) => {
+      const ours = windows.filter((w) => {
+        try {
+          const u = new URL(w.url);
+          return u.origin === origin && !u.pathname.startsWith("/admin");
+        } catch {
+          return false;
+        }
+      });
+      const win = ours.find((w) => w.visibilityState === "visible") || ours[0];
+      if (!win) return self.clients.openWindow(target);
+      try {
+        if (win.url !== target && "navigate" in win) await win.navigate(target);
+      } catch {
+        /* a window we don't control can't be navigated -- just bring it to the front */
       }
-      return self.clients.openWindow(url);
+      return win.focus();
     })
   );
 });

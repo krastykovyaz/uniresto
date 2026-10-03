@@ -161,7 +161,7 @@ def test_api_restaurants(client):
     resp = client.get("/api/restaurants")
     assert resp.status_code == 200
     slugs = {r["slug"] for r in resp.get_json()}
-    assert slugs == {"altius", "brasserie-johns"}
+    assert slugs == {"altius", "brasserie-johns", "ltc-k"}
 
 
 def test_api_restaurants_includes_building(client):
@@ -169,6 +169,14 @@ def test_api_restaurants_includes_building(client):
     by_slug = {r["slug"]: r for r in resp.get_json()}
     assert by_slug["altius"]["building"] == "Main building"
     assert by_slug["brasserie-johns"]["building"] == "JFK building"
+    assert by_slug["ltc-k"]["building"] == "Annexe Kirchberg"
+
+
+def test_api_restaurants_carries_display_name_and_kind_only_where_set(client):
+    by_slug = {r["slug"]: r for r in client.get("/api/restaurants").get_json()}
+    assert (by_slug["ltc-k"]["display_name"], by_slug["ltc-k"]["kind"]) == ("Lycée Technique du Centre", "school")
+    for campus in ("altius", "brasserie-johns"):
+        assert by_slug[campus]["display_name"] is None and by_slug[campus]["kind"] is None
 
 
 def test_api_status_available(client):
@@ -2697,14 +2705,14 @@ def test_root_localizes_the_open_graph_preview_to_the_lang_param(client):
     body = resp.data.decode()
     assert 'lang="fr"' in body
     assert "Commandez votre déjeuner" in body
-    assert "Order lunch from University" not in body
+    assert "Order lunch from Kirchberg restaurants" not in body
 
 
 def test_root_falls_back_to_english_for_an_unknown_lang_param(client):
     resp = client.get("/?lang=klingon")
     body = resp.data.decode()
     assert 'lang="en"' in body
-    assert "Order lunch from University" in body
+    assert "Order lunch from Kirchberg restaurants" in body
 
 
 def test_service_worker_is_served_from_the_root_with_site_wide_scope(client):
@@ -3471,7 +3479,7 @@ def _item(client, category_startswith, name_contains=""):
 
 def test_the_plain_link_keeps_the_generic_preview(client):
     html = client.get("/").data.decode()
-    assert _meta(html, "og:title") == "UniResto · Campus Kirchberg"
+    assert _meta(html, "og:title") == "UniResto · Cluster Kirchberg"
     assert _meta(html, "og:image").endswith("/static/og-image.png")
 
 
@@ -3526,7 +3534,7 @@ def test_a_broken_dish_link_falls_back_to_the_generic_preview(client, query):
     resp = client.get("/" + query)
     assert resp.status_code == 200
     html = resp.data.decode()
-    assert _meta(html, "og:title") == "UniResto · Campus Kirchberg"
+    assert _meta(html, "og:title") == "UniResto · Cluster Kirchberg"
     assert "<script>alert(1)" not in html
 
 
@@ -3930,7 +3938,7 @@ def test_visit_and_track_share_one_rate_limit_budget(client):
 # Web push (Profile > Notifications)
 # ---------------------------------------------------------------------------
 
-PUSH_SUB = {"endpoint": "https://push.example.com/dev1", "keys": {"p256dh": "pk", "auth": "ak"}}
+PUSH_SUB = {"endpoint": "https://fcm.googleapis.com/fcm/send/dev1", "keys": {"p256dh": "pk", "auth": "ak"}}
 
 
 @pytest.fixture
@@ -3965,6 +3973,13 @@ def test_subscribe_needs_a_proven_email_not_just_any_email(client, push_on):
     assert client.application.config["PUSH_STORE"].count() == 0
 
 
+def test_subscribe_refuses_an_endpoint_that_is_not_a_push_service(client, push_on):
+    for endpoint in ("https://push.example.com/x", "https://127.0.0.1/x", "http://fcm.googleapis.com/x"):
+        resp = _subscribe(client, subscription={"endpoint": endpoint, "keys": PUSH_SUB["keys"]})
+        assert resp.status_code == 400, endpoint
+    assert client.application.config["PUSH_STORE"].count() == 0
+
+
 def test_subscribe_is_off_without_vapid_keys(client):
     assert _subscribe(client).status_code == 503
 
@@ -3978,12 +3993,12 @@ def test_subscribe_rejects_a_malformed_subscription(client, push_on):
 def test_prefs_and_unsubscribe_only_touch_your_own_device(client, push_on):
     _subscribe(client)
     store = client.application.config["PUSH_STORE"]
-    store.upsert("courier@uni.lu", "https://push.example.com/theirs", "p", "a", {})
+    store.upsert("courier@uni.lu", "https://fcm.googleapis.com/fcm/send/theirs", "p", "a", {})
     mine = {"email": "student@uni.lu", "endpoint": PUSH_SUB["endpoint"]}
     assert client.post("/api/push/prefs", json={**mine, "prefs": {"order": False}}).status_code == 200
     assert store.subscriptions_for("student@uni.lu", "order") == []
     # another person's device is a 404, and unsubscribing it is a no-op
-    theirs = {"email": "student@uni.lu", "endpoint": "https://push.example.com/theirs"}
+    theirs = {"email": "student@uni.lu", "endpoint": "https://fcm.googleapis.com/fcm/send/theirs"}
     assert client.post("/api/push/prefs", json={**theirs, "prefs": {}}).status_code == 404
     client.post("/api/push/unsubscribe", json=theirs)
     assert len(store.subscriptions_for("courier@uni.lu", "order")) == 1
@@ -4044,15 +4059,187 @@ def test_new_orders_push_registered_couriers_with_the_building_only(client):
     assert "Building A" in couriers[0][2] and "1.01" not in couriers[0][2]
 
 
-def test_earning_luni_pushes_once(client):
+def test_earning_luni_pushes_each_person_their_amount_once(client):
     log = client.application.config["PUSH_LOG"]
-    order_id = _create_basic_order(client)
+    order_id = _create_basic_order(client)  # customer student@uni.lu
     _claim(client, order_id, courier_email="courier@uni.lu")
     _pickup(client, order_id)
     log.clear()
     _mark_delivered(client, order_id)
-    luni = [(e, t) for e, k, t, _b in log if k == "luni"]
-    assert ("courier@uni.lu", "You earned 2 Luni") in luni or any(t.startswith("You earned") for _e, t in luni)
+    luni = sorted((e, t) for e, k, t, _b in log if k == "luni")
+    # a completed delivery pays the courier and the customer one Luni each (rewards.REWARD_POINTS)
+    assert luni == [("courier@uni.lu", "You earned 1 Luni"), ("student@uni.lu", "You earned 1 Luni")]
     log.clear()
     _mark_delivered(client, order_id)  # award_once: no second payout, no second push
     assert [k for _e, k, _t, _b in log if k == "luni"] == []
+
+
+# ---------------------------------------------------------------------------
+# Order expiry (_close_expired_orders): who triggers it, when, and who gets told
+# ---------------------------------------------------------------------------
+
+_EXPIRY_CALLERS = {
+    "order_read": lambda c, order_id: c.get(f"/api/orders/{order_id}"),
+    "admin_list": lambda c, order_id: c.get("/admin/orders?token=correct-token"),
+    "delivery_list": lambda c, order_id: c.get("/api/delivery/orders"),
+}
+
+
+def _set_now(client, year, month, day, hour, minute):
+    client.application.config["ORDERABILITY_SERVICE"]._now_override = datetime.datetime(year, month, day, hour, minute, tzinfo=TZINFO)
+
+
+def _expired_pushes(client):
+    return [(e, t) for e, k, t, _b in client.application.config["PUSH_LOG"] if t == "Your order expired"]
+
+
+def _order_status(client, order_id):
+    return client.application.config["ORDER_STORE"].get_order(order_id)["status"]
+
+
+@pytest.mark.parametrize("caller", sorted(_EXPIRY_CALLERS))
+def test_every_expiry_trigger_closes_the_order_after_1330_and_tells_its_owner_once(client, monkeypatch, caller):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    order_id = _create_basic_order(client)  # for 2026-09-24
+    client.application.config["PUSH_LOG"].clear()
+    _set_now(client, 2026, 9, 24, 13, 31)
+    _EXPIRY_CALLERS[caller](client, order_id)
+    assert _order_status(client, order_id) == "expired"
+    assert _expired_pushes(client) == [("student@uni.lu", "Your order expired")]
+    _EXPIRY_CALLERS[caller](client, order_id)  # a second trigger finds nothing left to close
+    assert len(_expired_pushes(client)) == 1
+
+
+@pytest.mark.parametrize("caller", sorted(_EXPIRY_CALLERS))
+def test_nothing_expires_before_1330_on_the_day(client, monkeypatch, caller):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    order_id = _create_basic_order(client)
+    client.application.config["PUSH_LOG"].clear()
+    _set_now(client, 2026, 9, 24, 13, 29)
+    _EXPIRY_CALLERS[caller](client, order_id)
+    assert _order_status(client, order_id) == "pending"
+    assert _expired_pushes(client) == []
+
+
+def test_the_day_after_everything_for_the_day_is_expired(client):
+    order_id = _create_basic_order(client)
+    client.application.config["PUSH_LOG"].clear()
+    _set_now(client, 2026, 9, 25, 7, 0)  # next morning: the 24th's window is long over
+    client.get(f"/api/orders/{order_id}")
+    assert _order_status(client, order_id) == "expired"
+    assert len(_expired_pushes(client)) == 1
+
+
+def test_orders_for_a_later_day_are_left_alone(client):
+    later = client.application.config["ORDER_STORE"].create_order(
+        "UDL-CKB-ALTIUS", "Altius", datetime.date(2026, 9, 25), [{"category": "x", "name": "y", "quantity": 1}], "Building A", customer_email="student@uni.lu"
+    )
+    _set_now(client, 2026, 9, 24, 14, 0)
+    client.get(f"/api/orders/{later}")
+    assert _order_status(client, later) == "pending"
+
+
+def test_two_orders_expiring_together_each_get_their_own_push(client):
+    first, second = _create_basic_order(client), _create_basic_order(client, customer_email="courier@uni.lu")
+    client.application.config["PUSH_LOG"].clear()
+    _set_now(client, 2026, 9, 24, 14, 0)
+    client.get(f"/api/orders/{first}")
+    assert _order_status(client, first) == _order_status(client, second) == "expired"
+    assert sorted(e for e, _t in _expired_pushes(client)) == ["courier@uni.lu", "student@uni.lu"]
+
+
+def test_a_customer_with_two_spellings_of_their_email_is_told_once(client):
+    order_id = client.application.config["ORDER_STORE"].create_order(
+        "UDL-CKB-ALTIUS", "Altius", datetime.date(2026, 9, 24), [{"category": "x", "name": "y", "quantity": 1}], "Building A",
+        customer_email="student@uni.lu", reward_email="Student+x@uni.lu",
+    )
+    client.application.config["PUSH_LOG"].clear()
+    _set_now(client, 2026, 9, 24, 14, 0)
+    client.get(f"/api/orders/{order_id}")
+    assert _expired_pushes(client) == [("student@uni.lu", "Your order expired")]
+
+
+def test_a_confirmed_order_is_never_expired_and_its_owner_is_not_told(client):
+    order_id = _create_basic_order(client)
+    store = client.application.config["ORDER_STORE"]
+    store.confirm_order(order_id, store.set_real_price(order_id, 5.0))
+    client.application.config["PUSH_LOG"].clear()
+    _set_now(client, 2026, 9, 24, 14, 0)
+    client.get(f"/api/orders/{order_id}")
+    assert _order_status(client, order_id) == "confirmed"
+    assert _expired_pushes(client) == []
+
+
+def test_an_unconfirmed_priced_order_expires_but_a_delivered_one_does_not(client):
+    awaiting, delivered = _create_basic_order(client), _create_basic_order(client, customer_email="courier@uni.lu")
+    store = client.application.config["ORDER_STORE"]
+    store.set_real_price(awaiting, 5.0)  # awaiting_confirmation
+    store.mark_delivered(delivered)
+    _set_now(client, 2026, 9, 24, 14, 0)
+    client.get(f"/api/orders/{awaiting}")
+    assert _order_status(client, awaiting) == "expired"
+    assert _order_status(client, delivered) == "pending"  # delivered_at is set: left as it was
+
+
+def test_the_no_show_penalty_still_sees_an_unconfirmed_order_before_it_expires(client):
+    """The penalty step must run first: it only counts an order still 'awaiting_confirmation'."""
+    order_id = _create_basic_order(client)
+    store = client.application.config["ORDER_STORE"]
+    rewards = client.application.config["REWARD_STORE"]
+    rewards.add_points("student@uni.lu", 3)  # a balance never goes below 0, so start with something to lose
+    _claim(client, order_id)
+    store.set_real_price(order_id, 5.0)
+    _set_now(client, 2026, 9, 24, 14, 0)
+    client.get("/api/delivery/orders")  # the route that applies penalties and then closes
+    assert _order_status(client, order_id) == "expired"
+    assert rewards.get_points("student@uni.lu") == 2  # the customer who never confirmed lost one Luni
+    client.get("/api/delivery/orders")
+    assert rewards.get_points("student@uni.lu") == 2  # and only once (award_once)
+
+
+def test_a_failing_push_sender_never_breaks_the_request_that_triggered_it(client):
+    order_id = _create_basic_order(client)
+    client.application.config["PUSH_SENDER"] = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("push down"))
+    _set_now(client, 2026, 9, 24, 14, 0)
+    assert client.get(f"/api/orders/{order_id}").status_code == 200
+    assert _order_status(client, order_id) == "expired"
+
+
+# ---------------------------------------------------------------------------
+# @ltc.lu (Lycée Technique du Centre) is an allowed domain next to the two uni.lu ones
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("email", ["pupil@ltc.lu", "Pupil.Name@LTC.LU", "teacher+shop@ltc.lu", "s@uni.lu", "s@student.uni.lu"])
+def test_university_and_ltc_addresses_are_allowed(email):
+    from app import _is_allowed_customer_email
+
+    assert _is_allowed_customer_email(email)
+
+
+@pytest.mark.parametrize(
+    "email",
+    ["a@ltc.lu.evil.com", "a@notltc.lu", "a@fake.ltc.lu", "a@ltc.lux", "@ltc.lu", "a@b@ltc.lu", "ltc.lu", "a@gmail.com", "a@ltc.com", ""],
+)
+def test_look_alike_addresses_are_still_refused(email):
+    from app import _is_allowed_customer_email
+
+    assert not _is_allowed_customer_email(email)
+
+
+def test_an_ltc_address_can_get_a_verification_code(client):
+    with patch("app.send_verification_code", return_value=(True, None)) as mock_send:
+        resp = client.post("/api/email/send-code", json={"email": "pupil@ltc.lu"})
+    assert resp.status_code == 200 and resp.get_json()["sent"] is True
+    assert mock_send.call_args[0][0] == "pupil@ltc.lu"
+
+
+def test_a_verified_ltc_address_can_act_as_a_courier(client):
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("pupil@ltc.lu")
+    order_id = _create_basic_order(client)
+    assert _claim(client, order_id, courier_email="pupil@ltc.lu").status_code == 200
+
+
+def test_an_unverified_ltc_address_still_cannot(client):
+    order_id = _create_basic_order(client)
+    assert _claim(client, order_id, courier_email="nobody@ltc.lu").status_code == 403

@@ -53,6 +53,12 @@ def brasserie_johns_html() -> str:
 
 
 @pytest.fixture
+def ltck_html() -> str:
+    """Lycée Technique du Centre - Annexe Kirchberg ("LTC-K - Restaurant"), week of 2026-09-28."""
+    return (FIXTURES_DIR / "ltck_week0.html").read_text(encoding="utf-8")
+
+
+@pytest.fixture
 def altius_closed_week_html() -> str:
     return (FIXTURES_DIR / "altius_closed_week.html").read_text(encoding="utf-8")
 

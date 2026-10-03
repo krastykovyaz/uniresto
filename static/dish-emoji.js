@@ -59,7 +59,7 @@ const NAME_EMOJI = [
   [/(orange|clementine|mandarine)/,"🍊"],[/(citron)/,"🍋"],[/(raisin)/,"🍇"],[/(fraise)/,"🍓"],[/(cerise)/,"🍒"],[/(fruit)/,"🍎"],
 ];
 const CAT_EMOJI = [
-  [/^(entree)/,"🥣"],[/vegan/,"🌱"],[/^vegetarien/,"🥘"],[/non-vegetarien/,"🍖"],[/feculents/,"🍚"],[/legumes/,"🥦"],
+  [/^(entree)/,"🥣"],[/^pasta/,"🍝"],[/vegan/,"🌱"],[/^vegetarien/,"🥘"],[/non-vegetarien/,"🍖"],[/feculents/,"🍚"],[/legumes/,"🥦"],
   [/^dessert/,"🍮"],[/snack/,"🥡"],[/sandwich/,"🥪"],[/viennoiserie/,"🥐"],[/gateaux|patisserie/,"🍰"],[/vitamines/,"🥗"],
   [/laitages/,"🥛"],[/fruits/,"🍎"],[/glaces/,"🍦"],[/boissons chaudes/,"☕"],[/boissons froides/,"🥤"],[/emballages/,"🥡"],
 ];

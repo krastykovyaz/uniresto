@@ -5,6 +5,7 @@ Examples:
     python orderability.py --restaurant altius --date 2026-09-24
     python orderability.py --restaurant altius --date 2026-09-24 --refresh
     python orderability.py --restaurant brasserie-johns --date 2026-09-26
+    python orderability.py --restaurant ltc-k --date 2026-10-05
     python orderability.py --restaurant altius --next-available
 """
 
@@ -65,7 +66,7 @@ def print_result(result: OrderabilityResult) -> None:
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--restaurant", required=True, choices=["altius", "brasserie-johns"])
+    parser.add_argument("--restaurant", required=True, choices=[slug_for(code) for code in load_restaurants()])
     parser.add_argument("--date", type=parse_date, help="Date to check (YYYY-MM-DD)")
     parser.add_argument("--next-available", action="store_true", help="List the next available dates instead")
     parser.add_argument("--count", type=int, default=5, help="How many available dates to find with --next-available")

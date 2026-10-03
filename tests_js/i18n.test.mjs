@@ -62,11 +62,11 @@ test("langInfo falls back to English for an unknown code", () => {
 // categoryLabel / CATEGORY_LABELS
 // ---------------------------------------------------------------------------
 
-test("exactly the 25 verified real Restopolis categories are covered", () => {
+test("exactly the 26 known real Restopolis categories are covered", () => {
   // See README.md Part 5: confirmed identical across both restaurants'
   // real fixtures. A count check catches an accidental typo'd/duplicate
   // key that Object.keys wouldn't otherwise surface.
-  assert.equal(Object.keys(CATEGORY_LABELS).length, 25);
+  assert.equal(Object.keys(CATEGORY_LABELS).length, 26);
 });
 
 test("every category has a translation in every configured language", () => {

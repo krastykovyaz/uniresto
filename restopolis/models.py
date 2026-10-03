@@ -22,6 +22,14 @@ class RestaurantConfig:
     # kept structurally apart from anything scraped. Purely a display
     # label; never used for matching/identifying the restaurant.
     building: str | None = None
+    # How the app shows this restaurant, when Restopolis's own name can't be
+    # shortened sensibly: "UDL-CKB - Altius - Restaurant" -> "Altius" works
+    # by splitting on " - ", but "LTC-K - Restaurant" would become just
+    # "Restaurant". Our own label, never scraped.
+    display_name: str | None = None
+    # "school" for a lycée restaurant (the card says "School restaurant"
+    # instead of "University restaurant"); None = a university restaurant.
+    kind: str | None = None
 
 
 @dataclass

@@ -10,7 +10,8 @@
 // Pure, no DOM access -- unit-tested directly under Node
 // (tests_js/pricing.test.mjs), same pattern as order-math.js.
 
-export const MAIN_CATEGORIES = new Set(["Non-végétarien", "Végétarien", "Végan"]);
+// "Pasta": the Lycée Technique du Centre restaurant's own daily category -- a main course, like the three before it.
+export const MAIN_CATEGORIES = new Set(["Non-végétarien", "Végétarien", "Végan", "Pasta"]);
 export const STARTER_CATEGORIES = new Set(["Entrée"]);
 export const DESSERT_CATEGORIES = new Set(["Dessert"]);
 export const SNACK_CATEGORIES = new Set(["Snack à emporter"]);

@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""CLI for the Restopolis menu collector (UDL Campus Kirchberg: Altius,
-Brasserie John's). See README.md for the full mechanism writeup.
+"""CLI for the Restopolis menu collector (Kirchberg: Altius, Brasserie John's and
+the Lycée Technique du Centre annex, as listed in restaurants.yaml). See README.md
+for the full mechanism writeup.
 
 Examples:
     python scraper.py --date 2026-09-24
     python scraper.py --restaurant altius --date 2026-09-24
     python scraper.py --restaurant brasserie-johns --date 2026-09-24
+    python scraper.py --restaurant ltc-k --date 2026-10-05
     python scraper.py --from 2026-09-21 --to 2026-09-25
     python scraper.py --date 2026-09-24 --format json
     python scraper.py discover
@@ -31,8 +33,11 @@ logger = logging.getLogger("restopolis.scraper")
 
 
 def slug_for(code: str) -> str:
-    """UDL-CKB-ALTIUS -> altius, UDL-CKB-BRASSERIE-JOHNS -> brasserie-johns."""
-    return code.split("-", 2)[-1].lower()
+    """UDL-CKB-ALTIUS -> altius, UDL-CKB-BRASSERIE-JOHNS -> brasserie-johns.
+    Any other code is its own slug, lower-cased: LTC-K -> ltc-k."""
+    if code.startswith("UDL-CKB-"):
+        return code.split("-", 2)[-1].lower()
+    return code.lower()
 
 
 def week_start(d: date) -> date:
@@ -58,8 +63,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--restaurant",
         action="append",
-        choices=["altius", "brasserie-johns"],
-        help="Restaurant slug to scrape (repeatable). Default: both.",
+        choices=[slug_for(code) for code in load_restaurants()],  # every restaurant in restaurants.yaml
+        help="Restaurant slug to scrape (repeatable). Default: all of them.",
     )
     parser.add_argument(
         "--format",
