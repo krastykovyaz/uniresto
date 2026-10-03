@@ -114,8 +114,11 @@ ADMIN_LOOKAHEAD_DAYS = 10
 # Campus-only audience: the checkout email field (Part 23) must be a
 # University of Luxembourg address. Both domains Restopolis itself is
 # scoped to (student and staff/general uni.lu accounts) -- not derived
-# from any Restopolis data, this is OUR OWN validation rule.
-ALLOWED_EMAIL_DOMAINS = ("@uni.lu", "@student.uni.lu")
+# from any Restopolis data, this is OUR OWN validation rule. "@ltc.lu" (Lycée Technique du
+# Centre, whose Annexe Kirchberg restaurant is on the app too) was added on the owner's say-so
+# 2026-10-03; the address is still proven by the emailed code like any other. Kept identical to
+# ALLOWED_EMAIL_DOMAINS in static/app.js (tests_js/email-domains.test.mjs checks it).
+ALLOWED_EMAIL_DOMAINS = ("@uni.lu", "@student.uni.lu", "@ltc.lu")
 # Most cached dish share cards kept on disk (see _og_image_file).
 OG_CACHE_MAX_FILES = 1000
 

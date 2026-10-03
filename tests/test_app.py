@@ -4203,3 +4203,43 @@ def test_a_failing_push_sender_never_breaks_the_request_that_triggered_it(client
     _set_now(client, 2026, 9, 24, 14, 0)
     assert client.get(f"/api/orders/{order_id}").status_code == 200
     assert _order_status(client, order_id) == "expired"
+
+
+# ---------------------------------------------------------------------------
+# @ltc.lu (Lycée Technique du Centre) is an allowed domain next to the two uni.lu ones
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("email", ["pupil@ltc.lu", "Pupil.Name@LTC.LU", "teacher+shop@ltc.lu", "s@uni.lu", "s@student.uni.lu"])
+def test_university_and_ltc_addresses_are_allowed(email):
+    from app import _is_allowed_customer_email
+
+    assert _is_allowed_customer_email(email)
+
+
+@pytest.mark.parametrize(
+    "email",
+    ["a@ltc.lu.evil.com", "a@notltc.lu", "a@fake.ltc.lu", "a@ltc.lux", "@ltc.lu", "a@b@ltc.lu", "ltc.lu", "a@gmail.com", "a@ltc.com", ""],
+)
+def test_look_alike_addresses_are_still_refused(email):
+    from app import _is_allowed_customer_email
+
+    assert not _is_allowed_customer_email(email)
+
+
+def test_an_ltc_address_can_get_a_verification_code(client):
+    with patch("app.send_verification_code", return_value=(True, None)) as mock_send:
+        resp = client.post("/api/email/send-code", json={"email": "pupil@ltc.lu"})
+    assert resp.status_code == 200 and resp.get_json()["sent"] is True
+    assert mock_send.call_args[0][0] == "pupil@ltc.lu"
+
+
+def test_a_verified_ltc_address_can_act_as_a_courier(client):
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("pupil@ltc.lu")
+    order_id = _create_basic_order(client)
+    assert _claim(client, order_id, courier_email="pupil@ltc.lu").status_code == 200
+
+
+def test_an_unverified_ltc_address_still_cannot(client):
+    order_id = _create_basic_order(client)
+    assert _claim(client, order_id, courier_email="nobody@ltc.lu").status_code == 403

@@ -90,7 +90,7 @@ const EMAIL_STORAGE_KEY = "uniresto.email.v1";
 const IDENTITY_TOKENS_STORAGE_KEY = "uniresto.identityTokens.v1";
 // Same reason -- loadRegisteredEmail() calls isAllowedUniLuEmail() (further
 // down the file, but hoisted since it's a `function`), which reads this.
-const ALLOWED_EMAIL_DOMAINS = ["@uni.lu", "@student.uni.lu"];
+const ALLOWED_EMAIL_DOMAINS = ["@uni.lu", "@student.uni.lu", "@ltc.lu"];
 // Same TDZ hazard again -- loadRegisteredPhone() also runs synchronously
 // while constructing `state` below.
 const PHONE_STORAGE_KEY = "uniresto.phone.v1";
