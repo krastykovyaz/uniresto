@@ -23,7 +23,6 @@ required, so plain `requests` is sufficient -- Playwright is not needed.
 
 from __future__ import annotations
 
-import html
 import logging
 import time
 from dataclasses import dataclass
@@ -164,10 +163,15 @@ class RestopolisClient:
         resp = self._get(session, "/Menu")
         page_html = resp.text
 
-        if restaurant.name not in html.unescape(page_html):
+        from restopolis.parser import selected_restaurant_mismatch  # local import: see get_week_dates below
+
+        mismatch = selected_restaurant_mismatch(
+            page_html, restaurant.name, restaurant.restaurant_id, restaurant.service_id
+        )
+        if mismatch:
             raise RestaurantSelectionError(
                 f"Selecting restaurant_id={restaurant.restaurant_id} did not select "
-                f"'{restaurant.name}' -- the server returned a different restaurant. "
+                f"'{restaurant.name}': {mismatch}. "
                 "The restaurant id in restaurants.yaml is likely stale; "
                 "re-run `python scraper.py discover` to find the current id."
             )

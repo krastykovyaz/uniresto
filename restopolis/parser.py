@@ -38,9 +38,9 @@ matching lengths and raises rather than silently misaligning them.
 
 from __future__ import annotations
 
-import html as html_module
 import logging
 from datetime import date, datetime
+from urllib.parse import parse_qs, urlsplit
 
 from bs4 import BeautifulSoup
 from bs4.element import Tag
@@ -160,6 +160,47 @@ def align_day_blocks(soup: BeautifulSoup) -> list[tuple[date, Tag]]:
     return [(_parse_date_ddmmyyyy(link["data-date"]), div) for link, div in zip(day_links, day_divs)]
 
 
+def selected_restaurant_mismatch(
+    page,
+    restaurant_name: str,
+    restaurant_id: int | None = None,
+    service_id: int | None = None,
+) -> str | None:
+    """Why this Menu page is NOT the given restaurant's, or None if it is.
+
+    Searching the whole page for the restaurant's name proves nothing:
+    every Menu page embeds the full restaurant picker (~190 names), so
+    any restaurant's name is on every page. Instead read what the page
+    itself says is selected -- the picker's header span -- and, when ids
+    are given, the active service tab, whose link carries the selected
+    pRestaurantSelection and whose data-service-id is the service shown.
+    A page without the header is refused: a changed layout must surface
+    as an error, never as another canteen's menu filed under this one.
+    """
+    soup = page if isinstance(page, BeautifulSoup) else BeautifulSoup(page, "html.parser")
+    header = soup.select_one(".restaurant-selector-value-inner span")
+    if header is None:
+        return "the page has no selected-restaurant header (has the Restopolis layout changed?)"
+    shown = header.get_text(strip=True)
+    if shown != restaurant_name:
+        return f"the page shows restaurant {shown!r}, not {restaurant_name!r}"
+    if restaurant_id is None and service_id is None:
+        return None
+    tabs = soup.select('[data-role="formula-products"]')
+    tab = next((t for t in tabs if "active" in (t.get("class") or [])), tabs[0] if tabs else None)
+    if tab is None:
+        return None  # no service tab at all: the header above is the only signal there is
+    if restaurant_id is not None:
+        ids = parse_qs(urlsplit(tab.get("href", "")).query).get("pRestaurantSelection", [])
+        if ids and ids[0] != str(restaurant_id):
+            return f"the active service tab belongs to restaurant id {ids[0]}, not {restaurant_id}"
+    if service_id is not None:
+        shown_service = tab.get("data-service-id")
+        if shown_service and shown_service != str(service_id):
+            return f"the active service is id {shown_service}, not {service_id}"
+    return None
+
+
 def parse_week_html(
     html: str,
     restaurant_code: str,
@@ -171,11 +212,9 @@ def parse_week_html(
     date x service_name, e.g. 7 dates x 2 services = up to 14 entries)."""
     soup = BeautifulSoup(html, "html.parser")
 
-    if restaurant_name not in html_module.unescape(html):
-        raise MenuParseError(
-            f"Page does not mention restaurant name {restaurant_name!r}; "
-            "the wrong restaurant may have been loaded."
-        )
+    mismatch = selected_restaurant_mismatch(soup, restaurant_name)
+    if mismatch:
+        raise MenuParseError(f"Wrong restaurant page: {mismatch}.")
 
     aligned_days = align_day_blocks(soup)
 
