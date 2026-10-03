@@ -80,3 +80,13 @@ def test_restaurants_yaml_building_field_is_loaded():
     all_restaurants = load_restaurants()
     assert all_restaurants["UDL-CKB-ALTIUS"].building == "Main building"
     assert all_restaurants["UDL-CKB-BRASSERIE-JOHNS"].building == "JFK building"
+
+
+def test_the_command_line_tools_offer_every_configured_restaurant():
+    import subprocess
+    import sys
+
+    for script in ("scraper.py", "orderability.py"):
+        out = subprocess.run([sys.executable, script, "--help"], capture_output=True, text=True, check=True).stdout
+        for slug in ("altius", "brasserie-johns", "ltc-k"):
+            assert slug in out, f"{script} --help does not offer {slug}"

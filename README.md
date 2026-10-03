@@ -1,11 +1,13 @@
 # Restopolis menu collector
 
 Scrapes and normalizes menus from the official Restopolis site
-(https://ssl.education.lu/eRestauration/CustomerServices/Menu) for two
-University of Luxembourg Campus Kirchberg restaurants:
+(https://ssl.education.lu/eRestauration/CustomerServices/Menu) for three
+Kirchberg restaurants -- two on the University of Luxembourg Campus Kirchberg
+and one at the Lycée Technique du Centre's Annexe Kirchberg:
 
 - `UDL-CKB - Altius - Restaurant`
 - `UDL-CKB - Brasserie John's - Restaurant`
+- `LTC-K - Restaurant` (Lycée Technique du Centre - Annexe Kirchberg, added 2026-10-03)
 
 Scope of this first version is collection only: no ordering, payment,
 accounts, or delivery/courier logic.
@@ -109,10 +111,13 @@ how, and run `python scraper.py discover` to re-verify at any time):
 |---|---|---|---|
 | `UDL-CKB-ALTIUS` | UDL-CKB - Altius - Restaurant | 164 | 1183 |
 | `UDL-CKB-BRASSERIE-JOHNS` | UDL-CKB - Brasserie John's - Restaurant | 160 | 178 |
+| `LTC-K` | LTC-K - Restaurant | 36 | 62 |
 
-Both restaurants are part of site id `30354` ("Université de Luxembourg
-Campus Kirchberg"). Each restaurant exposes exactly one lunch service,
-"Service 11:00 - 14:30" (Altius) / similar hours (Brasserie John's), plus
+The first two are part of site id `30354` ("Université de Luxembourg
+Campus Kirchberg"); `LTC-K` is site id `64` ("Lycée technique du Centre -
+Annexe Kirchberg"). Each restaurant exposes exactly one lunch service,
+"Service 11:00 - 14:30" (Altius, Brasserie John's) / "Service 11:00 - 15:00"
+(LTC-K), plus
 a permanent, day-independent "Produits constants" (constant products)
 list — mostly sandwiches — that Restopolis renders identically on every
 day's slide.
@@ -125,10 +130,10 @@ Restopolis is caught rather than silently producing wrong data.
 ## 5. Running the scraper
 
 ```bash
-# Both restaurants, today
+# All restaurants, today
 python scraper.py
 
-# Both restaurants, one date
+# All restaurants, one date
 python scraper.py --date 2026-09-24
 
 # One restaurant
