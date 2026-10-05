@@ -71,7 +71,8 @@ from app import create_app  # noqa: E402
 # (the code is still "emailed" to the mock like any other, which is how run_e2e.py reads it). The signing
 # key and the verified addresses live in the scratch data dir, so reusing E2E_DATA_DIR keeps people verified
 # across restarts.
-FIXED_CODE = os.environ.get("E2E_FIXED_CODE", "123456")
-app_module.generate_verification_code = lambda: FIXED_CODE
+FIXED_CODE = os.environ.get("E2E_FIXED_CODE", "123456")  # set it to "" to keep the real random codes
+if FIXED_CODE:
+    app_module.generate_verification_code = lambda: FIXED_CODE
 
 app = create_app(enable_daily_report_scheduler=False)
