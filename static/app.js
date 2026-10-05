@@ -2142,11 +2142,16 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
   // menu_service.requires_early_order(), re-derived per item on
   // OrderStore.get_order() rather than stored).
   const hasEarlyOrderItem = order.items.some((it) => it.requires_early_order);
+  // A taken order is reserved: only the customer who placed it and the courier
+  // who took it can act on it (the server enforces the same). Everyone else
+  // sees it in a fog, with no buttons.
+  const isReserved = Boolean(order.claimed_at) && !order.mine_courier && !order.mine_customer;
   const card = el(`
-    <div class="restaurant-card delivery-order-card">
+    <div class="restaurant-card delivery-order-card${isReserved ? " is-reserved" : ""}"${isReserved ? ' aria-disabled="true"' : ""}>
       <div class="restaurant-card-main">
         <div class="icon-avatar is-other">${icon("receipt", 20)}</div>
         <div>
+          ${isReserved ? `<p class="delivery-reserved-tag">${escapeHtml(tr("deliveryReserved"))}</p>` : ""}
           <h2>${escapeHtml(order.delivery_location || tr("deliveryLocationNotGiven"))}</h2>
           <p class="kind">${escapeHtml(shortName(order.restaurant_name))} · ${escapeHtml(itemsSummary)}</p>
           <p class="kind">${escapeHtml(fmtLong(order.order_date))} · ${escapeHtml(orderStatusLabel(order.status))}</p>
@@ -2158,6 +2163,7 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
       </div>
     </div>
   `);
+  if (isReserved) return card;
   if (sectionKey === "pending" || sectionKey === "expired") {
     const actions = el(`<div class="delivery-order-actions"></div>`);
     // "Take this delivery" (Part 75, courier_email required Part 81,
@@ -2190,7 +2196,7 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
         }
       });
       actions.append(claimBtn);
-    } else if (!order.picked_up_at) {
+    } else if (!order.picked_up_at && order.mine_courier) {
       // Part 81: claimed but not yet physically in hand -- offers BOTH
       // confirming pickup (the real next step) and releasing the job
       // (still possible up to this exact point, never after -- see
@@ -2212,9 +2218,8 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
       });
       actions.append(pickupBtn);
 
-      // Part 76: whoever took it can give it back -- no accounts, so the
-      // app can't tell WHO claimed it; any OTHER verified student could,
-      // same trust level as claiming itself (Part 88). Pings the admin
+      // Part 76: whoever took it can give it back (only they: the server
+      // checks it is the courier who took the order). Pings the admin
       // server-side.
       const releaseBtn = el(`<button type="button" class="secondary-button delivery-release-btn">${escapeHtml(tr("deliveryReleaseClaim"))}</button>`);
       releaseBtn.addEventListener("click", async () => {
@@ -2392,14 +2397,21 @@ function deliveryOrderListContent(data, onChanged) {
   if (!online) {
     wrap.append(emptyState("receipt", hx("offline"), hx("offlineMessage")));
   } else {
-    const offers = buckets.pending
-      .filter((o) => !o.claimed_at)
-      .sort((a, b) => a.order_date.localeCompare(b.order_date) || a.created_at.localeCompare(b.created_at));
-    if (offers.length === 0) {
+    const byUrgency = (a, b) => a.order_date.localeCompare(b.order_date) || a.created_at.localeCompare(b.created_at);
+    const offers = buckets.pending.filter((o) => !o.claimed_at).sort(byUrgency);
+    // Orders someone has already taken: shown in a fog (reserved) so nobody
+    // wonders where they went, with buttons only for the customer who placed
+    // one. The ones the caller took themselves are in "Your delivery" above.
+    const taken = buckets.pending.filter((o) => o.claimed_at && !o.mine_courier).sort(byUrgency);
+    if (offers.length === 0 && active.length === 0 && taken.length === 0) {
       wrap.append(emptyState("receipt", tr("deliveryOrdersEmptyTitle"), hx("noOffers")));
-    } else {
+    } else if (offers.length === 0) {
+      // Something else is already on screen: a big "No orders yet" would read as a contradiction.
+      wrap.append(el(`<p class="kind delivery-no-offers">${escapeHtml(hx("noOffers"))}</p>`));
+    }
+    if (offers.length + taken.length > 0) {
       const list = el(`<div class="order-list courier-offers"></div>`);
-      for (const order of offers) list.append(deliveryOrderCard(order, "pending", onChanged));
+      for (const order of [...offers, ...taken]) list.append(deliveryOrderCard(order, "pending", onChanged));
       wrap.append(list);
     }
   }

@@ -451,6 +451,10 @@ svg { display: block; }
 }
 .delivery-order-actions .delivery-claim-btn { background: var(--color-primary); color: var(--color-primary-contrast); border-color: var(--color-primary); }
 .delivery-claimed-note { color: var(--color-primary-dark); font-weight: 600; }
+/* A taken order, seen by someone who is neither its customer nor its courier: in a fog, no buttons. */
+.delivery-order-card.is-reserved { opacity: 0.45; filter: grayscale(0.6); pointer-events: none; user-select: none; }
+.delivery-reserved-tag { margin: 0 0 4px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-muted); }
+.delivery-no-offers { text-align: center; margin: var(--space-3) 0; }
 .delivery-order-actions .delivery-release-btn { color: var(--color-text-muted); }
 .delivery-delivered-note { color: var(--color-primary-dark); font-weight: 600; }
 

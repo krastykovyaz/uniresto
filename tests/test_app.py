@@ -948,7 +948,8 @@ def test_two_delivered_orders_award_luni_for_each(client):
 
 def test_marking_an_unclaimed_order_delivered_awards_nothing(client):
     order_id = _create_basic_order(client, customer_email="student@uni.lu")
-    assert _mark_delivered(client, order_id).status_code == 200
+    # Nobody took it, so only the customer can say it arrived.
+    assert _mark_delivered(client, order_id, courier_email="student@uni.lu").status_code == 200
     assert _points(client, "student@uni.lu") == 0
     assert _points(client, "courier@uni.lu") == 0
 
@@ -957,7 +958,11 @@ def test_delivery_luni_goes_to_the_claiming_courier_not_the_caller(client):
     client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("other@uni.lu")
     order_id = _create_basic_order(client, customer_email="student@uni.lu")
     _hand_off(client, order_id, courier_email="courier@uni.lu")
-    _mark_delivered(client, order_id, courier_email="other@uni.lu")
+    # A bystander can't settle it at all (the order is reserved) ...
+    assert _mark_delivered(client, order_id, courier_email="other@uni.lu").status_code == 403
+    assert _points(client, "courier@uni.lu") == 0
+    # ... and when the customer confirms it, the credit still goes to the courier who took it.
+    assert _mark_delivered(client, order_id, courier_email="student@uni.lu").status_code == 200
     assert _points(client, "courier@uni.lu") == 1
     assert _points(client, "other@uni.lu") == 0
 
@@ -1937,7 +1942,7 @@ def test_claim_order_refuses_a_cancelled_order_without_notifying(client):
 
 def test_claim_order_refuses_an_already_delivered_order_without_notifying(client):
     order_id = _create_basic_order(client, customer_email="student@uni.lu")
-    _mark_delivered(client, order_id)
+    _mark_delivered(client, order_id, courier_email="student@uni.lu")
     with patch("app.send_order_claimed_notification") as mock_notify, patch(
         "app.send_order_accepted"
     ) as mock_email:
@@ -2115,7 +2120,7 @@ def test_claim_order_unknown_order_404s(client):
 
 def test_mark_order_delivered(client):
     order_id = _create_basic_order(client)
-    resp = _mark_delivered(client, order_id)
+    resp = _mark_delivered(client, order_id, courier_email="student@uni.lu")
     assert resp.status_code == 200
     assert resp.get_json()["delivered"] is True
     listed = next(o for o in client.get("/api/delivery/orders").get_json() if o["id"] == order_id)
@@ -2129,8 +2134,8 @@ def test_mark_order_delivered_unknown_order_404s(client):
 
 def test_mark_order_not_delivered_undoes_it(client):
     order_id = _create_basic_order(client)
-    _mark_delivered(client, order_id)
-    resp = _mark_not_delivered(client, order_id)
+    _mark_delivered(client, order_id, courier_email="student@uni.lu")
+    resp = _mark_not_delivered(client, order_id, courier_email="student@uni.lu")
     assert resp.status_code == 200
     assert resp.get_json()["delivered"] is False
     listed = next(o for o in client.get("/api/delivery/orders").get_json() if o["id"] == order_id)
@@ -2869,7 +2874,7 @@ def test_delivery_list_keeps_the_full_location_until_delivered_then_only_the_bui
     order_id = _create_basic_order(client, delivery_location="Building G — 2211 room")
     listed = lambda: next(o for o in client.get("/api/delivery/orders").get_json() if o["id"] == order_id)  # noqa: E731
     assert listed()["delivery_location"] == "Building G — 2211 room"
-    _mark_delivered(client, order_id)
+    _mark_delivered(client, order_id, courier_email="student@uni.lu")
     assert listed()["delivery_location"] == "Building G"
 
 
@@ -4361,3 +4366,108 @@ def test_a_courier_email_that_raises_does_not_stop_the_others(client):
     ), patch("app.send_delivery_notification", side_effect=flaky):
         assert client.post("/api/orders", json=_bare_order()).status_code == 201
     assert sorted(calls) == ["courier@uni.lu", "other.courier@uni.lu"]
+
+
+# ---------------------------------------------------------------------------
+# A taken order is reserved: only its customer and its courier can act on it
+# ---------------------------------------------------------------------------
+
+
+def _as(client, *emails):
+    """Play a browser that proved only these addresses."""
+    client.held_tokens_for = list(emails)
+
+
+def _taken_order(client, courier_email="courier@uni.lu"):
+    """An order placed by student@uni.lu and taken (not yet picked up) by the courier."""
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    _claim_quietly(client, order_id, courier_email=courier_email)
+    return order_id
+
+
+def _listed(client, order_id):
+    return next(o for o in client.get("/api/delivery/orders").get_json() if o["id"] == order_id)
+
+
+def test_a_bystander_cannot_touch_a_taken_order(client):
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("other@uni.lu")
+    order_id = _taken_order(client)
+    store = client.application.config["ORDER_STORE"]
+    pushes_before = len(client.application.config["PUSH_LOG"])
+    with patch("app.send_order_out_for_delivery") as mock_email, patch("app.send_order_released_notification") as mock_released:
+        for resp in (
+            _pickup(client, order_id, courier_email="other@uni.lu"),
+            _unclaim(client, order_id, courier_email="other@uni.lu"),
+            _mark_delivered(client, order_id, courier_email="other@uni.lu"),
+            _mark_not_delivered(client, order_id, courier_email="other@uni.lu"),
+        ):
+            assert resp.status_code == 403
+            assert resp.get_json()["error"] == "not_your_order"
+        mock_email.assert_not_called()
+        mock_released.assert_not_called()
+    order = store.get_order(order_id)
+    assert order["claimed_at"] and not order["picked_up_at"] and not order["delivered_at"]
+    assert len(client.application.config["PUSH_LOG"]) == pushes_before
+
+
+def test_the_courier_who_took_it_can_pick_up_release_and_deliver(client):
+    order_id = _taken_order(client)
+    with patch("app.send_order_out_for_delivery", return_value=(True, None)):
+        assert _pickup(client, order_id).status_code == 200
+    assert _mark_delivered(client, order_id).status_code == 200
+    assert _mark_not_delivered(client, order_id).status_code == 200
+    other = _taken_order(client)
+    with patch("app.send_order_released_notification", return_value=(True, None)):
+        assert _unclaim(client, other).status_code == 200
+
+
+def test_the_customer_can_confirm_delivery_but_not_act_as_the_courier(client):
+    order_id = _taken_order(client)
+    assert _pickup(client, order_id, courier_email="student@uni.lu").status_code == 403
+    assert _unclaim(client, order_id, courier_email="student@uni.lu").status_code == 403
+    assert _mark_delivered(client, order_id, courier_email="student@uni.lu").status_code == 200
+    assert _mark_not_delivered(client, order_id, courier_email="student@uni.lu").status_code == 200
+
+
+def test_the_customers_plus_tag_address_is_still_the_customer(client):
+    order_id = _taken_order(client)
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("student+lunch@uni.lu")
+    assert _mark_delivered(client, order_id, courier_email="student+lunch@uni.lu").status_code == 200
+
+
+def test_an_untaken_order_can_only_be_marked_delivered_by_its_customer(client):
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    assert _mark_delivered(client, order_id, courier_email="courier@uni.lu").status_code == 403
+    assert client.application.config["ORDER_STORE"].get_order(order_id)["delivered_at"] is None
+
+
+def test_the_delivery_list_says_whose_order_is_whose(client):
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("other@uni.lu")
+    order_id = _taken_order(client)
+
+    _as(client, "courier@uni.lu")
+    assert (_listed(client, order_id)["mine_courier"], _listed(client, order_id)["mine_customer"]) == (True, False)
+    _as(client, "student@uni.lu")
+    assert (_listed(client, order_id)["mine_courier"], _listed(client, order_id)["mine_customer"]) == (False, True)
+    _as(client, "other@uni.lu")
+    assert (_listed(client, order_id)["mine_courier"], _listed(client, order_id)["mine_customer"]) == (False, False)
+    _as(client)  # no proof at all
+    assert (_listed(client, order_id)["mine_courier"], _listed(client, order_id)["mine_customer"]) == (False, False)
+
+
+def test_the_delivery_list_never_exposes_the_addresses_behind_the_flags(client):
+    order_id = _taken_order(client)
+    listed = _listed(client, order_id)
+    assert not {"customer_email", "reward_email", "courier_email"} & set(listed)
+
+
+def test_a_released_order_is_nobodys_courier_job_any_more(client):
+    order_id = _taken_order(client)
+    with patch("app.send_order_released_notification", return_value=(True, None)):
+        _unclaim(client, order_id)
+    _as(client, "courier@uni.lu")
+    assert _listed(client, order_id)["mine_courier"] is False
+    # and a different courier may take it now
+    client.held_tokens_for = None  # a browser that has proven every address again
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("other@uni.lu")
+    assert _claim_quietly(client, order_id, courier_email="other@uni.lu").status_code == 200

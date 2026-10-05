@@ -523,6 +523,25 @@ def create_app(
             except Exception:  # noqa: BLE001 -- see above
                 logging.getLogger("uniresto.push").warning("[PUSH] could not queue a %s push", kind, exc_info=True)
 
+    def _order_roles(order: dict, actor_email: str) -> tuple[bool, bool]:
+        """(is the courier who took it, is the customer who created it) for the
+        proven address `actor_email`. Compared as canonical identities, so a
+        plus-tag variant of the same address is the same person."""
+        actor = canonical_identity(actor_email)
+        courier = bool(order.get("courier_email")) and canonical_identity(order["courier_email"]) == actor
+        customer = any(order.get(f) and canonical_identity(order[f]) == actor for f in ("customer_email", "reward_email"))
+        return courier, customer
+
+    def _may_settle_delivery(order: dict, actor_email: str) -> bool:
+        """Who may mark an order delivered (or undo that): the customer who
+        placed it, and -- once someone took it -- the courier who did. An
+        untaken order has no courier, so there it is the customer alone."""
+        is_courier, is_customer = _order_roles(order, actor_email)
+        return is_customer or (bool(order.get("claimed_at")) and is_courier)
+
+    def _not_your_order():
+        return jsonify({"error": "not_your_order", "message": "Only the customer who placed this order and the courier who took it can do that"}), 403
+
     def order_people(order: dict) -> list:
         """The customer's own email and their University (reward) email -- the same
         person under up to two addresses; push_to() folds duplicates."""
@@ -1497,6 +1516,8 @@ def create_app(
             return jsonify({"error": "email_not_verified", "message": "Your University email must be verified first"}), 403
         orders = store().list_orders_for_courier(email)
         for order in orders:
+            order["mine_courier"] = True  # these are the caller's own, by construction
+            order["mine_customer"] = _order_roles(order, email)[1]
             for field in PRIVATE_ORDER_FIELDS:
                 order.pop(field, None)
         return jsonify(orders)
@@ -1527,7 +1548,16 @@ def create_app(
         oldest = now - timedelta(days=DELIVERY_LIST_DAYS)
         _close_expired_orders()
         orders = [o for o in store().list_recent_orders() if _as_utc(o["created_at"]) >= oldest]
+        proven = _proven_identities()
         for order in orders:
+            # Which orders are THIS browser's own, so the screen can show every
+            # other taken order as reserved: only the customer who placed it
+            # and the courier who took it get its buttons. Booleans only -- the
+            # addresses themselves are stripped just below.
+            order["mine_customer"] = any(
+                order.get(f) and canonical_identity(order[f]) in proven for f in ("customer_email", "reward_email")
+            )
+            order["mine_courier"] = bool(order.get("courier_email") and order.get("claimed_at")) and canonical_identity(order["courier_email"]) in proven
             # Part 81: the claiming courier's own contact info is exactly
             # as private from every OTHER courier browsing this screen as
             # the customer's is -- nothing here needs to show it, and
@@ -1614,12 +1644,16 @@ def create_app(
         other notification here."""
         if (limited := rate_limited_response("courier_action")) is not None:
             return limited
-        _courier_email, error = _verified_courier_email_or_error()
+        courier_email, error = _verified_courier_email_or_error()
         if error:
             return error
         order = store().get_order(order_id)
         if order is None:
             abort(404, description=f"No order #{order_id}")
+        # A taken order is reserved: only the courier who took it can say the
+        # food is in hand. (An untaken one falls through to the 409 below.)
+        if order.get("claimed_at") and not _order_roles(order, courier_email)[0]:
+            return _not_your_order()
         newly_picked_up = store().mark_picked_up(order_id)
         if not newly_picked_up:
             return jsonify({"error": "not_pickupable"}), 409
@@ -1640,12 +1674,15 @@ def create_app(
         courier to take it is what actually matters to them."""
         if (limited := rate_limited_response("courier_action")) is not None:
             return limited
-        _courier_email, error = _verified_courier_email_or_error()
+        courier_email, error = _verified_courier_email_or_error()
         if error:
             return error
         order = store().get_order(order_id)
         if order is None:
             abort(404, description=f"No order #{order_id}")
+        # Only whoever took it can give it back.
+        if order.get("claimed_at") and not _order_roles(order, courier_email)[0]:
+            return _not_your_order()
         if not store().mark_unclaimed(order_id):
             return jsonify({"error": "not_claimed"}), 409
         send_order_released_notification(order, admin_url=_admin_orders_url())
@@ -1655,16 +1692,19 @@ def create_app(
     def api_mark_order_delivered(order_id):
         """Courier-facing (Part 73), gated by a verified University email
         (Part 88) same as every other courier action above -- same trust
-        level otherwise: any verified student can confirm it, same as
-        everyone already seeing every order on the Delivery screen."""
+        level otherwise -- but only for the courier who took the order or the
+        customer who placed it (see _may_settle_delivery); everyone else sees
+        a taken order as reserved."""
         if (limited := rate_limited_response("courier_action")) is not None:
             return limited
-        _courier_email, error = _verified_courier_email_or_error()
+        courier_email, error = _verified_courier_email_or_error()
         if error:
             return error
         order = store().get_order(order_id)
         if order is None:
             abort(404, description=f"No order #{order_id}")
+        if not _may_settle_delivery(order, courier_email):
+            return _not_your_order()
         if order["status"] in ("cancelled", "expired"):
             return jsonify({"error": "not_deliverable", "status": order["status"]}), 409
         if store().mark_delivered(order_id) and not order.get("delivered_at"):
@@ -1678,9 +1718,14 @@ def create_app(
         early, must be able to reverse it. Same Part 88 gate."""
         if (limited := rate_limited_response("courier_action")) is not None:
             return limited
-        _courier_email, error = _verified_courier_email_or_error()
+        courier_email, error = _verified_courier_email_or_error()
         if error:
             return error
+        order = store().get_order(order_id)
+        if order is None:
+            abort(404, description=f"No order #{order_id}")
+        if not _may_settle_delivery(order, courier_email):
+            return _not_your_order()
         if not store().mark_not_delivered(order_id):
             abort(404, description=f"No order #{order_id}")
         return jsonify({"delivered": False})
