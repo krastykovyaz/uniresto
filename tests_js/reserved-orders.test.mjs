@@ -11,12 +11,12 @@ const cardStart = js.indexOf("function deliveryOrderCard(");
 const card = js.slice(cardStart, js.indexOf("\nfunction deliverySection(", cardStart));
 
 test("a taken order is reserved unless it is the caller's own (as customer or courier)", () => {
-  assert.match(card, /const isReserved = Boolean\(order\.claimed_at\) && !order\.mine_courier && !order\.mine_customer;/);
+  assert.match(card, /const isReserved = !isDelivered && Boolean\(order\.claimed_at\) && !order\.mine_courier && !order\.mine_customer;/);
 });
 
 test("a reserved card is returned before any action button is built", () => {
-  const returned = card.indexOf("if (isReserved) return card;");
-  assert.ok(returned > 0, "reserved cards must return early");
+  const returned = card.indexOf("if (isFogged) return card;");
+  assert.ok(returned > 0, "reserved and delivered cards must return early");
   assert.ok(card.indexOf("const stepButton") > returned, "buttons are built before the reserved check");
 });
 
@@ -120,4 +120,20 @@ test("the courier's step bar: each step turns green when its button is tapped", 
   assert.deepEqual(greens(row({ picked_up_at: "x", handed_over_at: "y" })).steps, ["Accepted:is-done", "Picked up:is-done", "Delivered:is-done"]);
   assert.deepEqual(greens(row({ picked_up_at: "x", handed_over_at: "y" })).bars, ["is-done", "is-done"]);
   assert.deepEqual(greens(row({})).bars, ["grey", "grey"]);
+});
+
+test("a delivered order stays on the list in the fog, tagged Delivered, with no buttons", () => {
+  assert.match(card, /const isDelivered = Boolean\(order\.delivered_at\);/);
+  assert.match(card, /const isReserved = !isDelivered && Boolean\(order\.claimed_at\)/);
+  assert.match(card, /const isFogged = isReserved \|\| isDelivered;/);
+  assert.match(card, /isDelivered \? hx\("delivered"\) : tr\("deliveryReserved"\)/);
+  assert.ok(card.indexOf("if (isFogged) return card;") > 0, "fogged cards must return before any button is built");
+  const list = js.slice(js.indexOf("function deliveryOrderListContent("), js.indexOf("async function loadDeliveryData("));
+  assert.match(list, /buckets\.delivered\.filter\(\(o\) => o\.order_date >= today\)/);
+  assert.match(list, /\[\.\.\.offers, \.\.\.taken, \.\.\.delivered\]/);
+  assert.match(list, /delivered\.length === 0\) \{/); // the big empty state is only for a screen with nothing at all
+});
+
+test("a delivered card shows the date, not the admin-side status (Pending)", () => {
+  assert.match(card, /fmtLong\(order\.order_date\)\)\}\$\{isDelivered \? "" : `/);
 });

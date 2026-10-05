@@ -7,6 +7,8 @@ without sending anything real: Resend (email) and Telegram (the admin bot).
 Every request the app makes is kept in memory and can be read back:
     GET  /__outbox?kind=email|telegram     what was "sent", oldest first
     POST /__reset                          forget everything
+    POST /__real_mail?on=0                 pause (and ?on=1 resume) the real sending to E2E_REAL_MAIL_TO, e.g. while
+                                           seeding many orders under your own address
     POST /__fail?on=1                      make email sending answer HTTP 500 (and ?on=0 to stop), to test that a
                                            failing mail never breaks an order
 Resend's POST /emails and Telegram's POST /bot<token>/<method> answer like the real services.
@@ -33,7 +35,7 @@ REAL_MAIL_TO = {a.strip().lower() for a in os.environ.get("E2E_REAL_MAIL_TO", ""
 ENV_FILE = os.environ.get("E2E_ENV_FILE", os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
 
 OUTBOX: list[dict] = []
-STATE = {"fail_email": False}
+STATE = {"fail_email": False, "real_mail": True}
 LOCK = threading.Lock()
 
 
@@ -113,6 +115,9 @@ class Handler(BaseHTTPRequestHandler):
                 OUTBOX.clear()
                 STATE["fail_email"] = False
             return self._json(200, {"reset": True})
+        if parts.path == "/__real_mail":
+            STATE["real_mail"] = parse_qs(parts.query).get("on", ["1"])[0] == "1"
+            return self._json(200, STATE)
         if parts.path == "/__fail":
             STATE["fail_email"] = parse_qs(parts.query).get("on", ["1"])[0] == "1"
             return self._json(200, STATE)
@@ -121,7 +126,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(500, {"message": "mock: email sending is switched off"})
             to = body.get("to") or []
             recipient = to[0] if to else None
-            real = bool(recipient) and recipient.strip().lower() in REAL_MAIL_TO
+            real = STATE["real_mail"] and bool(recipient) and recipient.strip().lower() in REAL_MAIL_TO
             status, answer = (_forward_to_resend(body) if real else (200, {"id": f"mock-{len(OUTBOX)}"}))
             with LOCK:
                 OUTBOX.append({"kind": "email", "to": recipient, "subject": body.get("subject"), "text": body.get("text"), "html": body.get("html"), "sent_for_real": real and status < 300})

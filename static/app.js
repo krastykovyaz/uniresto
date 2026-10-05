@@ -2163,25 +2163,29 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
   // A taken order is reserved: only the customer who placed it and the courier
   // who took it can act on it (the server enforces the same). Everyone else
   // sees it in a fog, with no buttons.
-  const isReserved = Boolean(order.claimed_at) && !order.mine_courier && !order.mine_customer;
+  // A delivered order stays on the list, in the same fog, tagged Delivered, for
+  // everyone -- including its customer and courier: nothing is left to do on it.
+  const isDelivered = Boolean(order.delivered_at);
+  const isReserved = !isDelivered && Boolean(order.claimed_at) && !order.mine_courier && !order.mine_customer;
+  const isFogged = isReserved || isDelivered;
   const card = el(`
-    <div class="restaurant-card delivery-order-card${isReserved ? " is-reserved" : ""}"${isReserved ? ' aria-disabled="true"' : ""}>
+    <div class="restaurant-card delivery-order-card${isFogged ? " is-reserved" : ""}${isDelivered ? " is-delivered" : ""}"${isFogged ? ' aria-disabled="true"' : ""}>
       <div class="restaurant-card-main">
         <div class="icon-avatar is-other">${icon("receipt", 20)}</div>
         <div>
-          ${isReserved ? `<p class="delivery-reserved-tag">${escapeHtml(tr("deliveryReserved"))}</p>` : ""}
+          ${isFogged ? `<p class="delivery-reserved-tag">${escapeHtml(isDelivered ? hx("delivered") : tr("deliveryReserved"))}</p>` : ""}
           <h2>${escapeHtml(order.delivery_location || tr("deliveryLocationNotGiven"))}</h2>
           <p class="kind">${escapeHtml(shortName(order.restaurant_name))} · ${escapeHtml(itemsSummary)}</p>
-          <p class="kind">${escapeHtml(fmtLong(order.order_date))} · ${escapeHtml(orderStatusLabel(order.status))}</p>
+          <p class="kind">${escapeHtml(fmtLong(order.order_date))}${isDelivered ? "" : ` · ${escapeHtml(orderStatusLabel(order.status))}`}</p>
           ${hasEarlyOrderItem ? `<p class="kind delivery-early-order-note">${escapeHtml(tr("deliveryEarlyOrderNote"))}</p>` : ""}
           ${(sectionKey === "pending" || sectionKey === "expired") && order.claimed_at ? `<p class="kind delivery-claimed-note">${escapeHtml(tr("deliveryClaimedAt", { time: fmtDateTime(order.claimed_at) }))}</p>` : ""}
           ${(sectionKey === "pending" || sectionKey === "expired") && order.picked_up_at ? `<p class="kind delivery-claimed-note">${escapeHtml(tr("deliveryPickedUpAt", { time: fmtDateTime(order.picked_up_at) }))}</p>` : ""}
-          ${sectionKey === "delivered" ? `<p class="kind delivery-delivered-note">${escapeHtml(tr("deliveryDeliveredAt", { time: fmtDateTime(order.delivered_at) }))}</p>` : ""}
+          ${isDelivered || sectionKey === "delivered" ? `<p class="kind delivery-delivered-note">${escapeHtml(tr("deliveryDeliveredAt", { time: fmtDateTime(order.delivered_at) }))}</p>` : ""}
         </div>
       </div>
     </div>
   `);
-  if (isReserved) return card;
+  if (isFogged) return card;
   if (sectionKey === "pending" || sectionKey === "expired") {
     // One button at a time, in the order things happen:
     //   anyone verified      -> "I pick up the order"   (take it; the first tap wins)
@@ -2440,21 +2444,25 @@ function deliveryOrderListContent(data, onChanged) {
     // wonders where they went, with buttons only for the customer who placed
     // one. The ones the caller took themselves are in "Your delivery" above.
     const taken = buckets.pending.filter((o) => o.claimed_at && !o.mine_courier).sort(byUrgency);
-    if (offers.length === 0 && active.length === 0 && taken.length === 0) {
+    // Delivered orders stay on the list, in the fog, for the day they are for (and later
+    // days), most recently delivered first -- so a courier or a customer can see it went through.
+    const today = localDateString();
+    const delivered = buckets.delivered.filter((o) => o.order_date >= today).sort((a, b) => b.delivered_at.localeCompare(a.delivered_at));
+    if (offers.length === 0 && active.length === 0 && taken.length === 0 && delivered.length === 0) {
       wrap.append(emptyState("receipt", tr("deliveryOrdersEmptyTitle"), hx("noOffers")));
     } else if (offers.length === 0) {
       // Something else is already on screen: a big "No orders yet" would read as a contradiction.
       wrap.append(el(`<p class="kind delivery-no-offers">${escapeHtml(hx("noOffers"))}</p>`));
     }
-    if (offers.length + taken.length > 0) {
+    if (offers.length + taken.length + delivered.length > 0) {
       const list = el(`<div class="order-list courier-offers"></div>`);
-      for (const order of [...offers, ...taken]) list.append(deliveryOrderCard(order, "pending", onChanged));
+      for (const order of [...offers, ...taken, ...delivered]) list.append(deliveryOrderCard(order, "pending", onChanged));
       wrap.append(list);
     }
   }
 
-  // Expired / Closed / Delivered orders are deliberately not listed here any
-  // more: what you delivered is under Profile -> Order History -> My deliveries.
+  // Expired / Closed orders are deliberately not listed here: what you delivered over time is under
+  // Profile -> Order History -> My deliveries.
   return wrap;
 }
 
