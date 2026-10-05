@@ -11,6 +11,8 @@ E2E_DATA_DIR if set, otherwise a fresh temporary one (printed at start-up). It r
 (app.py or .git inside) or one that already holds data it did not create itself (no .uniresto-e2e marker), so it can
 never write test orders, Luni or verified emails into a live database, whatever directory it was started from.
 
+Verification codes are fixed (E2E_FIXED_CODE, default 123456), so a hand tester needs no inbox.
+
 The daily-report scheduler is off: it would send the 20:00 report to the mock. The menu-refresh scheduler stays on,
 because the app never fetches menus on a request -- it fetches the public Restopolis pages into the scratch
 orderability.db, as a real start-up does. Dish photos are still served from the checkout's static/dish_photos."""
@@ -62,6 +64,14 @@ from orderability_engine import mailer, telegram_notify  # noqa: E402
 mailer.RESEND_API_URL = f"{MOCK_URL}/emails"
 telegram_notify.TELEGRAM_API_BASE = MOCK_URL
 
+import app as app_module  # noqa: E402
 from app import create_app  # noqa: E402
+
+# Every verification code is the same, so someone trying the app by hand never has to wait on an inbox
+# (the code is still "emailed" to the mock like any other, which is how run_e2e.py reads it). The signing
+# key and the verified addresses live in the scratch data dir, so reusing E2E_DATA_DIR keeps people verified
+# across restarts.
+FIXED_CODE = os.environ.get("E2E_FIXED_CODE", "123456")
+app_module.generate_verification_code = lambda: FIXED_CODE
 
 app = create_app(enable_daily_report_scheduler=False)
