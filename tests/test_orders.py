@@ -683,3 +683,71 @@ def test_two_workers_expiring_the_same_order_report_it_once(tmp_path):
     a._conn = a._conn._conn
     assert a.get_order(order)["status"] == "expired"
     assert b.expire_open_orders("2026-09-24") == []  # and nothing left for a later call
+
+
+@pytest.mark.parametrize("prepare", ["pending", "reviewing", "awaiting_confirmation"])
+def test_customer_cancel_works_until_the_order_is_confirmed(store, prepare):
+    order_id = _basic_order_id(store)
+    if prepare == "reviewing":
+        store.mark_reviewing(order_id)
+    elif prepare == "awaiting_confirmation":
+        token = store.set_real_price(order_id, 5.0)
+    assert store.customer_cancel_order(order_id) is True
+    assert store.get_order(order_id)["status"] == "cancelled"
+    if prepare == "awaiting_confirmation":
+        assert store.confirm_order(order_id, token) is False  # the emailed link dies with it
+
+
+def test_customer_cancel_refuses_a_confirmed_order(store):
+    order_id = _basic_order_id(store)
+    store.confirm_order(order_id, store.set_real_price(order_id, 5.0))
+    assert store.customer_cancel_order(order_id) is False
+    assert store.get_order(order_id)["status"] == "confirmed"
+
+
+def test_customer_cancel_refuses_once_a_courier_has_the_food_or_it_arrived(store):
+    picked = _basic_order_id(store)
+    store.mark_claimed(picked)
+    store.mark_picked_up(picked)
+    assert store.customer_cancel_order(picked) is False
+    delivered = _basic_order_id(store)
+    store.mark_delivered(delivered)
+    assert store.customer_cancel_order(delivered) is False
+
+
+def test_customer_cancel_works_on_a_claimed_order_not_yet_picked_up(store):
+    order_id = _basic_order_id(store)
+    store.mark_claimed(order_id)
+    assert store.customer_cancel_order(order_id) is True
+
+
+def test_customer_cancel_twice_only_succeeds_once(store):
+    order_id = _basic_order_id(store)
+    assert store.customer_cancel_order(order_id) is True
+    assert store.customer_cancel_order(order_id) is False
+
+
+def test_mark_handed_over_needs_a_claimed_and_picked_up_order(store):
+    order_id = _basic_order_id(store)
+    assert store.mark_handed_over(order_id) is False  # nobody has it
+    store.mark_claimed(order_id)
+    assert store.mark_handed_over(order_id) is False  # claimed, food not picked up yet
+    store.mark_picked_up(order_id)
+    assert store.mark_handed_over(order_id) is True
+    assert store.get_order(order_id)["handed_over_at"] is not None
+    assert store.get_order(order_id)["delivered_at"] is None  # handing over is not delivering
+    assert store.mark_handed_over(order_id) is False  # only the first tap counts
+
+
+@pytest.mark.parametrize("close", ["cancel", "expire", "delivered"])
+def test_mark_handed_over_refuses_a_closed_order(store, close):
+    order_id = _basic_order_id(store)
+    store.mark_claimed(order_id)
+    store.mark_picked_up(order_id)
+    if close == "cancel":
+        store.admin_cancel_order(order_id)
+    elif close == "expire":
+        store.expire_open_orders("2099-01-01")
+    else:
+        store.mark_delivered(order_id)
+    assert store.mark_handed_over(order_id) is False

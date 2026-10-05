@@ -2127,11 +2127,29 @@ function verifiedCourierEmailOrRedirect(retryBtn) {
   return null;
 }
 
+// The server answered "email_not_verified": the University email saved on this
+// device is no longer one it recognises (its verification was removed, or this
+// device's saved proof no longer matches). Forget the saved address and ask for
+// the code again, then repeat the tap -- instead of a bare "couldn't update".
+// True when it handled the error.
+function reverifyIfRejected(err, retryBtn) {
+  if (!(err && err.status === 403 && err.body && err.body.error === "email_not_verified")) return false;
+  clearRegisteredEmail();
+  state.registeredEmail = "";
+  state.customerEmail = state.communicationEmail || "";
+  openEmailSheet(retryBtn, () => retryBtn?.click());
+  return true;
+}
+
 // One order's card, shared by every section -- only the action row at
 // the bottom differs: Pending/Expired offer "Mark as delivered" (the
 // courier's own fact, independent of `status` -- see orders.py's
 // delivered_at schema comment), Delivered shows when and offers Undo,
 // Closed (cancelled) has nothing left to do.
+// When the last courier/customer step was recorded on this device (see stepButton).
+let lastDeliveryStepAt = 0;
+const DELIVERY_STEP_SETTLE_MS = 2000;
+
 function deliveryOrderCard(order, sectionKey, onChanged) {
   const itemsSummary = order.items
     .map((it) => `${dishTitleWithSize(it.name, state.lang)}${it.quantity > 1 ? ` ×${it.quantity}` : ""}`)
@@ -2167,13 +2185,23 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
   if (sectionKey === "pending" || sectionKey === "expired") {
     // One button at a time, in the order things happen:
     //   anyone verified      -> "I pick up the order"   (take it; the first tap wins)
-    //   the courier who took it -> "I picked up the food"
+    //   the courier who took it -> "I picked up the food", then "I delivered"
     //   the customer who placed it -> "Mark as delivered"  (only they can say it arrived)
     // Everyone else sees a taken order as reserved (returned above). The server
     // enforces the same rules, so a stale tab or a direct call can't skip a step.
     const actions = el(`<div class="delivery-order-actions"></div>`);
-    const stepButton = (cls, labelKey, path, onSuccess, toastKey) => {
+    const stepButton = (cls, labelKey, path, onSuccess, toastKey, { settle = false } = {}) => {
       const btn = el(`<button type="button" class="secondary-button delivery-step-btn ${cls}">${escapeHtml(tr(labelKey))}</button>`);
+      // The next step's button appears exactly where the last one was tapped, so
+      // a second tap meant for the old button would run the new step before it
+      // could even be read. Right after a step, hold the following one for a moment.
+      if (settle) {
+        const wait = DELIVERY_STEP_SETTLE_MS - (Date.now() - lastDeliveryStepAt);
+        if (wait > 0) {
+          btn.disabled = true;
+          setTimeout(() => { btn.disabled = false; }, wait);
+        }
+      }
       btn.addEventListener("click", async () => {
         const courierEmail = verifiedCourierEmailOrRedirect(btn);
         if (!courierEmail) return;
@@ -2184,11 +2212,12 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
             body: JSON.stringify({ courier_email: courierEmail, lang: state.lang }),
           });
           onSuccess(result);
+          lastDeliveryStepAt = Date.now();
           showToast(tr(typeof toastKey === "function" ? toastKey(result) : toastKey));
           onChanged();
-        } catch {
-          showToast(tr("deliveryActionFailed"));
+        } catch (err) {
           btn.disabled = false;
+          if (!reverifyIfRejected(err, btn)) showToast(tr("deliveryActionFailed"));
         }
       });
       return btn;
@@ -2205,7 +2234,7 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
       );
     } else if (order.mine_courier && !order.picked_up_at) {
       actions.append(
-        stepButton("delivery-pickup-btn", "deliveryConfirmPickup", "picked-up", () => { order.picked_up_at = new Date().toISOString(); }, "deliveryPickedUpToast"),
+        stepButton("delivery-pickup-btn", "deliveryConfirmPickup", "picked-up", () => { order.picked_up_at = new Date().toISOString(); }, "deliveryPickedUpToast", { settle: true }),
       );
       // Whoever took it can still give it back, before the food is in hand -- a
       // quiet link, not a button, so the card has exactly one button. Pings the admin.
@@ -2219,19 +2248,44 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
           order.claimed_at = null;
           showToast(tr("deliveryReleasedToast"));
           onChanged();
-        } catch {
-          showToast(tr("deliveryActionFailed"));
+        } catch (err) {
           release.disabled = false;
+          if (!reverifyIfRejected(err, release)) showToast(tr("deliveryActionFailed"));
         }
       });
       actions.append(release);
+    } else if (order.mine_courier && order.picked_up_at && !order.handed_over_at && !order.mine_customer) {
+      actions.append(
+        stepButton("delivery-handover-btn", "deliveryHandedOver", "handed-over", () => { order.handed_over_at = new Date().toISOString(); }, "deliveryHandedOverToast", { settle: true }),
+      );
     } else if (order.mine_customer && order.picked_up_at) {
       actions.append(
-        stepButton("delivery-mark-delivered", "deliveryMarkDelivered", "mark-delivered", () => { order.delivered_at = new Date().toISOString(); }, "deliveryMarkDeliveredToast"),
+        stepButton("delivery-mark-delivered", "deliveryMarkDelivered", "mark-delivered", () => { order.delivered_at = new Date().toISOString(); }, "deliveryMarkDeliveredToast", { settle: true }),
       );
     } else if (order.mine_courier && !order.mine_customer) {
-      // Food is in hand: nothing left to tap. The customer confirms the delivery.
+      // Handed over: nothing left to tap. The customer confirms the delivery.
       actions.append(el(`<p class="kind delivery-await-note">${escapeHtml(tr("deliveryAwaitingCustomer"))}</p>`));
+    }
+    // The customer's counterpart of "I can't deliver this": call their own order
+    // off, until a courier has the food (the server checks the same).
+    if (order.mine_customer && !order.mine_courier && !order.picked_up_at && ["pending", "reviewing", "awaiting_confirmation"].includes(order.status)) {
+      const cancel = el(`<button type="button" class="delivery-release-link delivery-cancel-link">${escapeHtml(tr("deliveryCancelOrder"))}</button>`);
+      cancel.addEventListener("click", async () => {
+        if (!window.confirm(`${tr("deliveryCancelOrder")}?`)) return;
+        const customerEmail = verifiedCourierEmailOrRedirect(cancel);
+        if (!customerEmail) return;
+        cancel.disabled = true;
+        try {
+          await api(`/api/orders/${order.id}/cancel`, { method: "POST", body: JSON.stringify({ courier_email: customerEmail }) });
+          order.status = "cancelled";
+          showToast(tr("deliveryCancelledToast"));
+          onChanged();
+        } catch (err) {
+          cancel.disabled = false;
+          if (!reverifyIfRejected(err, cancel)) showToast(tr("deliveryActionFailed"));
+        }
+      });
+      actions.append(cancel);
     }
     if (actions.children.length > 0) card.append(actions);
   } else if (sectionKey === "delivered") {
@@ -2321,7 +2375,7 @@ function saveCourierOnline(on) {
 
 // Accepted -> Picked up -> Delivered, for one order the courier holds.
 function courierStepsRow(order) {
-  const current = order.picked_up_at ? 1 : 0;
+  const current = order.handed_over_at ? 2 : order.picked_up_at ? 1 : 0;
   const names = [hx("stepAccepted"), hx("stepPickedUp"), hx("delivered")];
   const parts = names.map((name, i) => {
     const cls = i < current ? "is-done" : i === current ? "is-now" : "";

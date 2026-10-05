@@ -884,7 +884,9 @@ def test_the_two_university_domains_are_different_people(client):
     client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("courier@student.uni.lu")
     order_id = _create_basic_order(client, customer_email="courier@uni.lu")
     _hand_off(client, order_id, courier_email="courier@student.uni.lu")
-    _mark_delivered(client, order_id, courier_email="courier@student.uni.lu")
+    # Only the customer confirms delivery -- and that is courier@uni.lu, a different person.
+    assert _mark_delivered(client, order_id, courier_email="courier@student.uni.lu").status_code == 403
+    assert _mark_delivered(client, order_id, courier_email="courier@uni.lu").status_code == 200
     assert _points(client, "courier@student.uni.lu") == 1
 
 
@@ -1810,6 +1812,10 @@ def _pickup(client, order_id, courier_email="courier@uni.lu"):
 
 def _unclaim(client, order_id, courier_email="courier@uni.lu"):
     return client.post(f"/api/orders/{order_id}/unclaim", json={"courier_email": courier_email})
+
+
+def _handed_over(client, order_id, courier_email="courier@uni.lu"):
+    return client.post(f"/api/orders/{order_id}/handed-over", json={"courier_email": courier_email})
 
 
 def _mark_delivered(client, order_id, courier_email="student@uni.lu"):
@@ -4047,11 +4053,14 @@ def test_courier_actions_push_the_customer(client):
     log.clear()
     _claim(client, order_id)
     _pickup(client, order_id)
+    _handed_over(client, order_id)
     _mark_delivered(client, order_id)
     assert [(e, k, t) for e, k, t, _b in log if k == "courier"] == [
         ("student@uni.lu", "courier", "A courier took your order"),
         ("student@uni.lu", "courier", "Your order is on its way"),
-        ("student@uni.lu", "courier", "Your order was delivered"),
+        ("student@uni.lu", "courier", "Your order has arrived"),
+        # the customer's confirmation thanks the courier who brought it
+        ("courier@uni.lu", "courier", "Delivery confirmed"),
     ]
     log.clear()
     _mark_delivered(client, order_id)  # tapping it again must not push again
@@ -4501,3 +4510,119 @@ def test_a_released_order_is_nobodys_courier_job_any_more(client):
     client.held_tokens_for = None  # a browser that has proven every address again
     client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("other@uni.lu")
     assert _claim_quietly(client, order_id, courier_email="other@uni.lu").status_code == 200
+
+
+def _cancel(client, order_id, email="student@uni.lu"):
+    return client.post(f"/api/orders/{order_id}/cancel", json={"courier_email": email})
+
+
+def test_the_customer_can_cancel_their_own_order_and_the_admin_is_told(client):
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    with patch("app.send_admin_text", return_value=(True, None)) as told:
+        resp = _cancel(client, order_id)
+    assert resp.status_code == 200 and resp.get_json() == {"cancelled": True}
+    assert client.application.config["ORDER_STORE"].get_order(order_id)["status"] == "cancelled"
+    told.assert_called_once()
+    assert f"#{order_id}" in told.call_args[0][0]
+
+
+def test_cancelling_a_taken_order_tells_the_courier(client):
+    order_id = _taken_order(client)
+    pushes = client.application.config["PUSH_LOG"]
+    with patch("app.send_admin_text", return_value=(True, None)):
+        assert _cancel(client, order_id).status_code == 200
+    assert [p for p in pushes if p[0] == "courier@uni.lu" and p[2] == "Order cancelled"]
+
+
+def test_nobody_else_can_cancel_someone_elses_order(client):
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("other@uni.lu")
+    order_id = _taken_order(client)
+    with patch("app.send_admin_text") as told:
+        for who in ("other@uni.lu", "courier@uni.lu"):  # a bystander, and even the courier who took it
+            resp = _cancel(client, order_id, email=who)
+            assert resp.status_code == 403 and resp.get_json()["error"] == "not_your_order"
+        told.assert_not_called()
+    assert client.application.config["ORDER_STORE"].get_order(order_id)["status"] == "pending"
+
+
+def test_cancel_needs_a_proven_address(client):
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    client.held_tokens_for = []  # a browser that proved nobody
+    assert _cancel(client, order_id).status_code == 403
+    assert client.application.config["ORDER_STORE"].get_order(order_id)["status"] == "pending"
+
+
+def test_cannot_cancel_once_picked_up_or_confirmed(client):
+    picked = _taken_order(client)
+    with patch("app.send_order_out_for_delivery", return_value=(True, None)):
+        _pickup(client, picked)
+    resp = _cancel(client, picked)
+    assert resp.status_code == 409 and resp.get_json()["error"] == "not_cancellable"
+    confirmed = _create_basic_order(client, customer_email="student@uni.lu")
+    _confirm(client, confirmed)
+    assert _cancel(client, confirmed).status_code == 409
+
+
+def test_cancel_of_an_unknown_order_is_404(client):
+    assert _cancel(client, 9999).status_code == 404
+
+
+def test_a_cancelled_order_frees_the_days_limit_and_cannot_be_claimed(client):
+    order_id = _taken_order(client)
+    with patch("app.send_admin_text", return_value=(True, None)):
+        _cancel(client, order_id)
+    assert _claim_quietly(client, order_id, courier_email="courier@uni.lu").status_code == 409
+
+
+# ---------------------------------------------------------------------------
+# The courier's "I delivered", then the customer's "Mark as delivered"
+# ---------------------------------------------------------------------------
+
+
+def _picked_up_order(client):
+    order_id = _taken_order(client)
+    with patch("app.send_order_out_for_delivery", return_value=(True, None)):
+        assert _pickup(client, order_id).status_code == 200
+    return order_id
+
+
+def test_the_courier_hands_over_then_the_customer_confirms_and_the_courier_is_paid(client):
+    order_id = _picked_up_order(client)
+    log = client.application.config["PUSH_LOG"]
+    log.clear()
+    assert _handed_over(client, order_id).get_json() == {"handed_over": True}
+    store = client.application.config["ORDER_STORE"]
+    assert store.get_order(order_id)["handed_over_at"] and not store.get_order(order_id)["delivered_at"]
+    assert _points(client, "courier@uni.lu") == 0  # nothing is paid until the customer confirms
+    assert [(e, t) for e, k, t, _b in log if k == "courier"] == [("student@uni.lu", "Your order has arrived")]
+    assert _mark_delivered(client, order_id).status_code == 200
+    assert _points(client, "courier@uni.lu") == 1
+
+
+def test_only_the_courier_who_took_it_can_hand_it_over(client):
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("other@uni.lu")
+    order_id = _picked_up_order(client)
+    for who in ("other@uni.lu", "student@uni.lu"):  # a bystander, and even the customer
+        resp = _handed_over(client, order_id, courier_email=who)
+        assert resp.status_code == 403 and resp.get_json()["error"] == "not_your_order"
+    assert client.application.config["ORDER_STORE"].get_order(order_id)["handed_over_at"] is None
+
+
+def test_cannot_hand_over_before_pick_up_or_twice(client):
+    order_id = _taken_order(client)
+    resp = _handed_over(client, order_id)
+    assert resp.status_code == 409 and resp.get_json()["error"] == "not_handoverable"
+    with patch("app.send_order_out_for_delivery", return_value=(True, None)):
+        _pickup(client, order_id)
+    assert _handed_over(client, order_id).status_code == 200
+    log = client.application.config["PUSH_LOG"]
+    log.clear()
+    assert _handed_over(client, order_id).status_code == 409
+    assert not [p for p in log if p[2] == "Your order has arrived"]  # no second notification
+
+
+def test_the_delivery_list_carries_handed_over_at(client):
+    order_id = _picked_up_order(client)
+    assert _listed(client, order_id)["handed_over_at"] is None
+    _handed_over(client, order_id)
+    assert _listed(client, order_id)["handed_over_at"] is not None

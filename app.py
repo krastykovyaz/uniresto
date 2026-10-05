@@ -540,7 +540,7 @@ def create_app(
         return _order_roles(order, actor_email)[1]
 
     def _not_your_order():
-        return jsonify({"error": "not_your_order", "message": "Only the customer who placed this order and the courier who took it can do that"}), 403
+        return jsonify({"error": "not_your_order", "message": "This order is reserved: only its customer, or the courier who took it, can do that"}), 403
 
     def order_people(order: dict) -> list:
         """The customer's own email and their University (reward) email -- the same
@@ -1696,6 +1696,33 @@ def create_app(
         send_order_released_notification(order, admin_url=_admin_orders_url())
         return jsonify({"claimed": False})
 
+    @app.post("/api/orders/<int:order_id>/handed-over")
+    def api_mark_order_handed_over(order_id):
+        """The courier who took the order taps "I delivered": it is in the
+        customer's hands. Only that courier can, and only once they have
+        picked it up. It doesn't close the order -- it asks the customer to
+        confirm (mark-delivered), which is what pays the Luni."""
+        if (limited := rate_limited_response("courier_action")) is not None:
+            return limited
+        courier_email, error = _verified_courier_email_or_error()
+        if error:
+            return error
+        order = store().get_order(order_id)
+        if order is None:
+            abort(404, description=f"No order #{order_id}")
+        if order.get("claimed_at") and not _order_roles(order, courier_email)[0]:
+            return _not_your_order()
+        if not store().mark_handed_over(order_id):
+            return jsonify({"error": "not_handoverable"}), 409
+        push_to(
+            order_people(order),
+            "courier",
+            "Your order has arrived",
+            f"Please confirm in the app that you got your {order['restaurant_name']} order.",
+            tag=f"order-{order_id}",
+        )
+        return jsonify({"handed_over": True})
+
     @app.post("/api/orders/<int:order_id>/mark-delivered")
     def api_mark_order_delivered(order_id):
         """Courier-facing (Part 73), gated by a verified University email
@@ -1716,7 +1743,8 @@ def create_app(
         if order["status"] in ("cancelled", "expired"):
             return jsonify({"error": "not_deliverable", "status": order["status"]}), 409
         if store().mark_delivered(order_id) and not order.get("delivered_at"):
-            push_to(order_people(order), "courier", "Your order was delivered", f"Enjoy your {order['restaurant_name']} order.", tag=f"order-{order_id}")
+            # The customer confirmed it arrived: thank the courier who brought it.
+            push_to([order.get("courier_email")], "courier", "Delivery confirmed", f"The customer got their {order['restaurant_name']} order. Thank you!", tag=f"order-{order_id}")
         _award_delivery_luni(order)
         return jsonify({"delivered": True})
 
@@ -1737,6 +1765,37 @@ def create_app(
         if not store().mark_not_delivered(order_id):
             abort(404, description=f"No order #{order_id}")
         return jsonify({"delivered": False})
+
+    @app.post("/api/orders/<int:order_id>/cancel")
+    def api_customer_cancel_order(order_id):
+        """The customer who placed an order calls it off from the Delivery
+        screen. Only they can (same proven-address check as every action here),
+        and only while it is still pending, being placed or awaiting their
+        confirmation and no courier has the food yet -- see
+        OrderStore.customer_cancel_order(). Tells the admin and, if one had
+        taken it, the courier."""
+        if (limited := rate_limited_response("courier_action")) is not None:
+            return limited
+        email, error = _verified_courier_email_or_error()
+        if error:
+            return error
+        order = store().get_order(order_id)
+        if order is None:
+            abort(404, description=f"No order #{order_id}")
+        if not _order_roles(order, email)[1]:
+            return _not_your_order()
+        if not store().customer_cancel_order(order_id):
+            return jsonify({"error": "not_cancellable", "status": store().get_order(order_id)["status"]}), 409
+        send_admin_text(f"🚫 Order #{order_id} ({order['restaurant_name']}, {order['order_date']}) was cancelled by the customer.")
+        if order.get("claimed_at") and order.get("courier_email"):
+            push_to(
+                [order["courier_email"]],
+                "newDelivery",
+                "Order cancelled",
+                f"The customer cancelled the {order['restaurant_name']} order for {order['order_date']}. No need to pick it up.",
+                tag=f"delivery-{order_id}",
+            )
+        return jsonify({"cancelled": True})
 
     # The exact 4 "coming soon" cards static/app.js's own
     # COMING_SOON_LOCATIONS list shows on the restaurant list (Part 66) --

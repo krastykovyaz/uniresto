@@ -57,3 +57,48 @@ for (const key of ["deliveryReserved", "deliveryAwaitingCustomer", "deliveryClai
     assert.equal((i18n.match(new RegExp(`^\\s+${key}: "[^"]+",$`, "gm")) || []).length, 11);
   });
 }
+
+test("the customer gets a Cancel order link (instead of the courier's release link), until a courier has the food", () => {
+  const link = card.slice(card.indexOf("deliveryCancelOrder") - 600, card.indexOf("deliveryCancelledToast") + 200);
+  assert.match(card, /order\.mine_customer && !order\.mine_courier && !order\.picked_up_at && \["pending", "reviewing", "awaiting_confirmation"\]\.includes\(order\.status\)/);
+  assert.match(link, /\/api\/orders\/\$\{order\.id\}\/cancel/);
+  assert.match(link, /window\.confirm/); // a mis-tap must not cancel an order
+  // the courier's release link is built only in the courier branch
+  const courierBranch = card.slice(card.indexOf("else if (order.mine_courier && !order.picked_up_at)"), card.indexOf("else if (order.mine_customer && order.picked_up_at)"));
+  assert.match(courierBranch, /deliveryReleaseClaim/);
+  assert.doesNotMatch(courierBranch, /deliveryCancelOrder/);
+});
+
+for (const key of ["deliveryCancelOrder", "deliveryCancelledToast"]) {
+  test(`${key} exists in all 11 languages`, () => {
+    assert.equal((i18n.match(new RegExp(`^\\s+${key}: "[^"]+",$`, "gm")) || []).length, 11);
+  });
+}
+
+test("a rejected saved email asks for the code again instead of a bare error, on every step", () => {
+  assert.match(js, /function reverifyIfRejected\(err, retryBtn\) \{[\s\S]*?err\.status === 403[\s\S]*?email_not_verified[\s\S]*?clearRegisteredEmail\(\);[\s\S]*?openEmailSheet\(retryBtn/);
+  assert.equal((card.match(/reverifyIfRejected\(err, (btn|release|cancel)\)/g) || []).length, 3);
+});
+
+test("after pick-up the courier gets 'I delivered'; the customer confirms with 'Mark as delivered'", () => {
+  assert.match(card, /else if \(order\.mine_courier && order\.picked_up_at && !order\.handed_over_at && !order\.mine_customer\) \{[\s\S]*?"delivery-handover-btn", "deliveryHandedOver", "handed-over"/);
+  assert.match(card, /else if \(order\.mine_customer && order\.picked_up_at\) \{[\s\S]*?"deliveryMarkDelivered", "mark-delivered"/);
+  assert.match(js, /const current = order\.handed_over_at \? 2 : order\.picked_up_at \? 1 : 0;/);
+});
+
+for (const key of ["deliveryHandedOver", "deliveryHandedOverToast"]) {
+  test(`${key} exists in all 11 languages`, () => {
+    assert.equal((i18n.match(new RegExp(`^\\s+${key}: "[^"]+",$`, "gm")) || []).length, 11);
+  });
+}
+
+test("a step button that follows another is held for a moment so a stray second tap can't skip a step", () => {
+  assert.match(js, /const DELIVERY_STEP_SETTLE_MS = 2000;/);
+  assert.match(card, /lastDeliveryStepAt = Date\.now\(\);/);
+  assert.match(card, /if \(settle\) \{[\s\S]*?btn\.disabled = true;/);
+  // every later step opts in; taking the order and cancelling do not
+  for (const path of ["picked-up", "handed-over", "mark-delivered"]) {
+    assert.match(card, new RegExp(`"${path}", [^\\n]*\\{ settle: true \\}`), `${path} is not held`);
+  }
+  assert.doesNotMatch(card, /"claim", [^\n]*settle: true/);
+});

@@ -116,6 +116,10 @@ CREATE TABLE IF NOT EXISTS orders (
                                         -- later fact than claimed_at (claiming is just "I'll do
                                         -- this", not "I have it in hand"); this is what actually
                                         -- triggers the customer's "on its way" email now
+    handed_over_at TEXT,               -- NULL until the courier who took the order taps "I delivered":
+                                        -- they say it has been handed over. A courier-side fact; the
+                                        -- order is only DELIVERED (delivered_at, which pays Luni) once
+                                        -- the customer confirms they got it
     accepted_emailed_at TEXT,          -- when the customer got the "order accepted" email (Part 81,
                                         -- sent at claim time) -- same ever-once-per-order dedup
                                         -- reasoning as on_way_emailed_at above, so a claim/release
@@ -157,6 +161,7 @@ _MIGRATIONS = [
     ("courier_lang", "ALTER TABLE orders ADD COLUMN courier_lang TEXT"),
     ("picked_up_at", "ALTER TABLE orders ADD COLUMN picked_up_at TEXT"),
     ("accepted_emailed_at", "ALTER TABLE orders ADD COLUMN accepted_emailed_at TEXT"),
+    ("handed_over_at", "ALTER TABLE orders ADD COLUMN handed_over_at TEXT"),
     # The customer's verified University email, when it differs from
     # customer_email (which defaults to their Communication Email, often
     # a personal address) -- the only address Profile's Luni balance
@@ -458,7 +463,7 @@ class OrderStore:
             row = self._conn.execute(
                 "SELECT id, restaurant_code, restaurant_name, order_date, delivery_location, customer_email, "
                 "status, real_price, created_at, customer_note, customer_lang, delivered_at, claimed_at, customer_phone, "
-                "courier_email, courier_lang, picked_up_at, reward_email FROM orders WHERE id = ?",
+                "courier_email, courier_lang, picked_up_at, reward_email, handed_over_at FROM orders WHERE id = ?",
                 (order_id,),
             ).fetchone()
             if row is None:
@@ -514,6 +519,7 @@ class OrderStore:
             "courier_lang": row[15],
             "picked_up_at": row[16],
             "reward_email": row[17],
+            "handed_over_at": row[18],
             "items": line_items,
             "totals": aggregate_totals(line_items),
         }
@@ -685,6 +691,23 @@ class OrderStore:
             )
             return cur.rowcount > 0
 
+    def mark_handed_over(self, order_id: int) -> bool:
+        """The courier who took the order says they handed it over ("I
+        delivered"). True only the FIRST time, and only for an order that is
+        claimed, picked up, not yet delivered and not cancelled or expired --
+        in the UPDATE itself, so a cancel/expiry by the other worker in between
+        still wins. It does not deliver the order: the customer confirms that
+        (mark_delivered), and that is what pays Luni."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock, self._transaction() as conn:
+            cur = conn.execute(
+                "UPDATE orders SET handed_over_at = ? WHERE id = ? AND claimed_at IS NOT NULL "
+                "AND picked_up_at IS NOT NULL AND handed_over_at IS NULL AND delivered_at IS NULL "
+                "AND status NOT IN ('cancelled', 'expired')",
+                (now, order_id),
+            )
+            return cur.rowcount > 0
+
     def mark_on_way_emailed(self, order_id: int) -> bool:
         """True only the FIRST time for a given order (same WHERE-IS-NULL
         pattern as mark_claimed()) -- the caller sends the customer's "on
@@ -757,6 +780,24 @@ class OrderStore:
             cur = conn.execute(
                 "UPDATE orders SET status = 'cancelled' WHERE id = ? "
                 "AND status IN ('pending', 'reviewing', 'awaiting_confirmation')",
+                (order_id,),
+            )
+            return cur.rowcount > 0
+
+    def customer_cancel_order(self, order_id: int) -> bool:
+        """The customer calling off their own order from the app (the caller
+        has already proven it is theirs): any order still waiting on the admin
+        or on the customer's own confirmation, and not yet in a courier's hands
+        -- once the food is picked up, or the order is confirmed (the admin has
+        placed the real one), it is no longer theirs to cancel. One guarded
+        UPDATE, so a pick-up, confirmation or expiry by the other worker in
+        between still wins. Like admin_cancel_order(), the status change also
+        kills any confirm/cancel email link already sent."""
+        with self._lock, self._transaction() as conn:
+            cur = conn.execute(
+                "UPDATE orders SET status = 'cancelled' WHERE id = ? "
+                "AND status IN ('pending', 'reviewing', 'awaiting_confirmation') "
+                "AND picked_up_at IS NULL AND delivered_at IS NULL",
                 (order_id,),
             )
             return cur.rowcount > 0
