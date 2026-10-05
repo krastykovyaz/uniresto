@@ -2165,67 +2165,55 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
   `);
   if (isReserved) return card;
   if (sectionKey === "pending" || sectionKey === "expired") {
+    // One button at a time, in the order things happen:
+    //   anyone verified      -> "I pick up the order"   (take it; the first tap wins)
+    //   the courier who took it -> "I picked up the food"
+    //   the customer who placed it -> "Mark as delivered"  (only they can say it arrived)
+    // Everyone else sees a taken order as reserved (returned above). The server
+    // enforces the same rules, so a stale tab or a direct call can't skip a step.
     const actions = el(`<div class="delivery-order-actions"></div>`);
-    // "Take this delivery" (Part 75, courier_email required Part 81,
-    // verified University email required Part 88 -- see
-    // verifiedCourierEmailOrRedirect()'s own comment) -- a courier
-    // signaling they're the one bringing it, which pings the admin
-    // (Telegram), emails THIS courier the order description (dish
-    // names, in their own language), and -- if given -- emails the
-    // customer "order accepted", all the FIRST time ANY courier taps it
-    // (see OrderStore.mark_claimed()'s own docstring). Hidden once
-    // claimed -- nothing left to re-trigger, the claimed-note above
-    // already shows it was taken.
-    if (!order.claimed_at) {
-      const claimBtn = el(`<button type="button" class="secondary-button delivery-claim-btn">${escapeHtml(tr("deliveryClaimJob"))}</button>`);
-      claimBtn.addEventListener("click", async () => {
-        const courierEmail = verifiedCourierEmailOrRedirect(claimBtn);
+    const stepButton = (cls, labelKey, path, onSuccess, toastKey) => {
+      const btn = el(`<button type="button" class="secondary-button delivery-step-btn ${cls}">${escapeHtml(tr(labelKey))}</button>`);
+      btn.addEventListener("click", async () => {
+        const courierEmail = verifiedCourierEmailOrRedirect(btn);
         if (!courierEmail) return;
-        claimBtn.disabled = true;
+        btn.disabled = true;
         try {
-          const result = await api(`/api/orders/${order.id}/claim`, {
+          const result = await api(`/api/orders/${order.id}/${path}`, {
             method: "POST",
             body: JSON.stringify({ courier_email: courierEmail, lang: state.lang }),
           });
-          order.claimed_at = new Date().toISOString();
-          showToast(tr(result.already_claimed ? "deliveryAlreadyClaimedToast" : "deliveryClaimedToast"));
+          onSuccess(result);
+          showToast(tr(typeof toastKey === "function" ? toastKey(result) : toastKey));
           onChanged();
         } catch {
           showToast(tr("deliveryActionFailed"));
-          claimBtn.disabled = false;
+          btn.disabled = false;
         }
       });
-      actions.append(claimBtn);
-    } else if (!order.picked_up_at && order.mine_courier) {
-      // Part 81: claimed but not yet physically in hand -- offers BOTH
-      // confirming pickup (the real next step) and releasing the job
-      // (still possible up to this exact point, never after -- see
-      // OrderStore.mark_unclaimed()'s own docstring).
-      const pickupBtn = el(`<button type="button" class="secondary-button delivery-pickup-btn">${escapeHtml(tr("deliveryConfirmPickup"))}</button>`);
-      pickupBtn.addEventListener("click", async () => {
-        const courierEmail = verifiedCourierEmailOrRedirect(pickupBtn);
-        if (!courierEmail) return;
-        pickupBtn.disabled = true;
-        try {
-          await api(`/api/orders/${order.id}/picked-up`, { method: "POST", body: JSON.stringify({ courier_email: courierEmail }) });
-          order.picked_up_at = new Date().toISOString();
-          showToast(tr("deliveryPickedUpToast"));
-          onChanged();
-        } catch {
-          showToast(tr("deliveryActionFailed"));
-          pickupBtn.disabled = false;
-        }
-      });
-      actions.append(pickupBtn);
+      return btn;
+    };
 
-      // Part 76: whoever took it can give it back (only they: the server
-      // checks it is the courier who took the order). Pings the admin
-      // server-side.
-      const releaseBtn = el(`<button type="button" class="secondary-button delivery-release-btn">${escapeHtml(tr("deliveryReleaseClaim"))}</button>`);
-      releaseBtn.addEventListener("click", async () => {
-        const courierEmail = verifiedCourierEmailOrRedirect(releaseBtn);
+    if (!order.claimed_at) {
+      // Take it (courier_email required Part 81, verified University email Part 88 --
+      // see verifiedCourierEmailOrRedirect()). Pings the admin, emails the courier
+      // the order description and the customer "order accepted", all on the first
+      // tap of ANY courier (OrderStore.mark_claimed()).
+      actions.append(
+        stepButton("delivery-claim-btn", "deliveryClaimJob", "claim", () => { order.claimed_at = new Date().toISOString(); },
+          (r) => (r.already_claimed ? "deliveryAlreadyClaimedToast" : "deliveryClaimedToast")),
+      );
+    } else if (order.mine_courier && !order.picked_up_at) {
+      actions.append(
+        stepButton("delivery-pickup-btn", "deliveryConfirmPickup", "picked-up", () => { order.picked_up_at = new Date().toISOString(); }, "deliveryPickedUpToast"),
+      );
+      // Whoever took it can still give it back, before the food is in hand -- a
+      // quiet link, not a button, so the card has exactly one button. Pings the admin.
+      const release = el(`<button type="button" class="delivery-release-link">${escapeHtml(tr("deliveryReleaseClaim"))}</button>`);
+      release.addEventListener("click", async () => {
+        const courierEmail = verifiedCourierEmailOrRedirect(release);
         if (!courierEmail) return;
-        releaseBtn.disabled = true;
+        release.disabled = true;
         try {
           await api(`/api/orders/${order.id}/unclaim`, { method: "POST", body: JSON.stringify({ courier_email: courierEmail }) });
           order.claimed_at = null;
@@ -2233,29 +2221,19 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
           onChanged();
         } catch {
           showToast(tr("deliveryActionFailed"));
-          releaseBtn.disabled = false;
+          release.disabled = false;
         }
       });
-      actions.append(releaseBtn);
+      actions.append(release);
+    } else if (order.mine_customer && order.picked_up_at) {
+      actions.append(
+        stepButton("delivery-mark-delivered", "deliveryMarkDelivered", "mark-delivered", () => { order.delivered_at = new Date().toISOString(); }, "deliveryMarkDeliveredToast"),
+      );
+    } else if (order.mine_courier && !order.mine_customer) {
+      // Food is in hand: nothing left to tap. The customer confirms the delivery.
+      actions.append(el(`<p class="kind delivery-await-note">${escapeHtml(tr("deliveryAwaitingCustomer"))}</p>`));
     }
-    const btn = el(`<button type="button" class="secondary-button delivery-mark-delivered">${escapeHtml(tr("deliveryMarkDelivered"))}</button>`);
-    btn.addEventListener("click", async () => {
-      const courierEmail = verifiedCourierEmailOrRedirect(btn);
-      if (!courierEmail) return;
-      btn.disabled = true;
-      try {
-        await api(`/api/orders/${order.id}/mark-delivered`, { method: "POST", body: JSON.stringify({ courier_email: courierEmail }) });
-        order.delivered_at = new Date().toISOString();
-        showToast(tr("deliveryMarkDeliveredToast"));
-        onChanged();
-      } catch {
-        showToast(tr("deliveryActionFailed"));
-        btn.disabled = false;
-      }
-    });
-    // Only someone who took the order can hand it over: an open offer just offers "Take this delivery".
-    if (order.claimed_at) actions.append(btn);
-    card.append(actions);
+    if (actions.children.length > 0) card.append(actions);
   } else if (sectionKey === "delivered") {
     const btn = el(`<button type="button" class="secondary-button delivery-mark-delivered">${escapeHtml(tr("deliveryMarkNotDelivered"))}</button>`);
     btn.addEventListener("click", async () => {

@@ -1812,11 +1812,11 @@ def _unclaim(client, order_id, courier_email="courier@uni.lu"):
     return client.post(f"/api/orders/{order_id}/unclaim", json={"courier_email": courier_email})
 
 
-def _mark_delivered(client, order_id, courier_email="courier@uni.lu"):
+def _mark_delivered(client, order_id, courier_email="student@uni.lu"):
     return client.post(f"/api/orders/{order_id}/mark-delivered", json={"courier_email": courier_email})
 
 
-def _mark_not_delivered(client, order_id, courier_email="courier@uni.lu"):
+def _mark_not_delivered(client, order_id, courier_email="student@uni.lu"):
     return client.post(f"/api/orders/{order_id}/mark-not-delivered", json={"courier_email": courier_email})
 
 
@@ -2870,12 +2870,39 @@ def test_delivery_list_never_includes_the_customer_note(client):
     assert "customer_note" not in listed
 
 
-def test_delivery_list_keeps_the_full_location_until_delivered_then_only_the_building(client):
-    order_id = _create_basic_order(client, delivery_location="Building G — 2211 room")
-    listed = lambda: next(o for o in client.get("/api/delivery/orders").get_json() if o["id"] == order_id)  # noqa: E731
-    assert listed()["delivery_location"] == "Building G — 2211 room"
-    _mark_delivered(client, order_id, courier_email="student@uni.lu")
-    assert listed()["delivery_location"] == "Building G"
+def test_delivery_list_shows_the_exact_location_only_to_the_customer_and_the_courier_who_took_it(client):
+    order_id = _create_basic_order(client, customer_email="student@uni.lu", delivery_location="Building G — 2211 room")
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("other@uni.lu")
+
+    def seen_by(*emails):
+        client.held_tokens_for = list(emails)
+        return _listed(client, order_id)["delivery_location"]
+
+    # Open to everyone: just the building to head for.
+    assert seen_by("other@uni.lu") == "Building G"
+    assert seen_by() == "Building G"
+    assert seen_by("courier@uni.lu") == "Building G"  # not theirs yet
+    # The customer who placed it knows where it is going.
+    assert seen_by("student@uni.lu") == "Building G — 2211 room"
+
+    # Once taken, the courier who took it gets the exact spot; bystanders still do not.
+    client.held_tokens_for = None
+    _claim_quietly(client, order_id)
+    assert seen_by("courier@uni.lu") == "Building G — 2211 room"
+    assert seen_by("other@uni.lu") == "Building G"
+
+    # Delivered: nothing left to find, building only for everyone.
+    client.held_tokens_for = None
+    client.application.config["ORDER_STORE"].mark_delivered(order_id)
+    assert seen_by("student@uni.lu") == "Building G"
+    assert seen_by("courier@uni.lu") == "Building G"
+
+
+def test_the_courier_who_took_an_order_still_gets_the_exact_location_on_their_own_list(client):
+    order_id = _create_basic_order(client, customer_email="student@uni.lu", delivery_location="Building G — 2211 room")
+    _claim_quietly(client, order_id)
+    mine = client.get("/api/courier/orders?email=courier@uni.lu").get_json()
+    assert [o["delivery_location"] for o in mine if o["id"] == order_id] == ["Building G — 2211 room"]
 
 
 def test_delivery_list_drops_orders_older_than_two_weeks(client):
@@ -4410,12 +4437,15 @@ def test_a_bystander_cannot_touch_a_taken_order(client):
     assert len(client.application.config["PUSH_LOG"]) == pushes_before
 
 
-def test_the_courier_who_took_it_can_pick_up_release_and_deliver(client):
+def test_the_courier_who_took_it_can_pick_up_and_release_but_not_close_it(client):
     order_id = _taken_order(client)
     with patch("app.send_order_out_for_delivery", return_value=(True, None)):
         assert _pickup(client, order_id).status_code == 200
-    assert _mark_delivered(client, order_id).status_code == 200
-    assert _mark_not_delivered(client, order_id).status_code == 200
+    # Handing it over is theirs; saying it arrived is the customer's.
+    assert _mark_delivered(client, order_id, courier_email="courier@uni.lu").status_code == 403
+    assert _mark_not_delivered(client, order_id, courier_email="courier@uni.lu").status_code == 403
+    assert client.application.config["ORDER_STORE"].get_order(order_id)["delivered_at"] is None
+    assert _mark_delivered(client, order_id).status_code == 200  # the customer
     other = _taken_order(client)
     with patch("app.send_order_released_notification", return_value=(True, None)):
         assert _unclaim(client, other).status_code == 200

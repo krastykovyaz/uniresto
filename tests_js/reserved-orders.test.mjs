@@ -17,13 +17,25 @@ test("a taken order is reserved unless it is the caller's own (as customer or co
 test("a reserved card is returned before any action button is built", () => {
   const returned = card.indexOf("if (isReserved) return card;");
   assert.ok(returned > 0, "reserved cards must return early");
-  for (const cls of ["delivery-claim-btn", "delivery-pickup-btn", "delivery-release-btn", "delivery-mark-delivered"]) {
-    assert.ok(card.indexOf(`"secondary-button ${cls}"`) > returned, `${cls} is built before the reserved check`);
-  }
+  assert.ok(card.indexOf("const stepButton") > returned, "buttons are built before the reserved check");
 });
 
-test("pick-up and release are only offered to the courier who took the order", () => {
-  assert.match(card, /else if \(!order\.picked_up_at && order\.mine_courier\)/);
+test("one button at a time: take it, then picked up (its courier), then delivered (its customer)", () => {
+  // The three steps, each in its own exclusive branch.
+  assert.match(card, /if \(!order\.claimed_at\) \{[\s\S]*?"delivery-claim-btn", "deliveryClaimJob", "claim"/);
+  assert.match(card, /else if \(order\.mine_courier && !order\.picked_up_at\) \{[\s\S]*?"delivery-pickup-btn", "deliveryConfirmPickup", "picked-up"/);
+  assert.match(card, /else if \(order\.mine_customer && order\.picked_up_at\) \{[\s\S]*?"delivery-mark-delivered", "deliveryMarkDelivered", "mark-delivered"/);
+});
+
+test("the courier never gets a Mark as delivered button", () => {
+  const courierBranches = card.slice(card.indexOf("else if (order.mine_courier && !order.picked_up_at)"), card.indexOf("else if (order.mine_customer && order.picked_up_at)"));
+  assert.doesNotMatch(courierBranches, /mark-delivered/);
+  assert.match(card, /deliveryAwaitingCustomer/); // instead they are told the customer confirms
+});
+
+test("releasing a taken order is a quiet link, not a second button", () => {
+  assert.match(card, /class="delivery-release-link"/);
+  assert.doesNotMatch(card, /secondary-button delivery-release-btn/);
 });
 
 test("the list shows taken orders (reserved) instead of a contradictory empty state", () => {
@@ -40,6 +52,8 @@ test("the fog style removes pointer events", () => {
   assert.match(rule[0], /opacity/);
 });
 
-test("deliveryReserved exists in all 11 languages", () => {
-  assert.equal((i18n.match(/^\s+deliveryReserved: "[^"]+",$/gm) || []).length, 11);
-});
+for (const key of ["deliveryReserved", "deliveryAwaitingCustomer", "deliveryClaimJob"]) {
+  test(`${key} exists in all 11 languages`, () => {
+    assert.equal((i18n.match(new RegExp(`^\\s+${key}: "[^"]+",$`, "gm")) || []).length, 11);
+  });
+}

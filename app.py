@@ -533,11 +533,11 @@ def create_app(
         return courier, customer
 
     def _may_settle_delivery(order: dict, actor_email: str) -> bool:
-        """Who may mark an order delivered (or undo that): the customer who
-        placed it, and -- once someone took it -- the courier who did. An
-        untaken order has no courier, so there it is the customer alone."""
-        is_courier, is_customer = _order_roles(order, actor_email)
-        return is_customer or (bool(order.get("claimed_at")) and is_courier)
+        """Only the customer who placed the order can say it was delivered (or
+        undo that): they are the one who knows whether it arrived. The courier
+        who took it picks it up and hands it over; they cannot close it
+        themselves."""
+        return _order_roles(order, actor_email)[1]
 
     def _not_your_order():
         return jsonify({"error": "not_your_order", "message": "Only the customer who placed this order and the courier who took it can do that"}), 403
@@ -1568,10 +1568,18 @@ def create_app(
             # at ...", "I'm in room ...") is exactly where contact details
             # would slip in.
             order.pop("customer_note", None)
-            # Once there's nothing left to deliver, the building is enough
-            # for the card's heading -- the room/free-text half isn't
-            # needed by anyone browsing this list anymore.
-            if order.get("delivered_at") or order["status"] in ("cancelled", "expired"):
+            # Only the building is public. The exact spot (room, office,
+            # free text) goes to the customer who placed the order and the
+            # courier who took it -- a courier browsing offers only needs
+            # to know which building to head for, and sees the rest once
+            # the order is theirs (their own list, /api/courier/orders,
+            # keeps it). Orders with nothing left to deliver show just the
+            # building to everyone.
+            if (
+                order.get("delivered_at")
+                or order["status"] in ("cancelled", "expired")
+                or not (order["mine_courier"] or order["mine_customer"])
+            ):
                 order["delivery_location"] = _building_only(order.get("delivery_location"))
             # Part 76: the Delivery screen's "Expired" section reads this
             # instead of comparing dates on the courier's own device.
@@ -1692,9 +1700,9 @@ def create_app(
     def api_mark_order_delivered(order_id):
         """Courier-facing (Part 73), gated by a verified University email
         (Part 88) same as every other courier action above -- same trust
-        level otherwise -- but only for the courier who took the order or the
-        customer who placed it (see _may_settle_delivery); everyone else sees
-        a taken order as reserved."""
+        level otherwise -- but only for the customer who placed the order (see
+        _may_settle_delivery): the courier hands it over, the customer confirms
+        it arrived; everyone else sees a taken order as reserved."""
         if (limited := rate_limited_response("courier_action")) is not None:
             return limited
         courier_email, error = _verified_courier_email_or_error()

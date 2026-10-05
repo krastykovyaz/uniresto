@@ -456,6 +456,9 @@ svg { display: block; }
 .delivery-reserved-tag { margin: 0 0 4px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-text-muted); }
 .delivery-no-offers { text-align: center; margin: var(--space-3) 0; }
 .delivery-order-actions .delivery-release-btn { color: var(--color-text-muted); }
+.delivery-order-actions .delivery-step-btn { display: block; width: auto; margin: 0; padding: 10px 16px; font-size: 0.9rem; min-height: 0; white-space: nowrap; background: var(--color-primary); color: var(--color-primary-contrast); border-color: var(--color-primary); }
+.delivery-release-link { background: none; border: 0; padding: 4px 0; font: inherit; font-size: 0.8rem; color: var(--color-text-muted); text-decoration: underline; cursor: pointer; text-align: center; }
+.delivery-await-note { max-width: 14rem; margin: 0; text-align: center; }
 .delivery-delivered-note { color: var(--color-primary-dark); font-weight: 600; }
 
 /* Basket screen: a "Current orders" heading + list (always expanded --
