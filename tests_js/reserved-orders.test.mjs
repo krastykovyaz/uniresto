@@ -83,7 +83,6 @@ test("a rejected saved email asks for the code again instead of a bare error, on
 test("after pick-up the courier gets 'I delivered'; the customer confirms with 'Mark as delivered'", () => {
   assert.match(card, /else if \(order\.mine_courier && order\.picked_up_at && !order\.handed_over_at && !order\.mine_customer\) \{[\s\S]*?"delivery-handover-btn", "deliveryHandedOver", "handed-over"/);
   assert.match(card, /else if \(order\.mine_customer && order\.picked_up_at\) \{[\s\S]*?"deliveryMarkDelivered", "mark-delivered"/);
-  assert.match(js, /const current = order\.handed_over_at \? 2 : order\.picked_up_at \? 1 : 0;/);
 });
 
 for (const key of ["deliveryHandedOver", "deliveryHandedOverToast"]) {
@@ -101,4 +100,24 @@ test("a step button that follows another is held for a moment so a stray second 
     assert.match(card, new RegExp(`"${path}", [^\\n]*\\{ settle: true \\}`), `${path} is not held`);
   }
   assert.doesNotMatch(card, /"claim", [^\n]*settle: true/);
+});
+
+test("the courier's step bar: each step turns green when its button is tapped", () => {
+  const start = js.indexOf("function courierStepsRow(order) {");
+  const src = js.slice(start, js.indexOf("\nfunction courierActiveBlock(", start));
+  assert.match(src, /const done = 1 \+ \(order\.picked_up_at \? 1 : 0\) \+ \(order\.handed_over_at \? 1 : 0\);/);
+  // Run the real function against a stub DOM and read which steps/bars come out green.
+  const hx = (k) => ({ stepAccepted: "Accepted", stepPickedUp: "Picked up", delivered: "Delivered" })[k];
+  const el = (html) => html;
+  const escapeHtml = (v) => v;
+  const row = (order) => new Function("hx", "el", "escapeHtml", `${src}; return courierStepsRow;`)(hx, el, escapeHtml)(order);
+  const greens = (html) => ({
+    steps: [...html.matchAll(/<span class="courier-step (is-done|is-now)?"><i><\/i>([^<]+)<\/span>/g)].map((m) => `${m[2]}:${m[1] || "todo"}`),
+    bars: [...html.matchAll(/courier-step-bar ([^"]*)"/g)].map((m) => m[1].trim() || "grey"),
+  });
+  assert.deepEqual(greens(row({})).steps, ["Accepted:is-done", "Picked up:is-now", "Delivered:todo"]);
+  assert.deepEqual(greens(row({ picked_up_at: "x" })).steps, ["Accepted:is-done", "Picked up:is-done", "Delivered:is-now"]);
+  assert.deepEqual(greens(row({ picked_up_at: "x", handed_over_at: "y" })).steps, ["Accepted:is-done", "Picked up:is-done", "Delivered:is-done"]);
+  assert.deepEqual(greens(row({ picked_up_at: "x", handed_over_at: "y" })).bars, ["is-done", "is-done"]);
+  assert.deepEqual(greens(row({})).bars, ["grey", "grey"]);
 });

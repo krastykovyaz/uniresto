@@ -2374,12 +2374,17 @@ function saveCourierOnline(on) {
 }
 
 // Accepted -> Picked up -> Delivered, for one order the courier holds.
+// Accepted / Picked up / Delivered: a step turns green the moment the courier's
+// button for it has been tapped -- "I pick up the order" makes Accepted green,
+// "I picked up the food" Picked up, "I delivered" Delivered. The step still to do
+// shows as a ring, and the bar leading to a finished step is green too. The order
+// is only truly delivered once the customer confirms, but this row is the courier's.
 function courierStepsRow(order) {
-  const current = order.handed_over_at ? 2 : order.picked_up_at ? 1 : 0;
+  const done = 1 + (order.picked_up_at ? 1 : 0) + (order.handed_over_at ? 1 : 0); // taking the order is how it got here
   const names = [hx("stepAccepted"), hx("stepPickedUp"), hx("delivered")];
   const parts = names.map((name, i) => {
-    const cls = i < current ? "is-done" : i === current ? "is-now" : "";
-    return `${i > 0 ? `<span class="courier-step-bar ${i <= current ? "is-done" : ""}"></span>` : ""}<span class="courier-step ${cls}"><i></i>${escapeHtml(name)}</span>`;
+    const cls = i < done ? "is-done" : i === done ? "is-now" : "";
+    return `${i > 0 ? `<span class="courier-step-bar ${i < done ? "is-done" : ""}"></span>` : ""}<span class="courier-step ${cls}"><i></i>${escapeHtml(name)}</span>`;
   });
   return el(`<div class="courier-steps">${parts.join("")}</div>`);
 }
