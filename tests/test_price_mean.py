@@ -167,3 +167,9 @@ def test_the_browsers_built_in_tables_equal_the_real_adult_prices():
     assert js["meal"] == adult["meal"] and js["snack"] == adult["snack"]
     for label, js_name in P.JS_TABLE_NAMES.items():
         assert js["named"][js_name] == adult["named"][label], js_name
+
+
+def test_the_payload_always_carries_the_real_adult_prices_for_a_discount_banner(monkeypatch):
+    for tier in ("adulte", "mean"):
+        monkeypatch.setenv("PRICE_TIER", tier)
+        assert P.price_tables_payload()["list_prices"] == {"main": 6.70, "main_starter": 7.70, "main_starter_dessert": 8.70, "snack": 4.80}

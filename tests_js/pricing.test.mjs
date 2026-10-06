@@ -378,3 +378,40 @@ test("app.js imports every pricing.js function it calls (a missing import is swa
     assert.match(imported, new RegExp(`\\b${name}\\b`), `${name} is used in app.js but not imported from pricing.js`);
   }
 });
+
+test("discountOffer: nothing while the real adult price is charged; the live numbers while the mean is", () => {
+  const real = adultPayload();
+  assert.equal(PR.discountOffer(), null);
+  const mean = { ...adultPayload(), tier: "mean", meal_tier_prices: { main: 5.2, main_starter: 5.95, main_starter_dessert: 6.7 }, snack_price: 4.15, list_prices: { main: 6.7, main_starter: 7.7, main_starter_dessert: 8.7, snack: 4.8 } };
+  try {
+    assert.equal(PR.applyPriceTables(mean), true);
+    assert.deepEqual(PR.discountOffer(), { main: { price: 5.2, was: 6.7 }, full: { price: 6.7, was: 8.7 } });
+    // a "mean" that is not actually cheaper is never advertised as a discount
+    assert.equal(PR.applyPriceTables({ ...mean, meal_tier_prices: { main: 6.7, main_starter: 7.7, main_starter_dessert: 8.7 } }), true);
+    assert.equal(PR.discountOffer(), null);
+  } finally {
+    assert.equal(PR.applyPriceTables(real), true);
+  }
+  assert.equal(PR.discountOffer(), null);
+});
+
+test("the first screen shows the discount banner above the role cards, and closing it is remembered per price", async () => {
+  const { readFileSync } = await import("node:fs");
+  const app = readFileSync(new URL("../static/app.js", import.meta.url), "utf8");
+  const role = app.slice(app.indexOf("function renderRole() {"), app.indexOf("const grid = el(", app.indexOf("function renderRole() {")));
+  assert.match(role, /const discount = discountBanner\(\);\n\s+if \(discount\) app\.append\(discount\);/);
+  assert.match(app, /const offer = discountOffer\(\);\n\s+if \(!offer\) return null;/);
+  assert.match(app, /localStorage\.setItem\(DISCOUNT_BANNER_DISMISSED_KEY, signature\)/);
+  assert.match(app, /signature = `\$\{offer\.main\.price\}\/\$\{offer\.main\.was\}\/\$\{offer\.full\.price\}\/\$\{offer\.full\.was\}`/);
+  assert.match(app.match(/import \{([^}]*)\} from "\.\/pricing\.js";/)[1], /\bdiscountOffer\b/);
+});
+
+for (const key of ["discountBannerTitle", "discountBannerBody", "discountBannerClose"]) {
+  test(`${key} exists in all 11 languages, and the body keeps its four placeholders`, async () => {
+    const { readFileSync } = await import("node:fs");
+    const i18n = readFileSync(new URL("../static/i18n.js", import.meta.url), "utf8");
+    const lines = i18n.match(new RegExp(`^\\s+${key}: ".*",$`, "gm")) || [];
+    assert.equal(lines.length, 11);
+    if (key === "discountBannerBody") for (const l of lines) for (const ph of ["{price}", "{was}", "{fullPrice}", "{fullWas}"]) assert.ok(l.includes(ph), `${ph} missing in ${l}`);
+  });
+}

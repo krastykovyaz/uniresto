@@ -271,6 +271,10 @@ const NAME_PRICED_GROUPS = [
 // above) until applyPriceTables() says otherwise.
 export let ACTIVE_PRICE_TIER = "adulte";
 
+// The real adult prices (what the app charged before any discount): a banner compares the active
+// prices against these. Kept equal to the real adult tables; applyPriceTables() refreshes them.
+export const LIST_PRICES = { main: 6.7, main_starter: 7.7, main_starter_dessert: 8.7, snack: 4.8 };
+
 const NAMED_PRICE_TABLES = {
   SANDWICH_PRICES, VIENNOISERIE_PRICES, HOMEMADE_CAKE_PRICES, TAKEAWAY_VITAMIN_PRICES, FRUIT_PRICES, LAITAGES_PRICES,
   GLACES_PRICES, PASTRY_PRICES, COLD_DRINK_PRICES, HOT_DRINK_PRICES, REUSABLE_PACKAGING_PRICES, SINGLE_USE_PACKAGING_PRICES,
@@ -303,7 +307,22 @@ export function applyPriceTables(payload) {
     Object.assign(table, named[name]);
   }
   ACTIVE_PRICE_TIER = typeof tier === "string" ? tier : "adulte";
+  if (isPriceMap(payload.list_prices)) Object.assign(LIST_PRICES, payload.list_prices);
   return true;
+}
+
+/**
+ * The discount to advertise, or null when there is none: only while the app charges a price below
+ * the real adult one (PRICE_TIER=mean), and only for the two prices a customer recognises -- a main
+ * dish and the full menu (main + starter + dessert). Every number comes from the live tables, so the
+ * banner can never promise a price the app is not charging.
+ */
+export function discountOffer() {
+  if (ACTIVE_PRICE_TIER === "adulte") return null;
+  const main = { price: MEAL_TIER_PRICES.main, was: LIST_PRICES.main };
+  const full = { price: MEAL_TIER_PRICES.main_starter_dessert, was: LIST_PRICES.main_starter_dessert };
+  if (!(main.price < main.was) || !(full.price < full.was)) return null;
+  return { main, full };
 }
 
 /**

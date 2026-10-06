@@ -15,6 +15,7 @@ import {
   STARTER_CATEGORIES,
   applyPriceTables,
   computeFormulaTotal,
+  discountOffer,
   priceForItem,
 } from "./pricing.js";
 import { LANGUAGES, allergenLabel, categoryLabel, dishNameParts, dishSize, dishTitle, dishTitleWithSize, getLanguage, intlLocale, langInfo, setLanguage, t } from "./i18n.js";
@@ -1765,9 +1766,49 @@ function buildingLabel(building) {
 // manual page refresh is different: that skips straight back to
 // whichever screen the user was already on instead (see
 // RESTORABLE_SCREENS/restoreLocation()).
+// The discount banner on the first screen. Only while the app is really charging below the adult
+// price (see discountOffer()); closing it is remembered on this device for these exact prices, and
+// it comes back if the prices change.
+const DISCOUNT_BANNER_DISMISSED_KEY = "uniresto.discountBanner.dismissed.v1";
+
+function discountBanner() {
+  const offer = discountOffer();
+  if (!offer) return null;
+  const signature = `${offer.main.price}/${offer.main.was}/${offer.full.price}/${offer.full.was}`;
+  try {
+    if (localStorage.getItem(DISCOUNT_BANNER_DISMISSED_KEY) === signature) return null;
+  } catch {
+    /* storage unavailable: just show it */
+  }
+  const money = (n) => `€${n.toFixed(2)}`;
+  const banner = el(`
+    <aside class="discount-banner" role="note">
+      <span class="discount-banner-icon" aria-hidden="true">🏷️</span>
+      <div class="discount-banner-text">
+        <p class="discount-banner-title">${escapeHtml(tr("discountBannerTitle"))}</p>
+        <p class="discount-banner-body">${escapeHtml(
+          tr("discountBannerBody", { price: money(offer.main.price), was: money(offer.main.was), fullPrice: money(offer.full.price), fullWas: money(offer.full.was) }),
+        )}</p>
+      </div>
+      <button type="button" class="discount-banner-close" aria-label="${escapeHtml(tr("discountBannerClose"))}">×</button>
+    </aside>
+  `);
+  banner.querySelector(".discount-banner-close").addEventListener("click", () => {
+    try {
+      localStorage.setItem(DISCOUNT_BANNER_DISMISSED_KEY, signature);
+    } catch {
+      /* not remembered, still closes now */
+    }
+    banner.remove();
+  });
+  return banner;
+}
+
 function renderRole() {
   app.innerHTML = "";
   app.append(el(`<h1 class="large-title" style="padding-top:28px">${escapeHtml(tr("roleQuestion"))}</h1>`));
+  const discount = discountBanner();
+  if (discount) app.append(discount);
 
   const grid = el(`<div class="restaurant-grid"></div>`);
   const roles = [

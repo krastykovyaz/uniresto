@@ -565,6 +565,8 @@ def price_tables_payload(tier: str | None = None) -> dict:
         "meal_tier_prices": dict(meal),
         "snack_price": snack,
         "name_prices": {JS_TABLE_NAMES[label]: dict(prices) for label, _categories, prices in groups},
+        # The real adult prices, whatever tier is active: what a discount banner compares against.
+        "list_prices": {**MEAL_TIER_PRICES, "snack": SNACK_PRICE},
     }
 
 
