@@ -137,3 +137,14 @@ test("a delivered order stays on the list in the fog, tagged Delivered, with no 
 test("a delivered card shows the date, not the admin-side status (Pending)", () => {
   assert.match(card, /fmtLong\(order\.order_date\)\)\}\$\{isDelivered \? "" : `/);
 });
+
+test("the discount banner lines up with the title and the cards: same side margins, same corner radius", async () => {
+  const { readFileSync } = await import("node:fs");
+  const css = readFileSync(new URL("../static/app.css", import.meta.url), "utf8");
+  const rule = (sel) => css.match(new RegExp(`${sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\{([^}]*)\\}`))[1];
+  const side = (decls) => decls.match(/margin:\s*[^;]*?\s+(var\(--space-\d\))\s+[^;]*?;/)[1];
+  assert.equal(side(rule(".discount-banner")), side(rule(".large-title")));          // the title's own side margin
+  assert.match(rule(".restaurant-grid"), new RegExp(`padding:[^;]*${side(rule(".large-title")).replace(/[()]/g, "\\$&")}`)); // the cards' side padding
+  assert.match(rule(".discount-banner"), /border-radius:\s*var\(--radius-lg\)/);    // same corners as .restaurant-card
+  assert.match(rule(".restaurant-card"), /border-radius:\s*var\(--radius-lg\)/);
+});
