@@ -23,6 +23,9 @@ SECRET_ENV_KEYS = (
     "VAPID_PRIVATE_KEY",
     "VAPID_PUBLIC_KEY",
     "VAPID_SUBJECT",
+    # Pricing: a real .env may say PRICE_TIER=mean; tests are about the real adult
+    # price unless one sets it itself with monkeypatch.setenv.
+    "PRICE_TIER",
 )
 for _key in SECRET_ENV_KEYS:
     os.environ[_key] = ""

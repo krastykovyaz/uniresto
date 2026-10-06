@@ -304,3 +304,77 @@ test("priceForItem still has no standalone price for a starter or dessert", () =
   assert.equal(priceForItem({ category: "Entrée", name: "Anything" }), null);
   assert.equal(priceForItem({ category: "Dessert", name: "Anything" }), null);
 });
+
+// ---------------------------------------------------------------------------
+// applyPriceTables(): the server's active tier (real adult price, or the mean) replaces the tables
+// ---------------------------------------------------------------------------
+import * as PR from "../static/pricing.js";
+const { ACTIVE_PRICE_TIER: _unused, applyPriceTables } = PR;
+
+const TABLE_NAMES = ["SANDWICH_PRICES", "VIENNOISERIE_PRICES", "HOMEMADE_CAKE_PRICES", "TAKEAWAY_VITAMIN_PRICES", "FRUIT_PRICES", "LAITAGES_PRICES",
+  "GLACES_PRICES", "PASTRY_PRICES", "COLD_DRINK_PRICES", "HOT_DRINK_PRICES", "REUSABLE_PACKAGING_PRICES", "SINGLE_USE_PACKAGING_PRICES"];
+
+function adultPayload() {
+  return {
+    tier: "adulte",
+    meal_tier_prices: { ...PR.MEAL_TIER_PRICES },
+    snack_price: PR.SNACK_PRICE,
+    name_prices: Object.fromEntries(TABLE_NAMES.map((n) => [n, { ...PR[n] }])),
+  };
+}
+
+test("applyPriceTables: the mean replaces every price, and applying the adult payload again restores the real ones", () => {
+  const real = adultPayload();
+  const main = [{ category: "Végétarien", name: "x", quantity: 1 }];
+  const mealStarterDessert = [...main, { category: "Entrée", name: "s", quantity: 1 }, { category: "Dessert", name: "d", quantity: 1 }];
+  const sandwichName = Object.keys(real.name_prices.SANDWICH_PRICES)[0];
+  const sandwich = [{ category: "01.3 Sandwiches non-végétariens", name: sandwichName, quantity: 1 }];
+  assert.equal(computeFormulaTotal(main).total, 6.7);
+
+  const mean = adultPayload();
+  mean.tier = "mean";
+  mean.meal_tier_prices = { main: 5.2, main_starter: 5.95, main_starter_dessert: 6.7 };
+  mean.snack_price = 4.15;
+  mean.name_prices.SANDWICH_PRICES = Object.fromEntries(Object.entries(real.name_prices.SANDWICH_PRICES).map(([k, v]) => [k, v - 1]));
+  try {
+    assert.equal(applyPriceTables(mean), true);
+    assert.equal(PR.ACTIVE_PRICE_TIER, "mean");
+    assert.equal(computeFormulaTotal(main).total, 5.2);
+    assert.equal(computeFormulaTotal(mealStarterDessert).total, 6.7);
+    assert.equal(priceForItem({ category: "Snack à emporter", name: "x" }), 4.15);
+    assert.equal(priceForItem({ category: "Végétarien", name: "x" }), 5.2);
+    assert.equal(computeFormulaTotal(sandwich).total, Math.round((real.name_prices.SANDWICH_PRICES[sandwichName] - 1) * 100) / 100);
+  } finally {
+    assert.equal(applyPriceTables(real), true); // back to the real adult price
+  }
+  assert.equal(PR.ACTIVE_PRICE_TIER, "adulte");
+  assert.equal(computeFormulaTotal(main).total, 6.7);
+  assert.equal(computeFormulaTotal(sandwich).total, real.name_prices.SANDWICH_PRICES[sandwichName]);
+});
+
+test("applyPriceTables: a payload that is not exactly what the server sends changes nothing", () => {
+  const before = JSON.stringify(adultPayload());
+  const bad = [null, "x", {}, { ...adultPayload(), meal_tier_prices: { main: 1 } }, { ...adultPayload(), snack_price: "4" },
+    { ...adultPayload(), name_prices: { SANDWICH_PRICES: { a: 1 } } }, { ...adultPayload(), meal_tier_prices: { main: 5, main_starter: "x", main_starter_dessert: 7 } }];
+  for (const payload of bad) assert.equal(applyPriceTables(payload), false);
+  assert.equal(JSON.stringify(adultPayload()), before);
+});
+
+test("the app reads the prices built into the page first, and only then asks the server", async () => {
+  const { readFileSync } = await import("node:fs");
+  const app = readFileSync(new URL("../static/app.js", import.meta.url), "utf8");
+  const start = app.indexOf("async function loadPriceTables()");
+  const fn = app.slice(start, app.indexOf("async function init()", start));
+  assert.ok(fn.indexOf('getElementById("price-tables")') > 0 && fn.indexOf('getElementById("price-tables")') < fn.indexOf('fetch("/api/pricing"'));
+  assert.match(fn, /setTimeout\(\(\) => controller\.abort\(\), 8000\)/);
+  assert.match(app, /await Promise\.all\(\[loadRestaurants\(\), loadPriceTables\(\)\]\)/);
+});
+
+test("app.js imports every pricing.js function it calls (a missing import is swallowed by the fallback)", async () => {
+  const { readFileSync } = await import("node:fs");
+  const app = readFileSync(new URL("../static/app.js", import.meta.url), "utf8");
+  const imported = app.match(/import \{([^}]*)\} from "\.\/pricing\.js";/)[1];
+  for (const name of ["applyPriceTables", "computeFormulaTotal", "priceForItem"]) {
+    assert.match(imported, new RegExp(`\\b${name}\\b`), `${name} is used in app.js but not imported from pricing.js`);
+  }
+});

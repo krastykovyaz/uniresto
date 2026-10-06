@@ -13,6 +13,7 @@ import {
   SANDWICH_CATEGORIES,
   SNACK_CATEGORIES,
   STARTER_CATEGORIES,
+  applyPriceTables,
   computeFormulaTotal,
   priceForItem,
 } from "./pricing.js";
@@ -6279,6 +6280,30 @@ function playIntro() {
   setTimeout(open, INTRO_CLOSED_MS);
 }
 
+// The prices the server is charging right now (the real adult price, or halfway between
+// adult and learner when the server runs with PRICE_TIER=mean). They are built into the page
+// (<script id="price-tables">), so they are here before anything is drawn and can't lose a
+// race with a slow connection. If that tag is missing or unreadable, ask the server once, with
+// a generous wait; and if that fails too the real adult price built into pricing.js stays.
+async function loadPriceTables() {
+  try {
+    const tag = document.getElementById("price-tables");
+    if (tag && applyPriceTables(JSON.parse(tag.textContent))) return;
+  } catch (err) {
+    console.warn("[prices] could not use the prices built into the page:", err);
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const resp = await fetch("/api/pricing", { cache: "no-store", signal: controller.signal });
+    if (resp.ok) applyPriceTables(await resp.json());
+  } catch (err) {
+    console.warn("[prices] keeping the built-in prices:", err);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function init() {
   // A shared link's `?lang=` (see syncLangInUrl() above) is the SHARER's
   // language, not necessarily this visitor's own -- but there's no
@@ -6311,7 +6336,7 @@ async function init() {
   setInterval(tickStatusClock, 30000);
   app.append(loadingState(tr("loadingRestaurants")));
   try {
-    await loadRestaurants();
+    await Promise.all([loadRestaurants(), loadPriceTables()]);
   } catch (err) {
     app.innerHTML = "";
     app.append(emptyState("warn", tr("couldNotReachServerTitle"), err.message));

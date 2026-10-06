@@ -4626,3 +4626,32 @@ def test_the_delivery_list_carries_handed_over_at(client):
     assert _listed(client, order_id)["handed_over_at"] is None
     _handed_over(client, order_id)
     assert _listed(client, order_id)["handed_over_at"] is not None
+
+
+def test_the_prices_api_serves_the_active_tier(client, monkeypatch):
+    from orderability_engine import pricing
+
+    monkeypatch.delenv("PRICE_TIER", raising=False)
+    resp = client.get("/api/pricing")
+    assert resp.status_code == 200 and resp.headers["Cache-Control"] == "no-store"
+    body = resp.get_json()
+    assert body["tier"] == "adulte" and body["meal_tier_prices"]["main"] == 6.70 and body["snack_price"] == 4.80
+    monkeypatch.setenv("PRICE_TIER", "mean")
+    body = client.get("/api/pricing").get_json()
+    assert body["tier"] == "mean" and body["meal_tier_prices"] == {"main": 5.2, "main_starter": 5.95, "main_starter_dessert": 6.7} and body["snack_price"] == 4.15
+    assert set(body["name_prices"]) == set(pricing.JS_TABLE_NAMES.values())
+
+
+def test_the_page_carries_the_active_prices_so_the_browser_cannot_miss_them(client, monkeypatch):
+    import json
+    import re
+
+    monkeypatch.setenv("PRICE_TIER", "mean")
+    html = client.get("/").get_data(as_text=True)
+    tag = re.search(r'<script id="price-tables" type="application/json">(.*?)</script>', html, re.S)
+    assert tag, "the page has no price-tables tag"
+    payload = json.loads(tag.group(1))
+    assert payload["tier"] == "mean" and payload["meal_tier_prices"]["main"] == 5.2
+    assert payload == client.get("/api/pricing").get_json()
+    monkeypatch.delenv("PRICE_TIER")
+    assert json.loads(re.search(r'<script id="price-tables" type="application/json">(.*?)</script>', client.get("/").get_data(as_text=True), re.S).group(1))["tier"] == "adulte"

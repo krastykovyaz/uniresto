@@ -67,7 +67,7 @@ export const MEAL_TIER_PRICES = {
   main_starter: 7.7,
   main_starter_dessert: 8.7,
 };
-export const SNACK_PRICE = 4.8;
+export let SNACK_PRICE = 4.8; // `let`: applyPriceTables() may replace it (importers see the live value)
 
 // Transcribed directly from Restopolis's official "LISTE DE PRIX 26/27
 // -- CAFÉTÉRIA" (adultes column) -- see pricing.py's own copy of this
@@ -266,6 +266,45 @@ const NAME_PRICED_GROUPS = [
   [REUSABLE_PACKAGING_CATEGORIES, REUSABLE_PACKAGING_PRICES],
   [SINGLE_USE_PACKAGING_CATEGORIES, SINGLE_USE_PACKAGING_PRICES],
 ];
+
+// Which tier these tables currently hold: "adulte" (the real adult price, what is written
+// above) until applyPriceTables() says otherwise.
+export let ACTIVE_PRICE_TIER = "adulte";
+
+const NAMED_PRICE_TABLES = {
+  SANDWICH_PRICES, VIENNOISERIE_PRICES, HOMEMADE_CAKE_PRICES, TAKEAWAY_VITAMIN_PRICES, FRUIT_PRICES, LAITAGES_PRICES,
+  GLACES_PRICES, PASTRY_PRICES, COLD_DRINK_PRICES, HOT_DRINK_PRICES, REUSABLE_PACKAGING_PRICES, SINGLE_USE_PACKAGING_PRICES,
+};
+
+function isPriceMap(value) {
+  return value && typeof value === "object" && !Array.isArray(value) && Object.values(value).every((v) => typeof v === "number" && Number.isFinite(v));
+}
+
+/**
+ * Switches every table above to the prices the SERVER is charging right now
+ * (GET /api/pricing -- orderability_engine/pricing.py's price_tables_payload()): the
+ * real adult price, or halfway between adult and learner when the server runs with
+ * PRICE_TIER=mean. The tables are filled in place, so every price function here picks
+ * the new numbers up. All-or-nothing: a payload that is not exactly what the server
+ * sends changes nothing, and the real adult price written above stays. Returns whether
+ * it was applied.
+ */
+export function applyPriceTables(payload) {
+  if (!payload || typeof payload !== "object") return false;
+  const { tier, meal_tier_prices: meal, snack_price: snack, name_prices: named } = payload;
+  const mealKeys = Object.keys(MEAL_TIER_PRICES);
+  if (!isPriceMap(meal) || !mealKeys.every((k) => k in meal)) return false;
+  if (typeof snack !== "number" || !Number.isFinite(snack)) return false;
+  if (!named || typeof named !== "object" || !Object.keys(NAMED_PRICE_TABLES).every((n) => isPriceMap(named[n]))) return false;
+  for (const key of mealKeys) MEAL_TIER_PRICES[key] = meal[key];
+  SNACK_PRICE = snack;
+  for (const [name, table] of Object.entries(NAMED_PRICE_TABLES)) {
+    for (const key of Object.keys(table)) delete table[key];
+    Object.assign(table, named[name]);
+  }
+  ACTIVE_PRICE_TIER = typeof tier === "string" ? tier : "adulte";
+  return true;
+}
 
 /**
  * The single, real adultes-tier price for ONE item ({ category, name }),

@@ -72,6 +72,10 @@ item, used for both tiers, since no per-tier figure was supplied.
 
 from __future__ import annotations
 
+import logging
+import os
+from decimal import ROUND_HALF_UP, Decimal
+
 import re
 
 # Restopolis sometimes slots a seasonal name into a dish ('Mini muesli maison
@@ -487,20 +491,101 @@ NAME_PRICED_GROUPS_APPRENANT = [
 ]
 
 
+# ---------------------------------------------------------------------------
+# The "mean" price: halfway between the two real tiers
+# ---------------------------------------------------------------------------
+# The adulte and apprenant tables above are the official lists and are NEVER edited
+# for this -- tests/fixtures/price_lists_2026_27.json records them and
+# tests/test_price_mean.py fails if they drift. The mean is derived from them
+# below, and chosen at run time by the PRICE_TIER setting (see active_price_tier()),
+# so going back to the real adult price is a one-line settings change, not a code
+# change. Each price is the average of the adult and learner price, rounded half-up
+# to the cent. An item that only has an adult price (two dairy items) has nothing to
+# average and keeps its adult price.
+TIER_ADULTE = "adulte"
+TIER_APPRENANT = "apprenant"
+TIER_MEAN = "mean"
+PRICE_TIER_ENV = "PRICE_TIER"
+
+
+def _mean_price(adulte: float, apprenant: float) -> float:
+    return float(((Decimal(str(adulte)) + Decimal(str(apprenant))) / 2).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
+def _mean_table(adulte: dict, apprenant: dict) -> dict:
+    return {name: (_mean_price(price, apprenant[name]) if name in apprenant else price) for name, price in adulte.items()}
+
+
+MEAL_TIER_PRICES_MEAN = {key: _mean_price(price, MEAL_TIER_PRICES_APPRENANT[key]) for key, price in MEAL_TIER_PRICES.items()}
+SNACK_PRICE_MEAN = _mean_price(SNACK_PRICE, SNACK_PRICE_APPRENANT)
+_APPRENANT_BY_LABEL = {label: prices for label, _categories, prices in NAME_PRICED_GROUPS_APPRENANT}
+NAME_PRICED_GROUPS_MEAN = [
+    (label, categories, _mean_table(prices, _APPRENANT_BY_LABEL.get(label, {}))) for label, categories, prices in NAME_PRICED_GROUPS
+]
+
+
+def active_price_tier() -> str:
+    """Which tier the app itself charges/displays: "adulte" (the default -- the real
+    adult price) or "mean" (halfway between adult and learner), from the PRICE_TIER
+    setting. Read on every call so a reload picks up a changed setting. Anything else
+    is ignored (logged) and the real adult price is used -- never a guessed one."""
+    raw = (os.environ.get(PRICE_TIER_ENV) or "").strip().lower()
+    if raw in ("", TIER_ADULTE, "adult"):
+        return TIER_ADULTE
+    if raw == TIER_MEAN:
+        return TIER_MEAN
+    logging.getLogger("uniresto.pricing").warning("%s=%r is not 'adulte' or 'mean'; using the adult price", PRICE_TIER_ENV, raw)
+    return TIER_ADULTE
+
+
+# Which static/pricing.js table each backend name-priced group is mirrored by.
+JS_TABLE_NAMES = {
+    "sandwiches": "SANDWICH_PRICES",
+    "viennoiseries": "VIENNOISERIE_PRICES",
+    "homemade cakes": "HOMEMADE_CAKE_PRICES",
+    "takeaway vitamins": "TAKEAWAY_VITAMIN_PRICES",
+    "fruit": "FRUIT_PRICES",
+    "dairy": "LAITAGES_PRICES",
+    "ice cream": "GLACES_PRICES",
+    "pastry": "PASTRY_PRICES",
+    "cold drinks": "COLD_DRINK_PRICES",
+    "hot drinks": "HOT_DRINK_PRICES",
+    "reusable packaging": "REUSABLE_PACKAGING_PRICES",
+    "single-use packaging": "SINGLE_USE_PACKAGING_PRICES",
+}
+
+
+def price_tables_payload(tier: str | None = None) -> dict:
+    """The active tier's prices in the shape static/pricing.js's applyPriceTables()
+    takes, so the app's instant local totals use exactly the prices the server will."""
+    tier = tier or active_price_tier()
+    meal, snack, groups = _tier_tables(tier)
+    return {
+        "tier": tier,
+        "meal_tier_prices": dict(meal),
+        "snack_price": snack,
+        "name_prices": {JS_TABLE_NAMES[label]: dict(prices) for label, _categories, prices in groups},
+    }
+
+
 def _tier_tables(tier: str) -> tuple[dict, float, list]:
-    if tier == "adulte":
+    if tier == TIER_ADULTE:
         return MEAL_TIER_PRICES, SNACK_PRICE, NAME_PRICED_GROUPS
-    if tier == "apprenant":
+    if tier == TIER_APPRENANT:
         return MEAL_TIER_PRICES_APPRENANT, SNACK_PRICE_APPRENANT, NAME_PRICED_GROUPS_APPRENANT
-    raise ValueError(f"tier must be 'adulte' or 'apprenant', got {tier!r}")
+    if tier == TIER_MEAN:
+        return MEAL_TIER_PRICES_MEAN, SNACK_PRICE_MEAN, NAME_PRICED_GROUPS_MEAN
+    raise ValueError(f"tier must be 'adulte', 'apprenant' or 'mean', got {tier!r}")
 
 
-def compute_formula_total(line_items: list[dict], tier: str = "adulte") -> dict:
+def compute_formula_total(line_items: list[dict], tier: str | None = None) -> dict:
     """line_items: recalculate_order()'s line items (each has `category`,
     `name`, and `quantity`; category is Restopolis's raw, e.g.
-    "Non-végétarien"). `tier`: "adulte" (default -- staff/professor, the
-    one the app itself charges/displays everywhere else) or "apprenant"
-    (student) -- see this module's docstring for why both exist.
+    "Non-végétarien"). `tier`: "adulte" (staff/professor), "apprenant"
+    (student) or "mean" (halfway between them); left out, it is whatever the app
+    itself charges/displays everywhere -- active_price_tier(): the real adult
+    price unless the PRICE_TIER setting says "mean". See this module's
+    docstring for why both real tiers exist.
 
     Returns:
         {"formula_count": int, "main_count": int, "starter_count": int,
@@ -518,6 +603,7 @@ def compute_formula_total(line_items: list[dict], tier: str = "adulte") -> dict:
     `reason` is set, matching the pre-existing binary total-or-reason
     contract the frontend expects.
     """
+    tier = tier or active_price_tier()
     meal_tier_prices, snack_price, name_priced_groups = _tier_tables(tier)
 
     main_qty = sum(it["quantity"] for it in line_items if it["category"] in MAIN_CATEGORIES)

@@ -1,0 +1,283 @@
+{
+ "_note": "The OFFICIAL Restopolis Food4Future price lists for Campus Kirchberg, 2026/27 (effective 01.09.2026), as the app had them on 2026-10-06 -- the real adult (adulte) and learner (apprenant) tiers. tests/test_price_mean.py fails if the live tables ever drift from this, and derives the 'mean' tier from it. To go back to these prices at run time, remove PRICE_TIER (or set it to adulte) in the server's .env and reload.",
+ "adulte": {
+  "meal": {
+   "main": 6.7,
+   "main_starter": 7.7,
+   "main_starter_dessert": 8.7
+  },
+  "snack": 4.8,
+  "named": {
+   "sandwiches": {
+    "1/2 Levain Cheesy Mushroom": 4.0,
+    "1/2 Levain fromage": 3.3,
+    "1/2 Levain Green Sandwich": 4.0,
+    "1/2 Levain Parmigiana Sandwich": 4.0,
+    "1/2 Levain The ultimate egg Sandwich": 4.0,
+    "1/2 Levain Tortilla Olé": 4.0,
+    "Ciabatta tomate-mozzarella et pesto": 4.0,
+    "Petit pain blanc fromage": 2.3,
+    "1/2 Levain Humi (houmous aux légumes locaux grillés)": 4.0,
+    "1/2 tranche de pain": 0.25,
+    "Petit pain blanc nature": 0.7,
+    "Petit pain blanc \"Schockelasbotter végan\"": 1.85,
+    "1/2 Flaguette Kebab de boeuf (sauce Tzatziki)": 4.0,
+    "1/2 Levain \"Great César\"": 4.0,
+    "1/2 Levain \"Pastrami\"": 3.3,
+    "1/2 Levain jambon cuit": 3.3,
+    "1/2 Levain salami": 2.3,
+    "Petit pain blanc jambon cuit": 2.3,
+    "Petit pain blanc salami": 2.3,
+    "Mini baguette sans gluten \"Schockelasbotter végan\"": 4.0,
+    "Mini baguette sans gluten fromage": 4.0,
+    "Mini baguette sans gluten jambon cuit": 4.0,
+    "Mini baguette sans gluten salami": 4.0
+   },
+   "viennoiseries": {
+    "Bretzel salé 80 g": 1.61,
+    "Croissant 50 g": 1.58,
+    "Croissant fourré 70 g": 1.77,
+    "Huit 80 g": 1.81,
+    "Pain au chocolat 70 g": 1.68,
+    "Poche aux pommes 80 g": 1.74,
+    "Streusel 80 g": 1.54
+   },
+   "homemade cakes": {
+    "Tasty Crunchy": 1.65,
+    "Nutchy": 1.65,
+    "Crispy Apple": 1.65,
+    "Banaboom": 1.65,
+    "Dark Secret": 1.65
+   },
+   "takeaway vitamins": {
+    "Mini salades 150 g": 3.5,
+    "Petit bol de potage": 2.2
+   },
+   "fruit": {
+    "Banane \"commerce équitable\"": 1.4,
+    "Fruit frais entier": 1.4,
+    "Mini fruits découpés mélangés/non-mélangés 150 g": 3.5
+   },
+   "dairy": {
+    "Mini fromage frais avec coulis de fruits de saison 150 g": 3.5,
+    "Mini muesli maison 150 g": 3.5,
+    "Lait chocolaté Luxlait 0,25 l Tétra Pack": 1.1,
+    "Lait Luxlait BIO 0,25 l Tétra Pack": 0.95,
+    "Lait Luxlait BIO 0,25 l Tétra Pack (gratuit)": 0.95,
+    "Yaourt aux fruits Luxlait 125 g": 1.35,
+    "Yaourt nature Luxlait 125 g": 1.15
+   },
+   "ice cream": {
+    "Cornet Luxlait 130 ml": 1.9,
+    "Dame Blanche Luxlait 200 ml": 2.25,
+    "Glace miniature Luxlait 100 ml": 2.25
+   },
+   "pastry": {
+    "Dessert du Jour": 2.2
+   },
+   "cold drinks": {
+    "Lodyss fine pétillante 0,25 l btl": 0.95,
+    "Lodyss plate 0,25 l btl": 0.95,
+    "Rosport Blue 0,25 l btl": 0.95,
+    "Rosport Blue 0,50 l btl": 1.45,
+    "Rosport Blue 0,50 l non consigné": 1.5,
+    "Rosport Blue 1,00 l btl": 3.1,
+    "Rosport mat Menthe 0,50 l non consigné": 1.8,
+    "Rosport mat Zitroun 0,50 l non consigné": 1.8,
+    "Viva 0,25 l btl": 0.95,
+    "Viva 0,50 l btl": 1.45,
+    "Viva 0,50 l non consigné": 1.5,
+    "Viva 1,00 l btl": 3.1,
+    "Lëtzbuerger Drauwejus 0,25 l btl": 1.7,
+    "Ramborn Apple & Quince Juice 0,33 l btl": 1.8,
+    "Ramborn Apple Juice 0,33 btl": 1.8,
+    "Ramborn Apple Soda 0,33 l btl": 1.8,
+    "Ramborn Pear Apple Juice 0,33 l btl": 1.8,
+    "Rosport Sunny Citron-Citron vert 0,50 l non consigné": 1.8,
+    "Rosport Sunny Pêche 0,50 l non consigné": 1.8,
+    "Coca Cola 0,20 l btl": 1.8,
+    "Coca Cola 0,50 l non consigné": 2.2,
+    "Fuze Tea - Black Tea Pêche/Hibiscus 0,20 l btl": 1.8,
+    "Fuze Tea - Black Tea Pêche/Hibiscus 0,40 l non consigné": 2.2,
+    "Lët'z kola 0,33 btl": 1.8,
+    "Lët'z limo lemon & lime 0,33 btl": 1.8,
+    "Lët'z limo orange 0,33 btl": 1.8,
+    "Rosport Pom's 0,50 l non consigné": 2.2,
+    "Rosport Wave 0,50 l non-consigné": 2.2
+   },
+   "hot drinks": {
+    "Café \"commerce équitable\"": 1.9,
+    "Cappuccino": 2.25,
+    "Chocolat chaud \"Commerce équitable\"": 1.9,
+    "Espresso": 1.9,
+    "Espresso double": 2.25,
+    "Thé \"commerce équitable\"": 1.65,
+    "Thermo Café 1,00 l": 5.0,
+    "Thermo Café 1,50 l": 7.5,
+    "Tisane": 1.65
+   },
+   "reusable packaging": {
+    "Consigne ECOBOX (500 ml)": 5.0,
+    "Consigne ECOBOX (1000 ml)": 5.0,
+    "Remboursement Consigne ECOBOX (500 ml)": -5.0,
+    "Remboursement Consigne ECOBOX (1000 ml)": -5.0,
+    "myFrupstut": 3.0,
+    "myCan": 9.0,
+    "myKit": 3.0,
+    "myNapkin": 2.0,
+    "myBento": 9.0,
+    "myMug": 5.0,
+    "myBowl": 5.0,
+    "myMiniBowl": 2.5
+   },
+   "single-use packaging": {
+    "Serviette en papier (à partir de la 2e serviette)": 0.1,
+    "Fourchette en bois": 0.2,
+    "Barquette pour pâtes/salades à emporter": 0.5,
+    "Couvercle pour barquette à emporter": 0.5,
+    "Sachet pour sandwiches": 0.1,
+    "Gobelet comestible 220 ml": 0.6,
+    "Cuillère comestible": 0.15
+   }
+  }
+ },
+ "apprenant": {
+  "meal": {
+   "main": 3.7,
+   "main_starter": 4.2,
+   "main_starter_dessert": 4.7
+  },
+  "snack": 3.5,
+  "named": {
+   "sandwiches": {
+    "1/2 Levain Cheesy Mushroom": 3.7,
+    "1/2 Levain fromage": 3.15,
+    "1/2 Levain Green Sandwich": 3.7,
+    "1/2 Levain Parmigiana Sandwich": 3.7,
+    "1/2 Levain The ultimate egg Sandwich": 3.7,
+    "1/2 Levain Tortilla Olé": 3.7,
+    "Ciabatta tomate-mozzarella et pesto": 3.7,
+    "Petit pain blanc fromage": 2.2,
+    "1/2 Levain Humi (houmous aux légumes locaux grillés)": 3.7,
+    "1/2 tranche de pain": 0.25,
+    "Petit pain blanc nature": 0.7,
+    "Petit pain blanc \"Schockelasbotter végan\"": 1.75,
+    "1/2 Flaguette Kebab de boeuf (sauce Tzatziki)": 3.7,
+    "1/2 Levain \"Great César\"": 3.7,
+    "1/2 Levain \"Pastrami\"": 3.15,
+    "1/2 Levain jambon cuit": 3.15,
+    "1/2 Levain salami": 2.2,
+    "Petit pain blanc jambon cuit": 2.2,
+    "Petit pain blanc salami": 2.2,
+    "Mini baguette sans gluten \"Schockelasbotter végan\"": 3.7,
+    "Mini baguette sans gluten fromage": 3.7,
+    "Mini baguette sans gluten jambon cuit": 3.7,
+    "Mini baguette sans gluten salami": 3.7
+   },
+   "viennoiseries": {
+    "Bretzel salé 80 g": 1.61,
+    "Croissant 50 g": 1.58,
+    "Croissant fourré 70 g": 1.77,
+    "Huit 80 g": 1.81,
+    "Pain au chocolat 70 g": 1.68,
+    "Poche aux pommes 80 g": 1.74,
+    "Streusel 80 g": 1.54
+   },
+   "homemade cakes": {
+    "Tasty Crunchy": 1.65,
+    "Nutchy": 1.65,
+    "Crispy Apple": 1.65,
+    "Banaboom": 1.65,
+    "Dark Secret": 1.65
+   },
+   "takeaway vitamins": {
+    "Mini salades 150 g": 2.5,
+    "Petit bol de potage": 1.9
+   },
+   "fruit": {
+    "Banane \"commerce équitable\"": 1.25,
+    "Fruit frais entier": 1.25,
+    "Mini fruits découpés mélangés/non-mélangés 150 g": 2.5
+   },
+   "dairy": {
+    "Mini fromage frais avec coulis de fruits de saison 150 g": 2.5,
+    "Mini muesli maison 150 g": 2.5,
+    "Lait Luxlait BIO 0,25 l Tétra Pack (gratuit)": 0.0,
+    "Yaourt aux fruits Luxlait 125 g": 1.25,
+    "Yaourt nature Luxlait 125 g": 1.05
+   },
+   "ice cream": {
+    "Cornet Luxlait 130 ml": 1.9,
+    "Dame Blanche Luxlait 200 ml": 2.25,
+    "Glace miniature Luxlait 100 ml": 2.25
+   },
+   "pastry": {
+    "Dessert du Jour": 1.9
+   },
+   "cold drinks": {
+    "Lodyss fine pétillante 0,25 l btl": 0.75,
+    "Lodyss plate 0,25 l btl": 0.75,
+    "Rosport Blue 0,25 l btl": 0.75,
+    "Rosport Blue 0,50 l btl": 1.2,
+    "Rosport Blue 0,50 l non consigné": 1.3,
+    "Rosport Blue 1,00 l btl": 2.65,
+    "Rosport mat Menthe 0,50 l non consigné": 1.6,
+    "Rosport mat Zitroun 0,50 l non consigné": 1.6,
+    "Viva 0,25 l btl": 0.75,
+    "Viva 0,50 l btl": 1.2,
+    "Viva 0,50 l non consigné": 1.3,
+    "Viva 1,00 l btl": 2.65,
+    "Lëtzbuerger Drauwejus 0,25 l btl": 1.5,
+    "Ramborn Apple & Quince Juice 0,33 l btl": 1.6,
+    "Ramborn Apple Juice 0,33 btl": 1.6,
+    "Ramborn Apple Soda 0,33 l btl": 1.6,
+    "Ramborn Pear Apple Juice 0,33 l btl": 1.6,
+    "Rosport Sunny Citron-Citron vert 0,50 l non consigné": 1.6,
+    "Rosport Sunny Pêche 0,50 l non consigné": 1.6,
+    "Coca Cola 0,20 l btl": 1.6,
+    "Coca Cola 0,50 l non consigné": 2.0,
+    "Fuze Tea - Black Tea Pêche/Hibiscus 0,20 l btl": 1.6,
+    "Fuze Tea - Black Tea Pêche/Hibiscus 0,40 l non consigné": 2.0,
+    "Lët'z kola 0,33 btl": 1.6,
+    "Lët'z limo lemon & lime 0,33 btl": 1.6,
+    "Lët'z limo orange 0,33 btl": 1.6,
+    "Rosport Pom's 0,50 l non consigné": 2.0,
+    "Rosport Wave 0,50 l non-consigné": 2.0
+   },
+   "hot drinks": {
+    "Café \"commerce équitable\"": 1.65,
+    "Cappuccino": 1.95,
+    "Chocolat chaud \"Commerce équitable\"": 1.65,
+    "Espresso": 1.65,
+    "Espresso double": 1.95,
+    "Thé \"commerce équitable\"": 1.45,
+    "Thermo Café 1,00 l": 5.0,
+    "Thermo Café 1,50 l": 7.5,
+    "Tisane": 1.45
+   },
+   "reusable packaging": {
+    "Consigne ECOBOX (500 ml)": 5.0,
+    "Consigne ECOBOX (1000 ml)": 5.0,
+    "Remboursement Consigne ECOBOX (500 ml)": -5.0,
+    "Remboursement Consigne ECOBOX (1000 ml)": -5.0,
+    "myFrupstut": 3.0,
+    "myCan": 9.0,
+    "myKit": 3.0,
+    "myNapkin": 2.0,
+    "myBento": 9.0,
+    "myMug": 5.0,
+    "myBowl": 5.0,
+    "myMiniBowl": 2.5
+   },
+   "single-use packaging": {
+    "Serviette en papier (à partir de la 2e serviette)": 0.1,
+    "Fourchette en bois": 0.2,
+    "Barquette pour pâtes/salades à emporter": 0.5,
+    "Couvercle pour barquette à emporter": 0.5,
+    "Sachet pour sandwiches": 0.1,
+    "Gobelet comestible 220 ml": 0.6,
+    "Cuillère comestible": 0.15
+   }
+  }
+ }
+}

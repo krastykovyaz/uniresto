@@ -65,7 +65,7 @@ from orderability_engine.page_views import MAX_SOURCE_LENGTH, PageViewStore
 from orderability_engine.pending_dish_photos import PendingDishPhotoStore
 from orderability_engine.push_notify import PushSubscriptionStore, notify_in_background, push_config, sanitize_prefs, valid_subscription
 from orderability_engine.photo_sanitize import sanitize_dish_photo
-from orderability_engine.pricing import INCLUDED_SIDE_CATEGORIES, compute_formula_total
+from orderability_engine.pricing import INCLUDED_SIDE_CATEGORIES, compute_formula_total, price_tables_payload
 from orderability_engine.rate_limits import RateLimitStore
 from orderability_engine.rewards import (
     CLAIM_ALREADY_AWARDED,
@@ -769,6 +769,17 @@ def create_app(
             abort(400, description=f"Invalid date {value!r}, expected YYYY-MM-DD")
 
     # ---------------------------------------------------------------- API
+
+    @app.get("/api/pricing")
+    def api_pricing():
+        """The prices the app itself charges/displays right now (the real adult price,
+        or halfway between adult and learner when PRICE_TIER=mean), in the shape
+        static/pricing.js's applyPriceTables() takes -- so the instant local totals in
+        the browser match what the server will compute. Public, like the menu; never
+        cached, so a changed setting shows at the next load."""
+        resp = jsonify(price_tables_payload())
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
 
     @app.get("/api/restaurants")
     def api_restaurants():
@@ -2475,7 +2486,7 @@ def create_app(
         if INCLUDED_SIDE_CATEGORIES and category in INCLUDED_SIDE_CATEGORIES:
             price_text = "Included with a main dish"
         else:
-            total = compute_formula_total([{"category": category, "name": name, "quantity": 1}], tier="adulte")["total"]
+            total = compute_formula_total([{"category": category, "name": name, "quantity": 1}])["total"]
             price_text = f"€{total:.2f}" if total is not None else "Canteen Price"
         photo_path = dish_photos().photos_visible_to(slug).get(category, {}).get(name)
         photo_file = None
@@ -2588,7 +2599,11 @@ def create_app(
             og_description = " · ".join(details) + " — order on UniResto"
             og_image = url_for("og_dish_image", dish=slug, date=date_str, cat=category, name=name, _external=True)
         return render_template(
-            "mobile.html", og_lang=og_lang, og_title=og_title, og_description=og_description, og_image=og_image
+            "mobile.html", og_lang=og_lang, og_title=og_title, og_description=og_description, og_image=og_image,
+            # The prices the app charges right now, built into the page itself so the browser
+            # never shows one set of prices while the server charges another (see static/app.js's
+            # loadPriceTables()). jsonify's JSON is safe inside a <script type="application/json">.
+            price_tables=price_tables_payload(),
         )
 
     # Browsers/crawlers request this path directly regardless of the
