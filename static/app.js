@@ -18,6 +18,7 @@ import {
   discountOffer,
   priceForItem,
 } from "./pricing.js";
+import { DEMO_CUSTOMER_CONFIRM_MS, applyDemoStep, createDemoOrders, isDemoMode } from "./demo.js";
 import { LANGUAGES, allergenLabel, categoryLabel, dishNameParts, dishSize, dishTitle, dishTitleWithSize, getLanguage, intlLocale, langInfo, setLanguage, t } from "./i18n.js";
 import {
   CALORIE_BUCKETS,
@@ -1769,6 +1770,23 @@ function buildingLabel(building) {
 // The discount banner on the first screen. Only while the app is really charging below the adult
 // price (see discountOffer()); closing it is remembered on this device for these exact prices, and
 // it comes back if the prices change.
+// Demo mode (?demo=1): the Delivery screen shows made-up orders that live in this page's memory only --
+// see static/demo.js. Every demo branch below is local: it never calls the server about orders.
+const DEMO = isDemoMode(window.location.search);
+let demoOrders = null;
+
+function demoCall(order, step, rerender) {
+  applyDemoStep(order, step);
+  if (step === "handed-over") {
+    // the made-up customer confirms a few seconds later, so the demo reaches its end by itself
+    setTimeout(() => {
+      applyDemoStep(order, "mark-delivered");
+      if (state.screen === "delivery") rerender();
+    }, DEMO_CUSTOMER_CONFIRM_MS);
+  }
+  return step === "claim" ? { claimed: true, already_claimed: false } : {};
+}
+
 const DISCOUNT_BANNER_DISMISSED_KEY = "uniresto.discountBanner.dismissed.v1";
 
 function discountBanner() {
@@ -2162,6 +2180,7 @@ function fmtDateTime(isoString) {
 // request just getting refused; returns the email to send as
 // `courier_email`, or null (having already redirected) if there isn't one.
 function verifiedCourierEmailOrRedirect(retryBtn) {
+  if (DEMO) return "demo@uni.lu"; // demo mode: no verification, nothing is sent anywhere
   if (state.registeredEmail) return state.registeredEmail;
   // No verified University email yet: ask for it right here in the same bottom
   // sheet Profile uses (no jump to Profile), then repeat the tap that needed it.
@@ -2253,10 +2272,12 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
         if (!courierEmail) return;
         btn.disabled = true;
         try {
-          const result = await api(`/api/orders/${order.id}/${path}`, {
-            method: "POST",
-            body: JSON.stringify({ courier_email: courierEmail, lang: state.lang }),
-          });
+          const result = DEMO
+            ? demoCall(order, path, render)
+            : await api(`/api/orders/${order.id}/${path}`, {
+                method: "POST",
+                body: JSON.stringify({ courier_email: courierEmail, lang: state.lang }),
+              });
           onSuccess(result);
           lastDeliveryStepAt = Date.now();
           showToast(tr(typeof toastKey === "function" ? toastKey(result) : toastKey));
@@ -2290,7 +2311,8 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
         if (!courierEmail) return;
         release.disabled = true;
         try {
-          await api(`/api/orders/${order.id}/unclaim`, { method: "POST", body: JSON.stringify({ courier_email: courierEmail }) });
+          if (DEMO) demoCall(order, "unclaim", render);
+          else await api(`/api/orders/${order.id}/unclaim`, { method: "POST", body: JSON.stringify({ courier_email: courierEmail }) });
           order.claimed_at = null;
           showToast(tr("deliveryReleasedToast"));
           onChanged();
@@ -2322,7 +2344,8 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
         if (!customerEmail) return;
         cancel.disabled = true;
         try {
-          await api(`/api/orders/${order.id}/cancel`, { method: "POST", body: JSON.stringify({ courier_email: customerEmail }) });
+          if (DEMO) demoCall(order, "cancel", render);
+          else await api(`/api/orders/${order.id}/cancel`, { method: "POST", body: JSON.stringify({ courier_email: customerEmail }) });
           order.status = "cancelled";
           showToast(tr("deliveryCancelledToast"));
           onChanged();
@@ -2514,6 +2537,10 @@ function deliveryOrderListContent(data, onChanged) {
 }
 
 async function loadDeliveryData() {
+  if (DEMO) {
+    demoOrders ||= createDemoOrders(localDateString());
+    return { orders: demoOrders, mine: demoOrders.filter((o) => o.mine_courier && !o.delivered_at) };
+  }
   const [orders, mine] = await Promise.all([
     api("/api/delivery/orders"),
     state.registeredEmail
@@ -2535,6 +2562,7 @@ async function renderDelivery() {
   app.innerHTML = "";
   const screenHeader = header({ title: tr("deliveryOrdersTitle"), back: () => goTo("role") });
   app.append(screenHeader);
+  if (DEMO) app.append(el(`<p class="demo-ribbon" role="note">${escapeHtml(tr("demoNotice"))}</p>`));
   // The Online switch sits on the title's own line, at the right; filled in
   // by paint() below (not shown for Belval, which has no orders yet).
   const onlineSlot = el(`<div class="courier-online-slot"></div>`);
@@ -2556,6 +2584,7 @@ async function renderDelivery() {
   // Asked as a bottom sheet, only for someone Online with no delivery email
   // registered yet -- once they have one, never again.
   const askForEmail = () => {
+    if (DEMO) return;
     if (loadCourierOnline() && state.deliveryCampusFilter !== "belval") openDeliveryRegisterSheet();
   };
   const paint = () => {
@@ -6378,7 +6407,7 @@ async function init() {
   // never persisted, so it only ever attributes the visit it actually
   // arrived on, not anything the person does afterwards.
   const urlSource = new URLSearchParams(window.location.search).get("src") || undefined;
-  api("/api/visit/home", { method: "POST", body: JSON.stringify({ source: urlSource }) }).catch(() => {});
+  if (!DEMO) api("/api/visit/home", { method: "POST", body: JSON.stringify({ source: urlSource }) }).catch(() => {});
   setInterval(tickStatusClock, 30000);
   app.append(loadingState(tr("loadingRestaurants")));
   try {

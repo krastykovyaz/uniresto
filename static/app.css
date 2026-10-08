@@ -2153,3 +2153,6 @@ svg { display: block; }
 .discount-banner-close { position: absolute; top: 50%; transform: translateY(-50%); right: 10px; width: 28px; height: 28px; border: 0; border-radius: 50%; background: rgba(255, 255, 255, 0.2); color: inherit; font-size: 1.1rem; line-height: 1; cursor: pointer; }
 [dir="rtl"] .discount-banner { padding: 14px 16px 14px 44px; }
 [dir="rtl"] .discount-banner-close { right: auto; left: 10px; }
+
+/* Demo mode (?demo=1): a slim note that nothing on the Delivery screen is real. */
+.demo-ribbon { margin: 0 var(--space-4) var(--space-2); padding: 8px 12px; border-radius: var(--radius-lg); background: #fff6dc; border: 1px solid #f0d58a; color: #6b5200; font-size: 0.82rem; font-weight: 600; text-align: center; }
