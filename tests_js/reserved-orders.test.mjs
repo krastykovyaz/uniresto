@@ -40,7 +40,7 @@ test("releasing a taken order is a quiet link, not a second button", () => {
 
 test("the list shows taken orders (reserved) instead of a contradictory empty state", () => {
   const list = js.slice(js.indexOf("function deliveryOrderListContent("), js.indexOf("async function loadDeliveryData("));
-  assert.match(list, /const taken = buckets\.pending\.filter\(\(o\) => o\.claimed_at && !o\.mine_courier\)/);
+  assert.match(list, /const taken = buckets\.pending\.filter\(\(o\) => o\.claimed_at && !o\.mine_courier && forToday\(o\)\)/);
   assert.match(list, /offers\.length === 0 && active\.length === 0 && taken\.length === 0/);
   assert.match(list, /delivery-no-offers/);
 });
@@ -129,7 +129,7 @@ test("a delivered order stays on the list in the fog, tagged Delivered, with no 
   assert.match(card, /isDelivered \? hx\("delivered"\) : tr\("deliveryReserved"\)/);
   assert.ok(card.indexOf("if (isFogged) return card;") > 0, "fogged cards must return before any button is built");
   const list = js.slice(js.indexOf("function deliveryOrderListContent("), js.indexOf("async function loadDeliveryData("));
-  assert.match(list, /buckets\.delivered\.filter\(\(o\) => o\.order_date >= today\)/);
+  assert.match(list, /buckets\.delivered\.filter\(deliveredToday\)/);
   assert.match(list, /\[\.\.\.offers, \.\.\.taken, \.\.\.delivered\]/);
   assert.match(list, /delivered\.length === 0\) \{/); // the big empty state is only for a screen with nothing at all
 });
@@ -147,4 +147,15 @@ test("the discount banner lines up with the title and the cards: same side margi
   assert.match(rule(".restaurant-grid"), new RegExp(`padding:[^;]*${side(rule(".large-title")).replace(/[()]/g, "\\$&")}`)); // the cards' side padding
   assert.match(rule(".discount-banner"), /border-radius:\s*var\(--radius-lg\)/);    // same corners as .restaurant-card
   assert.match(rule(".restaurant-card"), /border-radius:\s*var\(--radius-lg\)/);
+});
+
+test("the Delivery list shows only today's orders: open, taken and delivered alike", () => {
+  const list = js.slice(js.indexOf("function deliveryOrderListContent("), js.indexOf("async function loadDeliveryData("));
+  assert.match(list, /const today = localDateString\(\);\n\s+const forToday = \(o\) => o\.order_date === today;/);
+  assert.match(list, /buckets\.pending\.filter\(\(o\) => !o\.claimed_at && forToday\(o\)\)/);
+  assert.match(list, /buckets\.pending\.filter\(\(o\) => o\.claimed_at && !o\.mine_courier && forToday\(o\)\)/);
+  // delivered: for today AND delivered today (an order delivered yesterday is not today's, even if it is dated today)
+  assert.match(list, /const deliveredToday = \(o\) => forToday\(o\) && dateToLocalString\(new Date\(o\.delivered_at\)\) === today;/);
+  // the courier's own taken delivery stays visible whatever its day (it is built from `mine`, not filtered here)
+  assert.match(list, /const active = mine\.filter\(\(o\) => !o\.delivered_at && o\.status !== "cancelled" && o\.status !== "expired"\);/);
 });

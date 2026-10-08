@@ -2480,16 +2480,21 @@ function deliveryOrderListContent(data, onChanged) {
   if (!online) {
     wrap.append(emptyState("receipt", hx("offline"), hx("offlineMessage")));
   } else {
+    // The Delivery list is about TODAY: an order is only something to deliver on the day it is for, so
+    // orders for other days stay off it (they show up on their own day). Your own taken delivery is
+    // always shown above, whatever its day.
+    const today = localDateString();
+    const forToday = (o) => o.order_date === today;
     const byUrgency = (a, b) => a.order_date.localeCompare(b.order_date) || a.created_at.localeCompare(b.created_at);
-    const offers = buckets.pending.filter((o) => !o.claimed_at).sort(byUrgency);
+    const offers = buckets.pending.filter((o) => !o.claimed_at && forToday(o)).sort(byUrgency);
     // Orders someone has already taken: shown in a fog (reserved) so nobody
     // wonders where they went, with buttons only for the customer who placed
     // one. The ones the caller took themselves are in "Your delivery" above.
-    const taken = buckets.pending.filter((o) => o.claimed_at && !o.mine_courier).sort(byUrgency);
-    // Delivered orders stay on the list, in the fog, for the day they are for (and later
-    // days), most recently delivered first -- so a courier or a customer can see it went through.
-    const today = localDateString();
-    const delivered = buckets.delivered.filter((o) => o.order_date >= today).sort((a, b) => b.delivered_at.localeCompare(a.delivered_at));
+    const taken = buckets.pending.filter((o) => o.claimed_at && !o.mine_courier && forToday(o)).sort(byUrgency);
+    // Delivered orders stay on the list, in the fog, for today only: an order for today that was
+    // delivered today, most recently delivered first -- so a courier or a customer can see it went through.
+    const deliveredToday = (o) => forToday(o) && dateToLocalString(new Date(o.delivered_at)) === today;
+    const delivered = buckets.delivered.filter(deliveredToday).sort((a, b) => b.delivered_at.localeCompare(a.delivered_at));
     if (offers.length === 0 && active.length === 0 && taken.length === 0 && delivered.length === 0) {
       wrap.append(emptyState("receipt", tr("deliveryOrdersEmptyTitle"), hx("noOffers")));
     } else if (offers.length === 0) {
