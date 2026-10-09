@@ -2522,7 +2522,8 @@ function deliveryOrderListContent(data, onChanged) {
       wrap.append(emptyState("receipt", tr("deliveryOrdersEmptyTitle"), hx("noOffers")));
     } else if (offers.length === 0) {
       // Something else is already on screen: a big "No orders yet" would read as a contradiction.
-      wrap.append(el(`<p class="kind delivery-no-offers">${escapeHtml(hx("noOffers"))}</p>`));
+      // With a delivery of your own in hand, "no new orders" would read as if yours didn't exist: say "other".
+      wrap.append(el(`<p class="kind delivery-no-offers">${escapeHtml(hx(active.length > 0 ? "noOtherOffers" : "noOffers"))}</p>`));
     }
     if (offers.length + taken.length + delivered.length > 0) {
       const list = el(`<div class="order-list courier-offers"></div>`);
@@ -3214,6 +3215,7 @@ const HISTORY_STRINGS = {
     offline: "Offline",
     offlineMessage: "You're offline. Switch Online on to see new orders.",
     noOffers: "No new orders right now.",
+    noOtherOffers: "No other new orders right now.",
     orderEmailsTitle: "New-order emails",
   },
   fr: {
@@ -3232,6 +3234,7 @@ const HISTORY_STRINGS = {
     offline: "Hors ligne",
     offlineMessage: "Vous êtes hors ligne. Activez « En ligne » pour voir les nouvelles commandes.",
     noOffers: "Aucune nouvelle commande pour l'instant.",
+    noOtherOffers: "Aucune autre nouvelle commande pour l'instant.",
     orderEmailsTitle: "E-mails de nouvelles commandes",
   },
   es: {
@@ -3250,6 +3253,7 @@ const HISTORY_STRINGS = {
     offline: "Desconectado",
     offlineMessage: "Estás desconectado. Activa «Conectado» para ver pedidos nuevos.",
     noOffers: "No hay pedidos nuevos ahora.",
+    noOtherOffers: "No hay otros pedidos nuevos ahora.",
     orderEmailsTitle: "Avisos de pedidos nuevos",
   },
   pt: {
@@ -3268,6 +3272,7 @@ const HISTORY_STRINGS = {
     offline: "Offline",
     offlineMessage: "Estás offline. Ativa «Online» para ver novos pedidos.",
     noOffers: "Sem novos pedidos de momento.",
+    noOtherOffers: "Sem outros pedidos novos de momento.",
     orderEmailsTitle: "Avisos de novos pedidos",
   },
   ru: {
@@ -3286,6 +3291,7 @@ const HISTORY_STRINGS = {
     offline: "Офлайн",
     offlineMessage: "Вы не в сети. Включите «Онлайн», чтобы видеть новые заказы.",
     noOffers: "Новых заказов пока нет.",
+    noOtherOffers: "Других новых заказов пока нет.",
     orderEmailsTitle: "Письма о новых заказах",
   },
   zh: {
@@ -3304,6 +3310,7 @@ const HISTORY_STRINGS = {
     offline: "离线",
     offlineMessage: "你处于离线状态。打开“在线”即可查看新订单。",
     noOffers: "暂时没有新订单。",
+    noOtherOffers: "暂时没有其他新订单。",
     orderEmailsTitle: "新订单邮件",
   },
   lb: {
@@ -3322,6 +3329,7 @@ const HISTORY_STRINGS = {
     offline: "Offline",
     offlineMessage: "Du bass offline. Schalt „Online“ un, fir nei Bestellungen ze gesinn.",
     noOffers: "Elo keng nei Bestellungen.",
+    noOtherOffers: "Elo keng aner nei Bestellungen.",
     orderEmailsTitle: "E-Mailen iwwer nei Bestellungen",
   },
   hi: {
@@ -3340,6 +3348,7 @@ const HISTORY_STRINGS = {
     offline: "ऑफ़लाइन",
     offlineMessage: "आप ऑफ़लाइन हैं। नए ऑर्डर देखने के लिए «ऑनलाइन» चालू करें।",
     noOffers: "अभी कोई नया ऑर्डर नहीं।",
+    noOtherOffers: "अभी कोई और नया ऑर्डर नहीं।",
     orderEmailsTitle: "नए ऑर्डर के ईमेल",
   },
   ar: {
@@ -3358,6 +3367,7 @@ const HISTORY_STRINGS = {
     offline: "غير متصل",
     offlineMessage: "أنت غير متصل. فعّل «متصل» لرؤية الطلبات الجديدة.",
     noOffers: "لا توجد طلبات جديدة حاليًا.",
+    noOtherOffers: "لا توجد طلبات جديدة أخرى حاليًا.",
     orderEmailsTitle: "رسائل الطلبات الجديدة",
   },
   bn: {
@@ -3376,6 +3386,7 @@ const HISTORY_STRINGS = {
     offline: "অফলাইন",
     offlineMessage: "আপনি অফলাইনে আছেন। নতুন অর্ডার দেখতে «অনলাইন» চালু করুন।",
     noOffers: "এই মুহূর্তে কোনো নতুন অর্ডার নেই।",
+    noOtherOffers: "এই মুহূর্তে আর কোনো নতুন অর্ডার নেই।",
     orderEmailsTitle: "নতুন অর্ডারের ইমেইল",
   },
   ur: {
@@ -3394,6 +3405,7 @@ const HISTORY_STRINGS = {
     offline: "آف لائن",
     offlineMessage: "آپ آف لائن ہیں۔ نئے آرڈر دیکھنے کے لیے «آن لائن» آن کریں۔",
     noOffers: "ابھی کوئی نیا آرڈر نہیں۔",
+    noOtherOffers: "ابھی کوئی اور نیا آرڈر نہیں۔",
     orderEmailsTitle: "نئے آرڈرز کی ای میلز",
   },
 };
