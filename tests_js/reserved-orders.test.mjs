@@ -159,3 +159,10 @@ test("the Delivery list shows only today's orders: open, taken and delivered ali
   // the courier's own taken delivery stays visible whatever its day (it is built from `mine`, not filtered here)
   assert.match(list, /const active = mine\.filter\(\(o\) => !o\.delivered_at && o\.status !== "cancelled" && o\.status !== "expired"\);/);
 });
+
+test("the Your delivery box has room above it, so it doesn't touch the campus filter", async () => {
+  const { readFileSync } = await import("node:fs");
+  const css = readFileSync(new URL("../static/app.css", import.meta.url), "utf8");
+  const rule = css.match(/\.courier-job\s*\{([^}]*)\}/)[1];
+  assert.match(rule, /margin:\s*var\(--space-3\) var\(--space-4\);/); // top and bottom space-3, sides space-4
+});
