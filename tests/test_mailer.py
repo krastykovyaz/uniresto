@@ -463,3 +463,53 @@ def test_send_in_background_drops_jobs_past_the_queue_cap(monkeypatch):
     mailer.wait_for_pending_mail()
     assert mailer.send_in_background(lambda: None)  # room again once drained
     mailer.wait_for_pending_mail()
+
+
+# ---------------------------------------------------------------------------
+# The courier email also shows the deal price while the mean price is on
+# ---------------------------------------------------------------------------
+
+
+def _delivery_bodies(monkeypatch, tier=None, items=None):
+    monkeypatch.setenv("RESEND_API_KEY", "re_placeholder")
+    if tier is None:
+        monkeypatch.delenv("PRICE_TIER", raising=False)
+    else:
+        monkeypatch.setenv("PRICE_TIER", tier)
+    order = _order(items=items or [{"category": "Non-végétarien", "name": "Rôti de porc Orloff", "quantity": 1, "price": None}])
+    with patch("orderability_engine.mailer.requests.post", return_value=_mock_response()) as mock_post:
+        send_delivery_notification("courier@uni.lu", order)
+    payload = mock_post.call_args.kwargs["json"]
+    return payload["text"], payload["html"]
+
+
+def test_the_courier_email_shows_the_deal_price_when_the_mean_price_is_on(monkeypatch):
+    text, html = _delivery_bodies(monkeypatch, "mean")
+    # the two REAL lists are still there, unchanged ...
+    assert "€6.70 / €3.70" in text and "€6.70 / €3.70" in html
+    # ... and so is what the customer actually sees in the app
+    assert "Deal price shown to the customer in the app: €5.20" in text
+    assert "Deal price shown to the customer in the app" in html and "€5.20" in html
+
+
+def test_the_courier_email_has_no_deal_line_at_the_real_adult_price(monkeypatch):
+    for tier in (None, "adulte"):
+        text, html = _delivery_bodies(monkeypatch, tier)
+        assert "Deal price" not in text and "Deal price" not in html
+        assert "€6.70 / €3.70" in text
+
+
+def test_the_deal_price_is_for_the_whole_order_not_one_dish(monkeypatch):
+    items = [
+        {"category": "Non-végétarien", "name": "Rôti de porc Orloff", "quantity": 1, "price": None},
+        {"category": "Dessert", "name": "Panna cotta", "quantity": 1, "price": None},
+    ]
+    text, _ = _delivery_bodies(monkeypatch, "mean", items)
+    assert "Total: €7.70 / €4.20" in text
+    assert "Deal price shown to the customer in the app: €5.95" in text
+
+
+def test_no_deal_line_for_an_order_with_no_priced_meal(monkeypatch):
+    items = [{"category": "Dessert", "name": "Panna cotta", "quantity": 1, "price": None}]
+    text, html = _delivery_bodies(monkeypatch, "mean", items)
+    assert "Deal price" not in text and "Deal price" not in html

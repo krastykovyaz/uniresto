@@ -393,6 +393,18 @@ def _format_dish_name_html(raw_name: str, courier_lang: str, customer_lang: str 
     return primary + suffix
 
 
+def _deal_price(order: dict, staff_total: float) -> float | None:
+    """The price the app itself shows the customer (the "deal" price), when it is not the plain staff price --
+    i.e. while PRICE_TIER=mean is on. None when there is nothing different to say (the real adult price is
+    charged, or the order has no priced meal). The two-tier line above it always shows both REAL lists."""
+    from orderability_engine.pricing import compute_formula_total
+
+    total = compute_formula_total(order["items"])["total"]
+    if total is None or abs(total - staff_total) < 0.005:
+        return None
+    return total
+
+
 def _format_delivery_text(order: dict, restopolis_url: str | None, courier_lang: str = "en") -> str:
     """Plain-text body for send_delivery_notification() below -- grouped
     by category (see orderability_engine/pricing.py's category_breakdown(),
@@ -428,6 +440,9 @@ def _format_delivery_text(order: dict, restopolis_url: str | None, courier_lang:
             adulte_sum += entry["adulte_total"]
             apprenant_sum += entry["apprenant_total"]
         lines.append(f"  Total: €{adulte_sum:.2f} / €{apprenant_sum:.2f}")
+        deal = _deal_price(order, adulte_sum)
+        if deal is not None:
+            lines.append(f"  Deal price shown to the customer in the app: €{deal:.2f}")
 
     if order.get("delivery_location"):
         lines.append("")
@@ -472,6 +487,12 @@ def _format_delivery_html(order: dict, restopolis_url: str | None, courier_lang:
             '<tr><td style="padding:10px 0 0;font-weight:700;border-top:1px solid #eef0f2;">Total (staff / student)</td>'
             f'<td style="padding:10px 0 0;text-align:right;font-weight:700;border-top:1px solid #eef0f2;">€{adulte_sum:.2f} / €{apprenant_sum:.2f}</td></tr>'
         )
+        deal = _deal_price(order, adulte_sum)
+        if deal is not None:
+            total_row += (
+                f'<tr><td style="padding:6px 0 0;font-weight:700;color:{_BRAND_GREEN};">Deal price shown to the customer in the app</td>'
+                f'<td style="padding:6px 0 0;text-align:right;font-weight:700;color:{_BRAND_GREEN};">€{deal:.2f}</td></tr>'
+            )
 
     restopolis_link = (
         f'<p style="margin:16px 0 0;"><a href="{restopolis_url}" style="color:#1aa860;">Open restaurant on Restopolis</a></p>'
