@@ -2157,3 +2157,12 @@ svg { display: block; }
 
 /* Demo mode (?demo=1): a slim note that nothing on the Delivery screen is real. */
 .demo-ribbon { margin: 0 var(--space-4) var(--space-2); padding: 8px 12px; border-radius: var(--radius-lg); background: #fff6dc; border: 1px solid #f0d58a; color: #6b5200; font-size: 0.82rem; font-weight: 600; text-align: center; }
+
+/* The "which restaurant opens first" vote: each card's share, and the dates in the banner. */
+.belval-banner-dates { margin: 6px 0 0; font-weight: 700; }
+.belval-banner-total { margin: 4px 0 0; font-size: 0.82rem; opacity: 0.85; }
+.belval-share { display: flex; align-items: center; gap: var(--space-2); margin-top: 8px; }
+.belval-bar { flex: 1 1 auto; height: 6px; border-radius: 999px; background: var(--color-border); overflow: hidden; }
+.belval-bar i { display: block; height: 100%; width: 0; border-radius: 999px; background: var(--color-primary); transition: width 0.4s ease; }
+.belval-percent { flex: 0 0 auto; min-width: 3ch; text-align: right; font-weight: 800; font-size: 0.9rem; color: var(--color-primary-dark, var(--color-primary)); }
+

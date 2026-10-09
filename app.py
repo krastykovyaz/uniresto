@@ -233,6 +233,25 @@ DELIVERY_LIST_DAYS = 14
 # _close_expired_orders()).
 DELIVERED_UNPRICED_GRACE_DAYS = 7
 
+# The "which restaurant opens first" vote (the coming-soon cards): it ends on this day (Luxembourg time,
+# the whole day counts), and the winning restaurant opens on the second date. Shown in the app next to
+# the live results; once the day is over, taps are no longer recorded.
+COMING_SOON_VOTING_ENDS = date(2026, 10, 20)
+COMING_SOON_OPENS_ON = date(2026, 11, 1)
+
+
+def _percentages(counts: list[int]) -> list[int]:
+    """Whole-number percentages that always add up to exactly 100 (largest-remainder rounding); all
+    zeros when there are no votes. Plain rounding can add up to 99 or 101, which looks like a bug."""
+    total = sum(counts)
+    if total == 0:
+        return [0 for _ in counts]
+    exact = [c * 100 / total for c in counts]
+    floors = [int(x) for x in exact]
+    for i in sorted(range(len(counts)), key=lambda i: (floors[i] - exact[i], i))[: 100 - sum(floors)]:
+        floors[i] += 1
+    return floors
+
 
 def _as_utc(iso_timestamp: str) -> datetime:
     parsed = datetime.fromisoformat(iso_timestamp)
@@ -1829,8 +1848,36 @@ def create_app(
         location = (body.get("location") or "").strip()
         if location not in COMING_SOON_LOCATIONS:
             abort(400, description=f"'location' must be one of {', '.join(COMING_SOON_LOCATIONS)}")
+        if _coming_soon_voting_closed():
+            return jsonify({"error": "voting_closed", "recorded": False}), 409
         coming_soon_clicks().record(location)
         return jsonify({"recorded": True})
+
+    def _coming_soon_voting_closed() -> bool:
+        return datetime.now(TZINFO).date() > COMING_SOON_VOTING_ENDS
+
+    @app.get("/api/coming-soon/results")
+    def api_coming_soon_results():
+        """The live vote, for the app to show: each option's votes and share (whole percentages adding up
+        to 100), the day voting ends and the day the winner opens, and -- once voting is over -- the
+        winner (None on a tie). Public, like the menu: it holds only counts, no addresses or devices."""
+        counts = dict(coming_soon_clicks().counts())
+        votes = [counts.get(name, 0) for name in COMING_SOON_LOCATIONS]
+        shares = _percentages(votes)
+        options = [{"location": n, "votes": v, "percent": p} for n, v, p in zip(COMING_SOON_LOCATIONS, votes, shares)]
+        closed = _coming_soon_voting_closed()
+        top = max(votes)
+        leaders = [o["location"] for o in options if o["votes"] == top]
+        resp = jsonify({
+            "options": options,
+            "total": sum(votes),
+            "voting_ends": COMING_SOON_VOTING_ENDS.isoformat(),
+            "opens_on": COMING_SOON_OPENS_ON.isoformat(),
+            "closed": closed,
+            "winner": leaders[0] if closed and top > 0 and len(leaders) == 1 else None,
+        })
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
 
     # Page views only the CLIENT can tell apart from noise (Part 74):
     # "home" -- GET / is also fetched by link-preview crawlers; "menu" --

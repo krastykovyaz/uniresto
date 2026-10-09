@@ -4655,3 +4655,91 @@ def test_the_page_carries_the_active_prices_so_the_browser_cannot_miss_them(clie
     assert payload == client.get("/api/pricing").get_json()
     monkeypatch.delenv("PRICE_TIER")
     assert json.loads(re.search(r'<script id="price-tables" type="application/json">(.*?)</script>', client.get("/").get_data(as_text=True), re.S).group(1))["tier"] == "adulte"
+
+
+# ---------------------------------------------------------------------------
+# The "which restaurant opens first" vote: live percentages, and it ends on 20 Oct
+# ---------------------------------------------------------------------------
+
+
+def _vote(client, location):
+    return client.post("/api/coming-soon/click", json={"location": location})
+
+
+@pytest.mark.parametrize("counts", [[0, 0, 0, 0], [14, 5, 17, 6], [1, 1, 1, 0], [1, 0, 0, 0], [3, 3, 3, 3], [1, 2, 4, 8], [33, 33, 34, 0], [7, 7, 7, 1], [1, 1, 98, 0]])
+def test_vote_percentages_are_whole_numbers_that_add_up_to_exactly_100(counts):
+    from app import _percentages
+
+    shares = _percentages(counts)
+    assert sum(shares) == (100 if sum(counts) else 0)
+    assert all(isinstance(s, int) and 0 <= s <= 100 for s in shares)
+    # the order of the shares follows the order of the votes: more votes never means a smaller share
+    for i in range(4):
+        for j in range(4):
+            if counts[i] > counts[j]:
+                assert shares[i] >= shares[j]
+
+
+def test_the_real_vote_split(client):
+    from app import _percentages
+
+    # the live split on 8 Oct: Food House 14, Food Café 5, Food Lab 17, Food Zone 6
+    # exact shares 33.3 / 11.9 / 40.5 / 14.3 -> the two biggest remainders (Café .90, Lab .48) round up: 33 + 12 + 41 + 14 = 100
+    assert _percentages([14, 5, 17, 6]) == [33, 12, 41, 14]
+
+
+def test_results_list_every_option_with_votes_and_percent(client):
+    for loc in ["Food Lab", "Food Lab", "Food Lab", "Food House"]:
+        assert _vote(client, loc).status_code == 200
+    body = client.get("/api/coming-soon/results").get_json()
+    assert client.get("/api/coming-soon/results").headers["Cache-Control"] == "no-store"
+    assert [o["location"] for o in body["options"]] == ["Food House", "Food Café", "Food Lab", "Food Zone"]
+    assert {o["location"]: (o["votes"], o["percent"]) for o in body["options"]} == {"Food House": (1, 25), "Food Café": (0, 0), "Food Lab": (3, 75), "Food Zone": (0, 0)}
+    assert body["total"] == 4 and sum(o["percent"] for o in body["options"]) == 100
+    assert (body["voting_ends"], body["opens_on"]) == ("2026-10-20", "2026-11-01")
+
+
+def test_results_with_no_votes_are_all_zero(client):
+    body = client.get("/api/coming-soon/results").get_json()
+    assert body["total"] == 0 and [o["percent"] for o in body["options"]] == [0, 0, 0, 0]
+    assert body["winner"] is None
+
+
+def test_voting_is_open_up_to_and_including_the_last_day(client, monkeypatch):
+    import datetime as dt
+
+    import app as app_module
+
+    monkeypatch.setattr(app_module, "COMING_SOON_VOTING_ENDS", dt.datetime.now(TZINFO).date())  # today is the last day
+    assert _vote(client, "Food Zone").status_code == 200
+    assert client.get("/api/coming-soon/results").get_json()["closed"] is False
+
+
+def test_after_the_last_day_votes_are_refused_and_not_counted_and_the_winner_is_named(client, monkeypatch):
+    import datetime as dt
+
+    import app as app_module
+
+    for loc in ["Food Lab", "Food Lab", "Food House"]:
+        _vote(client, loc)
+    monkeypatch.setattr(app_module, "COMING_SOON_VOTING_ENDS", dt.datetime.now(TZINFO).date() - dt.timedelta(days=1))
+    resp = _vote(client, "Food Zone")
+    assert resp.status_code == 409 and resp.get_json() == {"error": "voting_closed", "recorded": False}
+    body = client.get("/api/coming-soon/results").get_json()
+    assert body["closed"] is True and body["total"] == 3 and body["winner"] == "Food Lab"
+    assert [o["votes"] for o in body["options"] if o["location"] == "Food Zone"] == [0]
+
+
+def test_a_tie_after_closing_names_no_winner(client, monkeypatch):
+    import datetime as dt
+
+    import app as app_module
+
+    _vote(client, "Food Lab")
+    _vote(client, "Food House")
+    monkeypatch.setattr(app_module, "COMING_SOON_VOTING_ENDS", dt.datetime.now(TZINFO).date() - dt.timedelta(days=1))
+    assert client.get("/api/coming-soon/results").get_json()["winner"] is None
+
+
+def test_an_unknown_option_is_still_refused(client):
+    assert _vote(client, "Burger Palace").status_code == 400

@@ -2663,26 +2663,69 @@ function belvalLocationsInSessionOrder() {
   return order.map((name) => COMING_SOON_LOCATIONS.find((l) => l.name === name));
 }
 
+// "20 October" / "20 octobre" ... from an ISO day, in the visitor's own language.
+function fmtDayMonth(iso) {
+  try {
+    return new Intl.DateTimeFormat(currentLocale(), { day: "numeric", month: "long" }).format(parseISODate(iso));
+  } catch {
+    return iso;
+  }
+}
+
 function belvalComingContent() {
   const wrap = el(`<div class="belval-coming"></div>`);
   const banner = el(`
     <div class="belval-banner">
       <h2>${escapeHtml(tr("belvalComingTitle"))}</h2>
       <p class="belval-banner-text"></p>
+      <p class="belval-banner-dates" hidden></p>
+      <p class="belval-banner-total" hidden></p>
     </div>
   `);
   wrap.append(banner);
   const grid = el(`<div class="restaurant-grid" role="radiogroup" aria-label="${escapeHtml(tr("belvalComingSubtitle"))}"></div>`);
   let picked = loadBelvalPick();
   const cards = new Map();
+  // The live results (GET /api/coming-soon/results): each option's share, the day voting ends, the day the
+  // winner opens. Best-effort: without them the cards simply show no percentages or dates.
+  let results = null;
+  const loadResults = async () => {
+    try {
+      results = await api("/api/coming-soon/results");
+    } catch {
+      /* keep what we have */
+    }
+    if (wrap.isConnected) paint();
+  };
 
   const paint = () => {
-    banner.querySelector(".belval-banner-text").textContent = tr(picked ? "belvalVoted" : "belvalComingSubtitle");
+    const closed = Boolean(results && results.closed);
+    const opens = results ? fmtDayMonth(results.opens_on) : "";
+    const text = banner.querySelector(".belval-banner-text");
+    text.textContent = closed
+      ? results.winner
+        ? tr("belvalVotingClosed", { name: results.winner, opens })
+        : tr("belvalVotingClosedTie", { opens })
+      : tr(picked ? "belvalVoted" : "belvalComingSubtitle");
+    const dates = banner.querySelector(".belval-banner-dates");
+    dates.hidden = !results || closed;
+    if (results && !closed) dates.textContent = tr("belvalVotingEnds", { date: fmtDayMonth(results.voting_ends), opens });
+    const total = banner.querySelector(".belval-banner-total");
+    total.hidden = !results;
+    if (results) total.textContent = tr("belvalTotalVotes", { n: results.total });
+    const share = new Map((results ? results.options : []).map((o) => [o.location, o.percent]));
     for (const [name, card] of cards) {
       const isPick = name === picked;
+      const percent = share.get(name);
+      const shareRow = card.querySelector(".belval-share");
+      shareRow.hidden = percent === undefined;
+      if (percent !== undefined) {
+        card.querySelector(".belval-percent").textContent = `${percent}%`;
+        card.querySelector(".belval-bar i").style.width = `${percent}%`;
+      }
       card.classList.toggle("is-picked", isPick);
-      card.classList.toggle("is-locked", Boolean(picked) && !isPick);
-      card.disabled = Boolean(picked);
+      card.classList.toggle("is-locked", (Boolean(picked) && !isPick) || closed);
+      card.disabled = Boolean(picked) || closed;
       card.setAttribute("aria-checked", String(isPick));
       card.querySelector(".belval-vote-mark").innerHTML = isPick ? icon("check", 14) : "";
       card.querySelector(".belval-your-pick").hidden = !isPick;
@@ -2698,6 +2741,7 @@ function belvalComingContent() {
             <h2>${escapeHtml(location.name)}</h2>
             <p class="kind">${escapeHtml(tr(location.kindKey))} · ${escapeHtml(location.building)}</p>
             <p class="belval-your-pick" hidden>${escapeHtml(tr("belvalYourPick"))}</p>
+            <div class="belval-share" hidden><span class="belval-bar"><i></i></span><span class="belval-percent"></span></div>
           </div>
           <span class="belval-vote-mark" aria-hidden="true"></span>
         </div>
@@ -2710,12 +2754,15 @@ function belvalComingContent() {
       paint();
       showToast(tr("belvalPickToast", { name: location.name }));
       // Best-effort, never blocks the toast above.
-      api("/api/coming-soon/click", { method: "POST", body: JSON.stringify({ location: location.name }) }).catch(() => {});
+      api("/api/coming-soon/click", { method: "POST", body: JSON.stringify({ location: location.name }) })
+        .catch(() => {})
+        .finally(loadResults); // show the vote you just added in the percentages
     });
     cards.set(location.name, card);
     grid.append(card);
   }
   paint();
+  loadResults();
   wrap.append(grid);
   return wrap;
 }
