@@ -142,6 +142,7 @@ def _make_client(tmp_path, altius_html, altius_closed_week_html, fixture_today, 
         # file instead (test_menu_refresh.py, test_daily_report.py).
         enable_menu_refresh_scheduler=False,
         enable_daily_report_scheduler=False,
+        enable_reminder_scheduler=False,
     )
     app.testing = True
     app.config["PUSH_LOG"] = pushes
@@ -4743,3 +4744,73 @@ def test_a_tie_after_closing_names_no_winner(client, monkeypatch):
 
 def test_an_unknown_option_is_still_refused(client):
     assert _vote(client, "Burger Palace").status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# A reminder shortly before the 13:30 close, for whoever forgot to tap
+# ---------------------------------------------------------------------------
+
+
+def _remind(client, hour, minute):
+    """Run the reminder job as of that time on the day of the test orders (2026-09-24)."""
+    now = datetime.datetime(2026, 9, 24, hour, minute, tzinfo=TZINFO)
+    return client.application.config["RUN_ORDER_REMINDERS"](now)
+
+
+def _reminders_sent(client):
+    return [(e, t, b) for e, k, t, b in client.application.config["PUSH_LOG"] if k == "reminder"]
+
+
+def test_a_courier_who_took_an_order_and_forgot_to_tap_is_reminded_before_it_closes(client):
+    order_id = _taken_order(client)  # taken by courier@uni.lu, nothing tapped since
+    with patch("app.send_order_reminder", return_value=(True, None)) as mail:
+        assert _remind(client, 13, 5) == 0               # too early: before 13:10
+        assert _reminders_sent(client) == []
+        assert _remind(client, 13, 12) == 1
+    [(who, title, body)] = _reminders_sent(client)
+    assert who == "courier@uni.lu" and title == "Your delivery is still open"
+    assert f"#{order_id}" in body and "13:30" in body and "I picked up the food" in body
+    mail.assert_called_once()
+    assert mail.call_args[0][0] == "courier@uni.lu"   # and by email too
+
+
+def test_the_reminder_is_sent_once_however_the_order_moves_on(client):
+    order_id = _taken_order(client)
+    with patch("app.send_order_reminder", return_value=(True, None)):
+        assert _remind(client, 13, 10) == 1
+        assert _remind(client, 13, 11) == 0
+        with patch("app.send_order_out_for_delivery", return_value=(True, None)):
+            assert _pickup(client, order_id).status_code == 200
+        assert _remind(client, 13, 12) == 0               # picked the food up: not nagged again
+    assert len(_reminders_sent(client)) == 1
+
+
+def test_no_reminder_after_the_close_or_for_an_order_nobody_took_or_one_already_delivered(client):
+    waiting = _create_basic_order(client, customer_email="student@uni.lu")           # nobody took it
+    assert _remind(client, 13, 15) == 0
+    order_id = _taken_order(client)
+    assert _remind(client, 13, 30) == 0                                              # the close itself
+    assert _remind(client, 14, 0) == 0
+    client.application.config["ORDER_STORE"].mark_delivered(order_id)
+    assert _remind(client, 13, 15) == 0                                              # delivered
+    assert _reminders_sent(client) == [] and waiting
+
+
+def test_once_the_courier_has_handed_over_the_customer_is_asked_to_confirm(client):
+    order_id = _taken_order(client)
+    with patch("app.send_order_out_for_delivery", return_value=(True, None)):
+        _pickup(client, order_id)
+    _handed_over(client, order_id)
+    with patch("app.send_order_reminder", return_value=(True, None)) as mail:
+        assert _remind(client, 13, 15) == 1
+    [(who, title, body)] = _reminders_sent(client)
+    assert who == "student@uni.lu" and title == "Did your order arrive?" and "Mark as delivered" in body
+    assert mail.call_args[0][0] == "student@uni.lu"
+    assert "courier@uni.lu" not in [w for w, _t, _b in _reminders_sent(client)]
+
+
+def test_a_cancelled_or_expired_order_is_not_reminded(client):
+    order_id = _taken_order(client)
+    with patch("app.send_admin_text", return_value=(True, None)):
+        _cancel(client, order_id)
+    assert _remind(client, 13, 15) == 0

@@ -302,6 +302,7 @@ class OrderStore:
         # See orderability_engine/cache.py's __init__ docstring: verified
         # live that Flask's dev server can dispatch requests concurrently,
         # so a lock (not just check_same_thread=False) is required.
+        self.db_path = str(db_path)
         self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
         self._lock = threading.RLock()
         self._conn.executescript(SCHEMA)
@@ -587,6 +588,21 @@ class OrderStore:
                 if cur.rowcount == 1:
                     closed.append(order_id)
         return [self.get_order(i) for i in closed]
+
+    def list_taken_unfinished_for_day(self, order_date: str) -> list[dict]:
+        """Orders dated `order_date` that a courier took and that the day's close would still expire:
+        taken, not delivered, still pending / being placed / awaiting the customer. What the
+        reminders (order_reminders.py) look at."""
+        with self._lock:
+            ids = [
+                r[0]
+                for r in self._conn.execute(
+                    "SELECT id FROM orders WHERE order_date = ? AND claimed_at IS NOT NULL AND delivered_at IS NULL "
+                    "AND status IN ('pending', 'reviewing', 'awaiting_confirmation')",
+                    (order_date,),
+                ).fetchall()
+            ]
+        return [self.get_order(i) for i in ids]
 
     def list_open_claimed_orders(self) -> list[dict]:
         """Orders a courier claimed that were never delivered and are

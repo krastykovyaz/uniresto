@@ -308,6 +308,22 @@ def send_order_out_for_delivery(to_email: str, order: dict) -> tuple[bool, str |
     return _send(to_email, subject, text_body, html_body)
 
 
+def send_order_reminder(to_email: str, order: dict, title: str, body: str) -> tuple[bool, str | None]:
+    """The email twin of the push sent shortly before an order closes (order_reminders.py): the same title
+    and sentence, so the person who forgot to tap hears about it on whichever channel they check."""
+    config = _mail_config()
+    if config is None:
+        return False, "Email not configured (RESEND_API_KEY unset)"
+    subject = f"{title} -- order #{order['id']}"
+    text_body = f"{title}\n\n{body}"
+    body_html = f"""\
+        <p style="margin:0 0 4px;font-size:17px;font-weight:700;">{html.escape(title)}</p>
+        <p style="margin:0 0 20px;color:#6b7280;">{html.escape(body)}</p>
+        <p style="margin:0;color:#6b7280;font-size:13px;">Open UniResto and go to "I want to delivery" or your order.</p>"""
+    html_body = _html_shell(f"Order #{order['id']} closes soon.", body_html, config)
+    return _send(to_email, subject, text_body, html_body)
+
+
 def generate_verification_code() -> str:
     """A 6-digit numeric code, zero-padded -- generated with `secrets`
     (cryptographically random), not `random`, since this gates writing a

@@ -44,9 +44,11 @@ from orderability_engine.mailer import (
     send_order_confirmation,
     send_order_needs_confirmation,
     send_order_out_for_delivery,
+    send_order_reminder,
     send_verification_code,
 )
 from orderability_engine.menu_refresh import start_menu_refresh_scheduler
+from orderability_engine.order_reminders import OrderReminderStore, ROLE_COURIER, due_reminders, reminder_text, start_order_reminder_scheduler
 from orderability_engine.menu_service import flatten_menu_items, get_customer_menu
 from orderability_engine.delivery_rules import is_delivery_expired
 from orderability_engine.models import STATUS_VALUES, TZINFO
@@ -357,6 +359,7 @@ def create_app(
     mail_runner=None,
     enable_menu_refresh_scheduler: bool = True,
     enable_daily_report_scheduler: bool = True,
+    enable_reminder_scheduler: bool = True,
 ) -> Flask:
     app = Flask(__name__)
     # nginx (see the resto-unilu site config) terminates TLS and proxies
@@ -373,6 +376,7 @@ def create_app(
         cache=OrderabilityCache("orderability.db"), restaurants=restaurants
     )
     app.config["ORDER_STORE"] = order_store or OrderStore("orders.db")
+    app.config["REMINDER_STORE"] = OrderReminderStore(app.config["ORDER_STORE"].db_path)  # same file as the orders
     # Web push (Profile > Notifications): the devices people subscribed, and the
     # function that pushes to them. Tests pass their own sender to record calls.
     app.config["PUSH_STORE"] = push_store or PushSubscriptionStore("orders.db")
@@ -778,6 +782,30 @@ def create_app(
     # itself.
     if enable_daily_report_scheduler:
         start_daily_report_scheduler(page_views(), store(), app.config["DAILY_REPORT_STORE"])
+
+    def run_order_reminders(now=None) -> int:
+        """Reminds, once, whoever has an order that the day's 13:30 close is about to expire (see
+        order_reminders.py): by push and by email. Returns how many people were reminded. Called every
+        minute by a thread in each worker; the claim makes sure a person only ever hears once."""
+        now = now or svc().now()
+        reminded = 0
+        for order, role in due_reminders(store().list_taken_unfinished_for_day(now.date().isoformat()), now):
+            if not app.config["REMINDER_STORE"].claim(order["id"], role):
+                continue
+            title, body = reminder_text(order, role)
+            if role == ROLE_COURIER:
+                push_people, mail_to = [order.get("courier_email")], order.get("courier_email")
+            else:
+                push_people, mail_to = order_people(order), order.get("customer_email")
+            push_to(push_people, "reminder", title, body, tag=f"remind-{order['id']}")
+            if mail_to:
+                app.config["MAIL_RUNNER"](lambda a=mail_to, o=order, t=title, b=body: send_order_reminder(a, o, t, b))
+            reminded += 1
+        return reminded
+
+    app.config["RUN_ORDER_REMINDERS"] = run_order_reminders
+    if enable_reminder_scheduler:
+        start_order_reminder_scheduler(run_order_reminders)
 
     def parse_date_arg(value: str | None):
         if not value:

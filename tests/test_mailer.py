@@ -8,6 +8,7 @@ from orderability_engine.mailer import (
     generate_verification_code,
     is_configured,
     send_delivery_notification,
+    send_order_reminder,
     send_order_accepted,
     send_order_confirmation,
     send_order_needs_confirmation,
@@ -463,3 +464,14 @@ def test_send_in_background_drops_jobs_past_the_queue_cap(monkeypatch):
     mailer.wait_for_pending_mail()
     assert mailer.send_in_background(lambda: None)  # room again once drained
     mailer.wait_for_pending_mail()
+
+
+def test_the_reminder_email_carries_the_same_title_and_sentence_as_the_push(monkeypatch):
+    monkeypatch.setenv("RESEND_API_KEY", "re_placeholder")
+    order = _order()
+    with patch("orderability_engine.mailer.requests.post", return_value=_mock_response()) as mock_post:
+        send_order_reminder("courier@uni.lu", order, "Your delivery is still open", "Order #1 closes at 13:30. <b>Tap</b> it.")
+    payload = mock_post.call_args.kwargs["json"]
+    assert payload["to"] == ["courier@uni.lu"] and payload["subject"].startswith("Your delivery is still open -- order #")
+    assert "closes at 13:30" in payload["text"] and "closes at 13:30" in payload["html"]
+    assert "<b>Tap</b>" not in payload["html"] and "&lt;b&gt;Tap&lt;/b&gt;" in payload["html"]   # escaped, like every other email
