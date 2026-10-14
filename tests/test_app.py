@@ -4857,3 +4857,42 @@ def test_a_cancelled_shared_delivery_keeps_the_generic_preview(client):
     order_id = _create_basic_order(client)
     client.application.config["ORDER_STORE"]._conn.execute("UPDATE orders SET status = 'cancelled' WHERE id = ?", (order_id,))
     assert _meta(client.get(f"/?order={order_id}").data.decode(), "og:title") == "UniResto · Cluster Kirchberg"
+
+
+# ---------------------------------------------------------------------------
+# Where a courier's mail goes: their chosen (verified) address, else the University one
+# ---------------------------------------------------------------------------
+
+
+def _claim_with_notify(client, order_id, notify_email):
+    with patch("app.send_order_claimed_notification", return_value=(True, None)), patch(
+        "app.send_delivery_notification", return_value=(True, None)
+    ) as mock_email:
+        resp = client.post(f"/api/orders/{order_id}/claim", json={"courier_email": "courier@uni.lu", "notify_email": notify_email})
+    assert resp.status_code == 200
+    return mock_email
+
+
+def test_a_verified_private_notify_address_gets_the_courier_mail(client):
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("courier.private@gmail.com")
+    order_id = _create_basic_order(client)
+    mock_email = _claim_with_notify(client, order_id, "courier.private@gmail.com")
+    assert mock_email.call_args[0][0] == "courier.private@gmail.com"
+    order = client.application.config["ORDER_STORE"].get_order(order_id)
+    assert order["courier_email"] == "courier@uni.lu"  # the identity is still the University address
+    assert order["courier_notify_email"] == "courier.private@gmail.com"
+
+
+def test_an_unverified_notify_address_is_ignored(client):
+    order_id = _create_basic_order(client)
+    mock_email = _claim_with_notify(client, order_id, "stranger@gmail.com")
+    assert mock_email.call_args[0][0] == "courier@uni.lu"
+    assert client.application.config["ORDER_STORE"].get_order(order_id)["courier_notify_email"] is None
+
+
+def test_the_notify_address_is_never_public(client):
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("courier.private@gmail.com")
+    order_id = _create_basic_order(client)
+    _claim_with_notify(client, order_id, "courier.private@gmail.com")
+    listed = client.get("/api/delivery/orders").get_json()
+    assert all("courier_notify_email" not in o for o in listed)

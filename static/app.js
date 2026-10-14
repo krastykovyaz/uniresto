@@ -30,6 +30,7 @@ import {
   filterItems,
 } from "./filters.js";
 import { searchItems } from "./search.js";
+import { hasTwoEmails, normalizeNotifyChoice, pickNotifyEmail } from "./notify-email.js";
 import { NOTIFICATION_EVENTS, loadNotificationPrefs, notificationState, saveNotificationPrefs } from "./notifications.js";
 import { dishEmoji } from "./dish-emoji.js";
 
@@ -100,6 +101,8 @@ const PHONE_STORAGE_KEY = "uniresto.phone.v1";
 // Same TDZ hazard again -- loadCommunicationEmail() also runs
 // synchronously while constructing `state` below.
 const COMMUNICATION_EMAIL_STORAGE_KEY = "uniresto.communicationEmail.v1";
+// And again: the notification-address choice is read while constructing `state`.
+const NOTIFY_CHOICE_STORAGE_KEY = "uniresto.notifyChoice.v1";
 
 const state = {
   sharedOrderId: null,
@@ -133,7 +136,9 @@ const state = {
   // order does NOT change what's registered (only Profile's own save
   // does that -- see registeredEmail/communicationEmail below and
   // openEmailSheet()/openCommunicationEmailSheet()).
-  customerEmail: loadCommunicationEmail() || loadRegisteredEmail() || "",
+  customerEmail: pickNotifyEmail(loadNotifyChoice(), loadCommunicationEmail(), loadRegisteredEmail()),
+  // Which of the two addresses gets notifications: "private" (default) or "university".
+  notifyChoice: loadNotifyChoice(),
   // Optional, same pre-fill-but-editable-per-order pattern as
   // customerEmail above -- starts from the Profile-registered phone
   // (registeredPhone below), editing it here doesn't change what's
@@ -454,6 +459,27 @@ function clearRegisteredPhone() {
 // point here.
 function isValidEmailFormat(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+}
+
+function loadNotifyChoice() {
+  try {
+    return normalizeNotifyChoice(localStorage.getItem(NOTIFY_CHOICE_STORAGE_KEY));
+  } catch {
+    return "private";
+  }
+}
+
+function saveNotifyChoice(choice) {
+  try {
+    localStorage.setItem(NOTIFY_CHOICE_STORAGE_KEY, choice);
+  } catch {
+    /* localStorage unavailable -- the default (private) applies next visit */
+  }
+}
+
+// The address notifications go to right now, from the person's choice.
+function notifyEmail() {
+  return pickNotifyEmail(state.notifyChoice, state.communicationEmail, state.registeredEmail);
 }
 
 function loadCommunicationEmail() {
@@ -988,7 +1014,7 @@ function openEmailSheet(trigger, onVerified, hintKey = "registeredEmailHint") {
     state.registeredEmail = email;
     // The Communication email (if set) still takes priority as the
     // checkout pre-fill -- see state.customerEmail's own comment.
-    state.customerEmail = state.communicationEmail || email || "";
+    state.customerEmail = pickNotifyEmail(state.notifyChoice, state.communicationEmail, email);
     if (email) saveRegisteredEmail(email);
     else clearRegisteredEmail();
     close();
@@ -1298,6 +1324,61 @@ function openPhoneSheet(trigger) {
   input.focus();
 }
 
+// ------------------------------------------------------ Notification address
+
+// Two addresses, one choice: where order mails and courier mails go. The first row (the
+// Communication email) is the default; the University address is one tap away.
+function openNotifyEmailSheet(trigger) {
+  const overlay = el(`<div class="sheet-overlay"></div>`);
+  const sheet = el(`
+    <div class="lang-sheet" role="dialog" aria-modal="true" aria-label="${escapeHtml(tr("notifyEmailRow"))}">
+      <div class="sheet-grabber" aria-hidden="true"></div>
+      <div class="lang-sheet-header">
+        <p class="screen-title">${escapeHtml(tr("notifyEmailRow"))}</p>
+        <button type="button" class="filter-close" aria-label="${escapeHtml(tr("back"))}">${icon("close", 20)}</button>
+      </div>
+      <p class="email-sheet-hint">${escapeHtml(tr("notifyEmailHint"))}</p>
+      <div class="lang-list"></div>
+    </div>
+  `);
+  const list = sheet.querySelector(".lang-list");
+  function close() {
+    document.removeEventListener("keydown", onKey);
+    overlay.remove();
+    trigger?.focus();
+  }
+  function onKey(e) {
+    if (e.key === "Escape") close();
+  }
+  const options = [
+    { choice: "private", label: tr("communicationEmail"), email: state.communicationEmail },
+    { choice: "university", label: tr("registeredEmail"), email: state.registeredEmail },
+  ];
+  for (const opt of options) {
+    const row = el(`
+      <button type="button" class="lang-option${state.notifyChoice === opt.choice ? " is-selected" : ""}" role="radio" aria-checked="${state.notifyChoice === opt.choice}">
+        <span class="lang-badge">${state.notifyChoice === opt.choice ? "✓" : ""}</span>
+        <span class="lang-names"><span class="lang-native">${escapeHtml(opt.label)}</span><span class="lang-in-ui">${escapeHtml(opt.email || "")}</span></span>
+      </button>
+    `);
+    row.addEventListener("click", () => {
+      state.notifyChoice = opt.choice;
+      saveNotifyChoice(opt.choice);
+      state.customerEmail = notifyEmail();
+      close();
+      render();
+    });
+    list.append(row);
+  }
+  sheet.querySelector(".filter-close").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close();
+  });
+  document.addEventListener("keydown", onKey);
+  overlay.append(sheet);
+  deviceScreen.append(overlay);
+}
+
 // ------------------------------------------------------ Communication email
 
 // Single-step sheet, same shell/behavior as openPhoneSheet() above -- no
@@ -1333,7 +1414,7 @@ function openCommunicationEmailSheet(trigger) {
   }
   async function commit(email) {
     state.communicationEmail = email;
-    state.customerEmail = email || state.registeredEmail || "";
+    state.customerEmail = pickNotifyEmail(state.notifyChoice, email, state.registeredEmail);
     if (email) {
       saveCommunicationEmail(email);
       await claimRewardOnce("communication_email_added", email);
@@ -2189,6 +2270,15 @@ function verifiedCourierEmailOrRedirect(retryBtn) {
   return null;
 }
 
+// Where this courier's mail for a delivery should go when it isn't the University address: their
+// chosen address, but only one this device has proven (the server checks the same). undefined
+// otherwise -- the mail then simply goes to the University address.
+function courierNotifyEmail() {
+  const email = notifyEmail();
+  if (!email || email.toLowerCase() === (state.registeredEmail || "").toLowerCase()) return undefined;
+  return isEmailKnownVerified(email) ? email : undefined;
+}
+
 // The server answered "email_not_verified": the University email saved on this
 // device is no longer one it recognises (its verification was removed, or this
 // device's saved proof no longer matches). Forget the saved address and ask for
@@ -2284,7 +2374,7 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
             ? demoCall(order, path, render)
             : await api(`/api/orders/${order.id}/${path}`, {
                 method: "POST",
-                body: JSON.stringify({ courier_email: courierEmail, lang: state.lang }),
+                body: JSON.stringify({ courier_email: courierEmail, lang: state.lang, ...(path === "claim" ? { notify_email: courierNotifyEmail() } : {}) }),
               });
           onSuccess(result);
           lastDeliveryStepAt = Date.now();
@@ -4080,6 +4170,19 @@ function renderProfile() {
   `);
   communicationEmailRow.addEventListener("click", () => openCommunicationEmailSheet(communicationEmailRow));
   rows.append(communicationEmailRow);
+
+  if (hasTwoEmails(state.communicationEmail, state.registeredEmail)) {
+    const notifyRow = el(`
+      <button type="button" class="profile-row profile-row-notify-email" aria-haspopup="dialog">
+        <span class="profile-row-icon">${icon("mail", 20)}</span>
+        <span class="profile-row-label">${escapeHtml(tr("notifyEmailRow"))}</span>
+        <span class="profile-row-count">${escapeHtml(notifyEmail())}</span>
+        <span class="profile-row-chevron">${icon("chevron", 16)}</span>
+      </button>
+    `);
+    notifyRow.addEventListener("click", () => openNotifyEmailSheet(notifyRow));
+    rows.append(notifyRow);
+  }
 
   const phoneRow = el(`
     <button type="button" class="profile-row profile-row-phone" aria-haspopup="dialog">

@@ -218,7 +218,7 @@ def _is_valid_email_format(email: str) -> bool:
 # Contact details on an order: never returned by any public endpoint
 # (api_get_order, api_delivery_orders) -- only the admin page and the
 # order's own creation response ever show them.
-PRIVATE_ORDER_FIELDS = ("customer_email", "customer_phone", "courier_email", "courier_lang", "reward_email")
+PRIVATE_ORDER_FIELDS = ("customer_email", "customer_phone", "courier_email", "courier_lang", "reward_email", "courier_notify_email")
 
 
 MAX_CUSTOMER_NOTE_LENGTH = 200
@@ -794,7 +794,7 @@ def create_app(
                 continue
             title, body = reminder_text(order, role)
             if role == ROLE_COURIER:
-                push_people, mail_to = [order.get("courier_email")], order.get("courier_email")
+                push_people, mail_to = [order.get("courier_email")], order.get("courier_notify_email") or order.get("courier_email")
             else:
                 push_people, mail_to = order_people(order), order.get("customer_email")
             push_to(push_people, "reminder", title, body, tag=f"remind-{order['id']}")
@@ -1676,11 +1676,19 @@ def create_app(
         # is already in their hands.
         if order["status"] in ("cancelled", "expired") or order["delivered_at"]:
             return jsonify({"error": "not_claimable", "status": order["status"], "delivered": bool(order["delivered_at"])}), 409
-        newly_claimed = store().mark_claimed(order_id, courier_email=courier_email, courier_lang=courier_lang)
+        # Where THIS courier wants the mail: another address of theirs (their private one) when
+        # the app sends it AND it is a verified address on this device -- never an unverified
+        # one, or a courier could make the app mail anybody. Otherwise the University address.
+        notify_email = ((request.get_json(force=True, silent=True) or {}).get("notify_email") or "").strip()
+        if not (notify_email and _is_valid_email_format(notify_email) and _is_proven(notify_email)):
+            notify_email = ""
+        newly_claimed = store().mark_claimed(
+            order_id, courier_email=courier_email, courier_lang=courier_lang, courier_notify_email=notify_email or None
+        )
         if newly_claimed:
             send_order_claimed_notification(order, admin_url=_admin_orders_url())
             send_delivery_notification(
-                courier_email, order, restopolis_url=_restopolis_url_for(order["restaurant_code"]), courier_lang=courier_lang or "en"
+                notify_email or courier_email, order, restopolis_url=_restopolis_url_for(order["restaurant_code"]), courier_lang=courier_lang or "en"
             )
             # At most once per order (Part 76): a release + re-claim
             # must never email the customer again for the SAME claim.

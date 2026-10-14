@@ -167,6 +167,10 @@ _MIGRATIONS = [
     # a personal address) -- the only address Profile's Luni balance
     # reads, so the order's Luni has to land here to be visible at all.
     ("reward_email", "ALTER TABLE orders ADD COLUMN reward_email TEXT"),
+    # Where the claiming courier wants this order's emails (the claim email, the
+    # reminder) when that is not their University address (courier_email, which
+    # stays the identity). Only ever a verified address -- see app.py's claim route.
+    ("courier_notify_email", "ALTER TABLE orders ADD COLUMN courier_notify_email TEXT"),
 ]
 
 
@@ -464,7 +468,7 @@ class OrderStore:
             row = self._conn.execute(
                 "SELECT id, restaurant_code, restaurant_name, order_date, delivery_location, customer_email, "
                 "status, real_price, created_at, customer_note, customer_lang, delivered_at, claimed_at, customer_phone, "
-                "courier_email, courier_lang, picked_up_at, reward_email, handed_over_at FROM orders WHERE id = ?",
+                "courier_email, courier_lang, picked_up_at, reward_email, handed_over_at, courier_notify_email FROM orders WHERE id = ?",
                 (order_id,),
             ).fetchone()
             if row is None:
@@ -521,6 +525,7 @@ class OrderStore:
             "picked_up_at": row[16],
             "reward_email": row[17],
             "handed_over_at": row[18],
+            "courier_notify_email": row[19],
             "items": line_items,
             "totals": aggregate_totals(line_items),
         }
@@ -650,7 +655,9 @@ class OrderStore:
             ).fetchone()
         return row[0]
 
-    def mark_claimed(self, order_id: int, courier_email: str | None = None, courier_lang: str | None = None) -> bool:
+    def mark_claimed(
+        self, order_id: int, courier_email: str | None = None, courier_lang: str | None = None, courier_notify_email: str | None = None
+    ) -> bool:
         """Part 75 (courier_email/courier_lang added Part 81): True only
         the FIRST time this succeeds for a given order (the WHERE clause
         below only matches while claimed_at is still NULL) -- app.py uses
@@ -665,8 +672,9 @@ class OrderStore:
         now = datetime.now(timezone.utc).isoformat()
         with self._lock, self._transaction() as conn:
             cur = conn.execute(
-                "UPDATE orders SET claimed_at = ?, courier_email = ?, courier_lang = ? WHERE id = ? AND claimed_at IS NULL",
-                (now, courier_email, courier_lang, order_id),
+                "UPDATE orders SET claimed_at = ?, courier_email = ?, courier_lang = ?, courier_notify_email = ? "
+                "WHERE id = ? AND claimed_at IS NULL",
+                (now, courier_email, courier_lang, courier_notify_email, order_id),
             )
             return cur.rowcount > 0
 
