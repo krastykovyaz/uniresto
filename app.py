@@ -2673,6 +2673,17 @@ def create_app(
                 details.append("Vegetarian")
             og_description = " · ".join(details) + " — order on UniResto"
             og_image = url_for("og_dish_image", dish=slug, date=date_str, cat=category, name=name, _external=True)
+        elif request.args.get("r"):
+            # A "this restaurant, this day" link: name both in the preview. Only for a
+            # restaurant we know and a well-formed date -- anything else keeps the default.
+            shared = by_slug.get(request.args.get("r", ""))
+            try:
+                shared_day = datetime.strptime(date_str, "%Y-%m-%d").date()
+            except ValueError:
+                shared_day = None
+            if shared is not None and shared_day is not None:
+                og_title = f"{_short_restaurant_name(shared.name)} · {shared_day.strftime('%a %d %b')}"
+                og_description = "Menu and ordering on UniResto"
         return render_template(
             "mobile.html", og_lang=og_lang, og_title=og_title, og_description=og_description, og_image=og_image,
             # The prices the app charges right now, built into the page itself so the browser

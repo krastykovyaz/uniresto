@@ -4814,3 +4814,20 @@ def test_a_cancelled_or_expired_order_is_not_reminded(client):
     with patch("app.send_admin_text", return_value=(True, None)):
         _cancel(client, order_id)
     assert _remind(client, 13, 15) == 0
+
+
+# ---------------------------------------------------------------------------
+# Sharing a restaurant's menu for one day: /?r=<slug>&date=YYYY-MM-DD
+# ---------------------------------------------------------------------------
+
+
+def test_a_menu_day_link_previews_that_restaurant_and_day(client):
+    html = client.get("/?r=altius&date=2026-09-24").data.decode()
+    assert _meta(html, "og:title") == "Altius · Thu 24 Sep"
+
+
+@pytest.mark.parametrize("query", ["?r=nowhere&date=2026-09-24", "?r=altius&date=not-a-date", '?r="><script>alert(1)</script>&date=2026-09-24'])
+def test_a_broken_menu_day_link_keeps_the_generic_preview(client, query):
+    html = client.get("/" + query).data.decode()
+    assert _meta(html, "og:title") == "UniResto · Cluster Kirchberg"
+    assert "<script>alert(1)" not in html

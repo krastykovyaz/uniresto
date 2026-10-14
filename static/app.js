@@ -4287,7 +4287,13 @@ async function reorderPastOrder(order) {
 
 function renderMenu() {
   app.innerHTML = "";
-  app.append(header({ title: shortName(state.restaurantName), subtitle: fmtLong(state.targetDate), back: () => goTo("dates") }));
+  const menuHeader = header({ title: shortName(state.restaurantName), subtitle: fmtLong(state.targetDate), back: () => goTo("dates") });
+  const shareMenuBtn = el(`<button type="button" class="back-button menu-share-button" aria-label="${escapeHtml(tr("shareDish", { name: shortName(state.restaurantName) }))}">${icon("share", 18)}</button>`);
+  shareMenuBtn.addEventListener("click", () =>
+    openShareSheet(null, `${shortName(state.restaurantName)} · ${fmtLong(state.targetDate)}`, menuShareUrl(state.slug, state.targetDate)),
+  );
+  menuHeader.append(shareMenuBtn);
+  app.append(menuHeader);
 
   if (state.menuError) {
     const messages = {
@@ -5038,6 +5044,15 @@ function dishShareUrl(item) {
   return url.toString();
 }
 
+// One restaurant's menu for one day: /?lang=..&r=<slug>&date=YYYY-MM-DD.
+function menuShareUrl(slug, date) {
+  const url = new URL("/", window.location.origin);
+  url.searchParams.set("lang", state.lang);
+  url.searchParams.set("r", slug);
+  url.searchParams.set("date", date);
+  return url.toString();
+}
+
 // A native share sheet (navigator.share) is the best experience on a phone,
 // but on a Mac it lists AirDrop / Mail / Notes ... with no "Copy link", and it
 // can't be asked to add one. So the share button opens THIS small menu first:
@@ -5066,8 +5081,8 @@ async function copyToClipboard(text) {
   }
 }
 
-function openShareSheet(item, title) {
-  const url = dishShareUrl(item);
+function openShareSheet(item, title, urlOverride) {
+  const url = urlOverride || dishShareUrl(item);
   const enc = encodeURIComponent;
   const overlay = el(`<div class="sheet-overlay"></div>`);
   const sheet = el(`
@@ -5143,6 +5158,37 @@ function openShareSheet(item, title) {
   overlay.append(sheet);
   deviceScreen.append(overlay);
   list.querySelector(".lang-option")?.focus();
+}
+
+// Opens the menu a shared "restaurant + day" link points at. Returns true when
+// it took over the load. A day that can't be shown falls back to that
+// restaurant's date picker with a note.
+async function openSharedMenu() {
+  const params = new URLSearchParams(window.location.search);
+  const slug = params.get("r");
+  const date = params.get("date");
+  if (!slug || !date || params.get("dish")) return false;
+  try {
+    const url = new URL(window.location.href);
+    for (const key of ["r", "date"]) url.searchParams.delete(key);
+    window.history.replaceState(null, "", url);
+  } catch {
+    /* history unavailable -- worst case a refresh reopens the menu */
+  }
+  const restaurant = state.restaurants.find((r) => r.slug === slug);
+  if (!restaurant || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  let dateInfo;
+  try {
+    dateInfo = await api(`/api/restaurants/${restaurant.slug}/status?date=${encodeURIComponent(date)}`);
+  } catch {
+    showToast(tr("sharedMenuUnavailable"));
+    await selectRestaurant(restaurant);
+    return true;
+  }
+  state.slug = restaurant.slug;
+  state.restaurantName = restaurant.name;
+  await selectDate(dateInfo);
+  return true;
 }
 
 // Opens the dish a shared link points at, if this page load was opened from
@@ -6478,6 +6524,7 @@ async function init() {
   }
 
   if (await openSharedDish()) return;
+  if (await openSharedMenu()) return;
   const restored = await restoreLocation();
   if (!restored) goTo("role");
 }
