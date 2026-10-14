@@ -2673,6 +2673,28 @@ def create_app(
                 details.append("Vegetarian")
             og_description = " · ".join(details) + " — order on UniResto"
             og_image = url_for("og_dish_image", dish=slug, date=date_str, cat=category, name=name, _external=True)
+        elif request.args.get("order", "").isdigit():
+            # A delivery someone shared ("take this one if you can"): what the public
+            # Delivery list itself shows -- the building, never the room, the customer
+            # or any contact -- and only while the order is still open.
+            shared_order = store().get_order(int(request.args["order"]))
+            if (
+                shared_order is not None
+                and shared_order["status"] not in ("cancelled", "expired")
+                and not shared_order.get("delivered_at")
+                and _as_utc(shared_order["created_at"]) >= datetime.now(TZINFO) - timedelta(days=DELIVERY_LIST_DAYS)
+            ):
+                place = _building_only(shared_order.get("delivery_location")) or "campus"
+                try:
+                    day = date.fromisoformat(shared_order["order_date"]).strftime("%a %d %b")
+                except ValueError:
+                    day = shared_order["order_date"]
+                dishes = ", ".join(
+                    split_dish_size(dish_name_label(it["name"], og_lang))[0] + (f" ×{it['quantity']}" if it["quantity"] > 1 else "")
+                    for it in shared_order.get("items", [])
+                )
+                og_title = f"Delivery to {place} · {day}"
+                og_description = f"{_short_restaurant_name(shared_order['restaurant_name'])}: {dishes} — take this delivery on UniResto"
         elif request.args.get("r"):
             # A "this restaurant, this day" link: name both in the preview. Only for a
             # restaurant we know and a well-formed date -- anything else keeps the default.

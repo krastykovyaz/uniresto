@@ -1985,7 +1985,8 @@ svg { display: block; }
   60%  { box-shadow: 0 0 0 12px rgba(30, 126, 52, 0.18); }
   100% { box-shadow: 0 0 0 0 rgba(30, 126, 52, 0); }
 }
-.food-card.is-shared-highlight {
+.food-card.is-shared-highlight,
+.delivery-order-card.is-shared-highlight {
   animation: shared-dish-pulse 1.4s ease-out 3;
   outline: 2px solid var(--color-available, #1e7e34);
   outline-offset: 2px;
@@ -2168,3 +2169,4 @@ svg { display: block; }
 
 
 .screen-header .menu-share-button { margin-left: auto; }
+.delivery-order-card .delivery-share-button { margin-left: auto; align-self: flex-start; width: 36px; height: 36px; }

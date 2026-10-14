@@ -18,3 +18,11 @@ test("the shared menu is opened on load, after the dish link", () => {
 test("every language has the unavailable note", () => {
   assert.equal((i18n.match(/sharedMenuUnavailable:/g) || []).length, (i18n.match(/sharedDishUnavailable:/g) || []).length);
 });
+
+test("delivery orders can be shared and opened pinned", () => {
+  assert.match(app, /function orderShareUrl\(order\)/);
+  assert.match(app, /async function openSharedOrder\(\)/);
+  assert.ok(app.indexOf("await openSharedMenu()") < app.indexOf("await openSharedOrder()"));
+  assert.equal((i18n.match(/shareDeliveryTitle:/g) || []).length, 11);
+  assert.equal((i18n.match(/sharedOrderUnavailable:/g) || []).length, 11);
+});

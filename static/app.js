@@ -102,6 +102,7 @@ const PHONE_STORAGE_KEY = "uniresto.phone.v1";
 const COMMUNICATION_EMAIL_STORAGE_KEY = "uniresto.communicationEmail.v1";
 
 const state = {
+  sharedOrderId: null,
   screen: "restaurants",
   lang: getLanguage(),
   restaurants: [],
@@ -2230,7 +2231,7 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
   const isReserved = !isDelivered && Boolean(order.claimed_at) && !order.mine_courier && !order.mine_customer;
   const isFogged = isReserved || isDelivered;
   const card = el(`
-    <div class="restaurant-card delivery-order-card${isFogged ? " is-reserved" : ""}${isDelivered ? " is-delivered" : ""}"${isFogged ? ' aria-disabled="true"' : ""}>
+    <div data-order-id="${order.id}" class="restaurant-card delivery-order-card${isFogged ? " is-reserved" : ""}${isDelivered ? " is-delivered" : ""}"${isFogged ? ' aria-disabled="true"' : ""}>
       <div class="restaurant-card-main">
         <div class="icon-avatar is-other">${icon("receipt", 20)}</div>
         <div>
@@ -2247,6 +2248,13 @@ function deliveryOrderCard(order, sectionKey, onChanged) {
     </div>
   `);
   if (isFogged) return card;
+  if (!DEMO && order.status !== "cancelled" && order.status !== "expired") {
+    // Not delivering it yourself? Send it to someone who might (or who just wants to see it).
+    const title = tr("shareDeliveryTitle", { place: order.delivery_location || tr("deliveryLocationNotGiven") });
+    const shareBtn = el(`<button type="button" class="back-button delivery-share-button" aria-label="${escapeHtml(tr("shareDish", { name: title }))}">${icon("share", 18)}</button>`);
+    shareBtn.addEventListener("click", () => openShareSheet(null, title, orderShareUrl(order)));
+    card.querySelector(".restaurant-card-main").append(shareBtn);
+  }
   if (sectionKey === "pending" || sectionKey === "expired") {
     // One button at a time, in the order things happen:
     //   anyone verified      -> "I pick up the order"   (take it; the first tap wins)
@@ -2497,9 +2505,25 @@ function deliveryOrderListContent(data, onChanged) {
   const active = mine.filter((o) => !o.delivered_at && o.status !== "cancelled" && o.status !== "expired");
   if (active.length > 0) wrap.append(courierActiveBlock(active, onChanged));
 
+  // 1b) an order someone sent me a link to: pinned on top, whatever my Online switch or its day
+  let sharedCard = null;
+  if (state.sharedOrderId != null) {
+    const shared = orders.find((o) => o.id === state.sharedOrderId);
+    if (shared && shared.status !== "cancelled" && shared.status !== "expired" && !shared.mine_courier) {
+      sharedCard = deliveryOrderCard(shared, "pending", onChanged);
+      sharedCard.classList.add("is-shared-highlight");
+      const list = el(`<div class="order-list courier-offers"></div>`);
+      list.append(sharedCard);
+      wrap.append(list);
+    } else if (!shared || shared.status === "cancelled" || shared.status === "expired") {
+      state.sharedOrderId = null;
+      showToast(tr("sharedOrderUnavailable"));
+    }
+  }
+
   // 2) open orders as offers, most urgent first
   const buckets = { pending: [], expired: [], closed: [], delivered: [] };
-  for (const order of orders) buckets[classifyDeliveryOrder(order)].push(order);
+  for (const order of orders) if (order.id !== state.sharedOrderId || !sharedCard) buckets[classifyDeliveryOrder(order)].push(order);
   if (!online) {
     wrap.append(emptyState("receipt", hx("offline"), hx("offlineMessage")));
   } else {
@@ -2586,6 +2610,8 @@ async function renderDelivery() {
   // registered yet -- once they have one, never again.
   const askForEmail = () => {
     if (DEMO) return;
+    // Not over the order someone just sent a link to -- let them look at it first.
+    if (state.sharedOrderId != null) return;
     if (loadCourierOnline() && state.deliveryCampusFilter !== "belval") openDeliveryRegisterSheet();
   };
   const paint = () => {
@@ -5053,6 +5079,14 @@ function menuShareUrl(slug, date) {
   return url.toString();
 }
 
+// One open delivery: /?lang=..&order=<id> -- opens the Delivery list with that order pinned on top.
+function orderShareUrl(order) {
+  const url = new URL("/", window.location.origin);
+  url.searchParams.set("lang", state.lang);
+  url.searchParams.set("order", String(order.id));
+  return url.toString();
+}
+
 // A native share sheet (navigator.share) is the best experience on a phone,
 // but on a Mac it lists AirDrop / Mail / Notes ... with no "Copy link", and it
 // can't be asked to add one. So the share button opens THIS small menu first:
@@ -5188,6 +5222,23 @@ async function openSharedMenu() {
   state.slug = restaurant.slug;
   state.restaurantName = restaurant.name;
   await selectDate(dateInfo);
+  return true;
+}
+
+// Opens the Delivery list for a shared delivery link (?order=<id>), with that order pinned on top.
+async function openSharedOrder() {
+  const params = new URLSearchParams(window.location.search);
+  const id = Number(params.get("order"));
+  if (!Number.isInteger(id) || id <= 0) return false;
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("order");
+    window.history.replaceState(null, "", url);
+  } catch {
+    /* history unavailable -- worst case a refresh reopens it */
+  }
+  state.sharedOrderId = id;
+  goTo("delivery");
   return true;
 }
 
@@ -6525,6 +6576,7 @@ async function init() {
 
   if (await openSharedDish()) return;
   if (await openSharedMenu()) return;
+  if (await openSharedOrder()) return;
   const restored = await restoreLocation();
   if (!restored) goTo("role");
 }

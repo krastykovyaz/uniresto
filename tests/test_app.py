@@ -4831,3 +4831,29 @@ def test_a_broken_menu_day_link_keeps_the_generic_preview(client, query):
     html = client.get("/" + query).data.decode()
     assert _meta(html, "og:title") == "UniResto · Cluster Kirchberg"
     assert "<script>alert(1)" not in html
+
+
+# ---------------------------------------------------------------------------
+# Sharing a delivery: /?order=<id> previews the building and the dishes, nothing private
+# ---------------------------------------------------------------------------
+
+
+def test_a_shared_delivery_previews_building_and_dishes_but_nothing_private(client):
+    order_id = _create_basic_order(client, customer_note="call 0612345678", delivery_location="Building A — Room 1.01")
+    html = client.get(f"/?order={order_id}").data.decode()
+    title, description = _meta(html, "og:title"), _meta(html, "og:description")
+    assert title.startswith("Delivery to Building A")
+    assert "take this delivery" in description
+    for secret in ("Room 1.01", "student@uni.lu", "0612345678"):
+        assert secret not in html.split("</head>")[0]
+
+
+@pytest.mark.parametrize("path", ["/?order=999999", "/?order=abc", "/?order=-1"])
+def test_an_unknown_shared_delivery_keeps_the_generic_preview(client, path):
+    assert _meta(client.get(path).data.decode(), "og:title") == "UniResto · Cluster Kirchberg"
+
+
+def test_a_cancelled_shared_delivery_keeps_the_generic_preview(client):
+    order_id = _create_basic_order(client)
+    client.application.config["ORDER_STORE"]._conn.execute("UPDATE orders SET status = 'cancelled' WHERE id = ?", (order_id,))
+    assert _meta(client.get(f"/?order={order_id}").data.decode(), "og:title") == "UniResto · Cluster Kirchberg"
