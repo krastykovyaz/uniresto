@@ -30,6 +30,7 @@ import {
   filterItems,
 } from "./filters.js";
 import { searchItems } from "./search.js";
+import { TIPS, loadSeenTips, markTipSeen, placeTip } from "./tips.js";
 import { hasTwoEmails, normalizeNotifyChoice, pickNotifyEmail } from "./notify-email.js";
 import { NOTIFICATION_EVENTS, loadNotificationPrefs, notificationState, saveNotificationPrefs } from "./notifications.js";
 import { dishEmoji } from "./dish-emoji.js";
@@ -642,6 +643,59 @@ function showToast(message, durationMs = 2500) {
   showToast._t = setTimeout(() => {
     toastEl.hidden = true;
   }, durationMs);
+}
+
+// ------------------------------------------------------------ Floating tips
+//
+// One small bubble pointing at a control, the first time a person reaches its screen. It goes
+// away on any tap, after a few seconds, or when the screen changes -- and is never shown again.
+const TIP_VISIBLE_MS = 9000;
+let tipTimer = null;
+
+function hideTip() {
+  clearTimeout(tipTimer);
+  document.querySelector(".app-tip")?.remove();
+}
+
+function maybeShowTip(id) {
+  if (DEMO) return;
+  const tip = TIPS[id];
+  const storage = safeLocalStorage();
+  if (!tip || loadSeenTips(storage).has(id)) return;
+  const screenAtStart = state.screen;
+  setTimeout(() => {
+    // The screen may have changed, or another tip may already be up, while the page settled.
+    if (state.screen !== screenAtStart || document.querySelector(".app-tip, .sheet-overlay")) return;
+    const anchor = document.querySelector(tip.selector);
+    if (!anchor || anchor.offsetParent === null) return;
+    markTipSeen(storage, id);
+    const bubble = el(`
+      <div class="app-tip" role="status">
+        <span class="app-tip-badge" aria-hidden="true">${icon("sparkle", 14)}</span>
+        <span class="app-tip-text">${escapeHtml(tr(tip.textKey))}</span>
+        <button type="button" class="app-tip-close" aria-label="${escapeHtml(tr("back"))}">${icon("close", 14)}</button>
+        <span class="app-tip-arrow" aria-hidden="true"></span>
+      </div>
+    `);
+    deviceScreen.append(bubble);
+    // A transformed device frame (desktop preview) is the containing block of fixed children.
+    const framed = getComputedStyle(deviceScreen).transform !== "none";
+    const c = framed ? deviceScreen.getBoundingClientRect() : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+    const spot = placeTip({
+      anchor: anchor.getBoundingClientRect(),
+      container: c,
+      tip: { width: bubble.offsetWidth, height: bubble.offsetHeight },
+      prefer: tip.prefer,
+    });
+    bubble.style.left = `${spot.left}px`;
+    bubble.style.top = `${spot.top}px`;
+    bubble.style.setProperty("--arrow-left", `${spot.arrowLeft}px`);
+    bubble.classList.toggle("is-above", spot.above);
+    bubble.classList.add("is-in");
+    bubble.querySelector(".app-tip-close").addEventListener("click", hideTip);
+    document.addEventListener("pointerdown", hideTip, { once: true, capture: true });
+    tipTimer = setTimeout(hideTip, TIP_VISIBLE_MS);
+  }, 900);
 }
 
 // -------------------------------------------------------------- Helpers
@@ -1910,6 +1964,7 @@ function renderRole() {
   const discount = discountBanner();
   if (discount) app.append(discount);
 
+  maybeShowTip("home-eat");
   const grid = el(`<div class="restaurant-grid"></div>`);
   const roles = [
     {
@@ -2726,6 +2781,7 @@ async function renderDelivery() {
   paint();
   app.append(body);
   askForEmail();
+  maybeShowTip("delivery-online");
 }
 
 // Belval has no orderable restaurant yet, so instead of four dead "coming
@@ -4423,6 +4479,7 @@ function renderMenu() {
   );
   menuHeader.append(shareMenuBtn);
   app.append(menuHeader);
+  maybeShowTip("menu-share");
 
   if (state.menuError) {
     const messages = {
@@ -6536,6 +6593,7 @@ function loadingState(label, withBurger = false) {
 // --------------------------------------------------------------- Router
 
 function render() {
+  hideTip();
   document.querySelector(".summary-bar")?.remove();
   offScroll(updateCategoryNavHighlight);
   // Back on the Home branch by any route (the back button, a restaurant tap, ...):
