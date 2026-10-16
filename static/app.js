@@ -5303,8 +5303,10 @@ function openShareSheet(item, title, urlOverride) {
 async function openSharedMenu() {
   const params = new URLSearchParams(window.location.search);
   const slug = params.get("r");
-  const date = params.get("date");
-  if (!slug || !date || params.get("dish")) return false;
+  // No date, or date=next, means "the next day you can still order": what a printed flyer
+  // needs, since its QR code can't name a day.
+  const date = params.get("date") || "next";
+  if (!slug || params.get("dish")) return false;
   try {
     const url = new URL(window.location.href);
     for (const key of ["r", "date"]) url.searchParams.delete(key);
@@ -5313,10 +5315,20 @@ async function openSharedMenu() {
     /* history unavailable -- worst case a refresh reopens the menu */
   }
   const restaurant = state.restaurants.find((r) => r.slug === slug);
-  if (!restaurant || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  if (!restaurant || (date !== "next" && !/^\d{4}-\d{2}-\d{2}$/.test(date))) return false;
   let dateInfo;
   try {
-    dateInfo = await api(`/api/restaurants/${restaurant.slug}/status?date=${encodeURIComponent(date)}`);
+    if (date === "next") {
+      const [next] = await api(`/api/restaurants/${restaurant.slug}/available-dates?count=1`);
+      if (!next) {
+        // Nothing orderable soon (holidays, summer): the date picker says why for each day.
+        await selectRestaurant(restaurant);
+        return true;
+      }
+      dateInfo = next;
+    } else {
+      dateInfo = await api(`/api/restaurants/${restaurant.slug}/status?date=${encodeURIComponent(date)}`);
+    }
   } catch {
     showToast(tr("sharedMenuUnavailable"));
     await selectRestaurant(restaurant);

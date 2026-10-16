@@ -2714,6 +2714,10 @@ def create_app(
             if shared is not None and shared_day is not None:
                 og_title = f"{_short_restaurant_name(shared.name)} · {shared_day.strftime('%a %d %b')}"
                 og_description = "Menu and ordering on UniResto"
+            elif shared is not None and not date_str:
+                # No fixed day (a flyer's link: it opens the next day you can order).
+                og_title = f"{_short_restaurant_name(shared.name)} · today's menu"
+                og_description = "Order lunch and have it brought to your building — UniResto"
         return render_template(
             "mobile.html", og_lang=og_lang, og_title=og_title, og_description=og_description, og_image=og_image,
             # The prices the app charges right now, built into the page itself so the browser

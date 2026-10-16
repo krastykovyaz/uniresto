@@ -4896,3 +4896,11 @@ def test_the_notify_address_is_never_public(client):
     _claim_with_notify(client, order_id, "courier.private@gmail.com")
     listed = client.get("/api/delivery/orders").get_json()
     assert all("courier_notify_email" not in o for o in listed)
+
+
+def test_a_flyer_link_without_a_day_previews_the_restaurant(client):
+    html = client.get("/?r=altius&src=flyer-p").data.decode()
+    import html as htmllib
+
+    assert htmllib.unescape(_meta(html, "og:title")) == "Altius · today's menu"
+    assert _meta(client.get("/?r=nowhere").data.decode(), "og:title") == "UniResto · Cluster Kirchberg"

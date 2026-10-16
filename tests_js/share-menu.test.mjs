@@ -26,3 +26,8 @@ test("delivery orders can be shared and opened pinned", () => {
   assert.equal((i18n.match(/shareDeliveryTitle:/g) || []).length, 11);
   assert.equal((i18n.match(/sharedOrderUnavailable:/g) || []).length, 11);
 });
+
+test("a menu link without a day opens the next orderable day", () => {
+  assert.match(app, /params\.get\("date"\) \|\| "next"/);
+  assert.match(app, /available-dates\?count=1/);
+});
