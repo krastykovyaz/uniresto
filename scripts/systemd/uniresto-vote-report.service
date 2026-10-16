@@ -1,0 +1,8 @@
+[Unit]
+Description=Tell the admin the final result of the which-restaurant-opens-first vote
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/uniresto
+EnvironmentFile=-/root/uniresto/.env
+ExecStart=/root/uniresto/.venv/bin/python /root/uniresto/scripts/vote_result_report.py

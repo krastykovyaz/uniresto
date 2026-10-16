@@ -1,0 +1,9 @@
+[Unit]
+Description=Vote result for the admin, the morning after voting ends (20 Oct)
+
+[Timer]
+OnCalendar=2026-10-21 08:00:00 Europe/Luxembourg
+Persistent=true
+
+[Install]
+WantedBy=timers.target
