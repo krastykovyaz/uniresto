@@ -31,3 +31,15 @@ test("a menu link without a day opens the next orderable day", () => {
   assert.match(app, /params\.get\("date"\) \|\| "next"/);
   assert.match(app, /available-dates\?count=1/);
 });
+
+test("visits from shared links are counted under their own source", () => {
+  assert.match(app, /function trafficSource\(params\)/);
+  for (const label of ["share-order", "share-dish", "share-menu"]) assert.ok(app.includes(`"${label}"`));
+  assert.match(app, /const urlSource = trafficSource\(/);
+});
+
+test("the confirmation screen offers push once, in every language", () => {
+  assert.match(app, /const pushPrompt = orderPushPrompt\(\)/);
+  assert.equal((i18n.match(/orderPushTitle:/g) || []).length, 11);
+  assert.equal((i18n.match(/orderPushBody:/g) || []).length, 11);
+});

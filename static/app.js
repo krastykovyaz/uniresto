@@ -6373,6 +6373,37 @@ async function submitOrder(email, phone) {
 
 // -------------------------------------------------------- Screen: confirmation
 
+// Right after ordering is the one moment a person wants to hear "a courier took it": offer
+// notifications there, once the browser has not been asked yet. Their own tap is what asks
+// (iPhone needs that). Nothing is shown where push can't work or was already decided.
+function orderPushPrompt() {
+  if (DEMO || !state.registeredEmail) return null;
+  if (notificationState(notificationEnv()) !== "default") return null;
+  const card = el(`
+    <div class="notif-card is-ok order-push-prompt">
+      <strong>${escapeHtml(tr("orderPushTitle"))}</strong>
+      <span>${escapeHtml(tr("orderPushBody"))}</span>
+      <button type="button" class="primary-button notif-enable">${escapeHtml(tr("notifEnable"))}</button>
+    </div>
+  `);
+  const button = card.querySelector("button");
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    try {
+      if (Notification.permission !== "granted") await Notification.requestPermission();
+      if (Notification.permission === "granted") {
+        await subscribeThisDevice();
+        card.innerHTML = `<strong>${escapeHtml(tr("notifOnTitle"))}</strong>`;
+        return;
+      }
+    } catch {
+      /* fall through: nothing more to offer */
+    }
+    card.remove();
+  });
+  return card;
+}
+
 function renderConfirmation() {
   app.innerHTML = "";
   const order = state.confirmedOrder;
@@ -6431,6 +6462,9 @@ function renderConfirmation() {
       ${escapeHtml(tr("disclaimer"))}
     </p>
   `));
+
+  const pushPrompt = orderPushPrompt();
+  if (pushPrompt) app.append(pushPrompt);
 
   const doneBtn = el(`<button type="button" class="primary-button">${escapeHtml(tr("backToRestaurants"))}</button>`);
   doneBtn.addEventListener("click", () => {
@@ -6650,6 +6684,18 @@ async function loadPriceTables() {
   }
 }
 
+// What the visit counts under in /admin/sources and the daily report: the link's own ?src=
+// label when it has one (a flyer's QR code), else which kind of shared link it is -- so the
+// share buttons' reach shows up as "share-menu" / "share-order" / "share-dish".
+function trafficSource(params) {
+  const src = params.get("src");
+  if (src) return src;
+  if (params.get("order")) return "share-order";
+  if (params.get("dish") && params.get("date")) return "share-dish";
+  if (params.get("r") && params.get("date")) return "share-menu";
+  return undefined;
+}
+
 async function init() {
   // A shared link's `?lang=` (see syncLangInUrl() above) is the SHARER's
   // language, not necessarily this visitor's own -- but there's no
@@ -6677,7 +6723,7 @@ async function init() {
   // printed flyer's own QR code, see /admin/sources) -- read ONCE here,
   // never persisted, so it only ever attributes the visit it actually
   // arrived on, not anything the person does afterwards.
-  const urlSource = new URLSearchParams(window.location.search).get("src") || undefined;
+  const urlSource = trafficSource(new URLSearchParams(window.location.search));
   if (!DEMO) api("/api/visit/home", { method: "POST", body: JSON.stringify({ source: urlSource }) }).catch(() => {});
   setInterval(tickStatusClock, 30000);
   app.append(loadingState(tr("loadingRestaurants")));
