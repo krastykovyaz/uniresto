@@ -3,7 +3,7 @@ Telegram, with a short text ready to post.
 
     python scripts/vote_result_report.py [--dry-run]
 
-Run by scripts/systemd/uniresto-vote-report.timer the morning after voting ends. Reads the app's own
+Run by scripts/systemd/uniresto-vote-report.timer just after midnight, when voting ends. Reads the app's own
 public results (counts only -- the vote holds no addresses or devices, so there is nobody to message
 individually) and sends nothing while voting is still open."""
 
