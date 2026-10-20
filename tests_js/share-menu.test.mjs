@@ -43,3 +43,8 @@ test("the confirmation screen offers push once, in every language", () => {
   assert.equal((i18n.match(/orderPushTitle:/g) || []).length, 11);
   assert.equal((i18n.match(/orderPushBody:/g) || []).length, 11);
 });
+
+test("the dish photo list is refreshed after a few minutes, not kept for the whole visit", () => {
+  assert.match(app, /DISH_PHOTOS_TTL_MS = 5 \* 60 \* 1000/);
+  assert.match(app, /if \(dishPhotosFresh\(slug\)\) return dishPhotosCache\.get\(slug\)/);
+});

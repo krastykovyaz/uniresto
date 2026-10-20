@@ -3062,15 +3062,24 @@ function menuCacheKey(slug, date) {
 // above; a fresh submit (see foodCard()'s photoInput handler) updates
 // state.dishPhotos directly rather than waiting for a refetch.
 const dishPhotosCache = new Map(); // slug -> resolved { category: { name: photo_path } }
+// A photo added while the app is already open (it stays open for days on a phone) must show up
+// without a reload, so a cached list is only trusted for a few minutes.
+const DISH_PHOTOS_TTL_MS = 5 * 60 * 1000;
+const dishPhotosFetchedAt = new Map(); // slug -> Date.now() of that fetch
+function dishPhotosFresh(slug) {
+  return dishPhotosCache.has(slug) && Date.now() - (dishPhotosFetchedAt.get(slug) || 0) < DISH_PHOTOS_TTL_MS;
+}
 
 async function getDishPhotos(slug) {
-  if (dishPhotosCache.has(slug)) return dishPhotosCache.get(slug);
+  if (dishPhotosFresh(slug)) return dishPhotosCache.get(slug);
   try {
     const photos = (await api(`/api/restaurants/${slug}/dish-photos`)) || {};
     dishPhotosCache.set(slug, photos);
+    dishPhotosFetchedAt.set(slug, Date.now());
     return photos;
   } catch {
-    return {};
+    // Offline or a hiccup: an older list beats showing no photos at all.
+    return dishPhotosCache.get(slug) || {};
   }
 }
 
@@ -3216,7 +3225,7 @@ async function selectDate(dateInfo) {
   // for, and when the menu was prefetched but the photos weren't back yet
   // the tap used to sit there doing nothing -- no loading screen, no
   // feedback -- until they arrived (most noticeable on a phone connection).
-  if (!menuCache.has(menuCacheKey(state.slug, state.targetDate)) || !dishPhotosCache.has(state.slug)) goTo("menu-loading");
+  if (!menuCache.has(menuCacheKey(state.slug, state.targetDate)) || !dishPhotosFresh(state.slug)) goTo("menu-loading");
   const seq = navSeq;
   try {
     const dishPhotosPromise = getDishPhotos(state.slug);
