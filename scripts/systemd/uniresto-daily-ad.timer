@@ -1,0 +1,9 @@
+[Unit]
+Description=Daily menu advert, every morning at 07:00 Luxembourg time
+
+[Timer]
+OnCalendar=*-*-* 07:00:00 Europe/Luxembourg
+Persistent=false
+
+[Install]
+WantedBy=timers.target

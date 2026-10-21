@@ -1,0 +1,8 @@
+[Unit]
+Description=Build today's menu advert (a new language each day) and send it to the admin on Telegram
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/uniresto
+EnvironmentFile=-/root/uniresto/.env
+ExecStart=/root/menu-ads-venv/bin/python /root/uniresto/scripts/daily_menu_ad.py
