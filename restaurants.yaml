@@ -51,3 +51,20 @@ restaurants:
     building: "Annexe Kirchberg"
     display_name: "Lycée Technique du Centre"
     kind: school
+
+  # Food House at Campus Belval -- the winner of the "which restaurant opens first" vote (closed
+  # 2026-10-20, 19 of 50 votes). Ids read from the live site on 2026-10-21: the restaurant picker
+  # link gives pRestaurantSelection=147 (site 31394), and selecting it sets the SelectedService
+  # cookie to 53 (its one service tab is "Service 11:00 - 16:00"). Same page structure as the
+  # others -- daily "Menu" (with Pasta) plus the shared "Constant products". The app lists it from
+  # opens_on; its menus are collected from now on, so Monday 2 November is ready on the 1st.
+  - code: UDL-CBV-FH
+    name: "UDL-CBV-FH - Restaurant Food House"
+    site_name: "Université de Luxembourg Campus Belval Food House"
+    site_id: 31394
+    restaurant_id: 147
+    service_id: 53
+    building: "Maison du Savoir"
+    display_name: "Food House"
+    campus: belval
+    opens_on: 2026-11-01

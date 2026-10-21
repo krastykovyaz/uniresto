@@ -4904,3 +4904,32 @@ def test_a_flyer_link_without_a_day_previews_the_restaurant(client):
 
     assert htmllib.unescape(_meta(html, "og:title")) == "Altius · today's menu"
     assert _meta(client.get("/?r=nowhere").data.decode(), "og:title") == "UniResto · Cluster Kirchberg"
+
+
+# ---------------------------------------------------------------------------
+# Food House (Campus Belval): listed from its opens_on day, not before
+# ---------------------------------------------------------------------------
+
+
+def _restaurant_slugs(client):
+    return {r["slug"] for r in client.get("/api/restaurants").get_json()}
+
+
+def test_food_house_is_not_listed_or_reachable_before_it_opens(client):
+    assert "udl-cbv-fh" not in _restaurant_slugs(client)
+    assert client.get("/api/restaurants/udl-cbv-fh/status?date=2026-09-24").status_code == 404
+    assert client.get("/api/restaurants/udl-cbv-fh/menu/2026-09-24").status_code == 404
+
+
+def test_food_house_appears_on_belval_from_its_opening_day(client):
+    client.application.config["ORDERABILITY_SERVICE"]._now_override = datetime.datetime(2026, 11, 1, 0, 5, tzinfo=TZINFO)
+    listed = {r["slug"]: r for r in client.get("/api/restaurants").get_json()}
+    assert listed["udl-cbv-fh"]["campus"] == "belval"
+    assert listed["udl-cbv-fh"]["display_name"] == "Food House"
+    assert listed["udl-cbv-fh"]["building"] == "Maison du Savoir"
+    assert {s for s, r in listed.items() if r["campus"] == "kirchberg"} >= {"altius", "brasserie-johns", "ltc-k"}
+
+
+def test_the_day_before_opening_it_is_still_hidden(client):
+    client.application.config["ORDERABILITY_SERVICE"]._now_override = datetime.datetime(2026, 10, 31, 23, 59, tzinfo=TZINFO)
+    assert "udl-cbv-fh" not in _restaurant_slugs(client)

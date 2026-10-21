@@ -30,6 +30,11 @@ class RestaurantConfig:
     # "school" for a lycée restaurant (the card says "School restaurant"
     # instead of "University restaurant"); None = a university restaurant.
     kind: str | None = None
+    # Which campus's tab the restaurant is on: "kirchberg" (the default) or "belval".
+    campus: str = "kirchberg"
+    # The first day the app lists the restaurant (Luxembourg time); None = open already. Its menus are
+    # collected from the start, so the first day is ready the moment it appears.
+    opens_on: date | None = None
 
 
 @dataclass

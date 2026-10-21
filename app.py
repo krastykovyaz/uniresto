@@ -744,9 +744,14 @@ def create_app(
                 tag=f"order-{order['id']}",
             )
 
+    def restaurant_is_open(restaurant) -> bool:
+        """False only for a restaurant whose opens_on (restaurants.yaml) is still ahead: it is
+        neither listed nor reachable until that Luxembourg day -- no early orders."""
+        return restaurant.opens_on is None or svc().now().date() >= restaurant.opens_on
+
     def get_restaurant_or_404(slug: str):
         restaurant = by_slug.get(slug)
-        if restaurant is None:
+        if restaurant is None or not restaurant_is_open(restaurant):
             abort(404, description=f"Unknown restaurant slug {slug!r}")
         return restaurant
 
@@ -832,8 +837,12 @@ def create_app(
     def api_restaurants():
         return jsonify(
             [
-                {"slug": slug, "code": r.code, "name": r.name, "building": r.building, "display_name": r.display_name, "kind": r.kind}
+                {
+                    "slug": slug, "code": r.code, "name": r.name, "building": r.building,
+                    "display_name": r.display_name, "kind": r.kind, "campus": r.campus,
+                }
                 for slug, r in by_slug.items()
+                if restaurant_is_open(r)
             ]
         )
 

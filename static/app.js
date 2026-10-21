@@ -2637,13 +2637,26 @@ function courierOnlineRow(onChanged, onTurnedOn) {
   return row;
 }
 
+// Belval has no orders to show until a Belval restaurant has opened.
+function deliveryCampusIsEmpty() {
+  return state.deliveryCampusFilter === "belval" && !state.restaurants.some((r) => campusOfRestaurant(r) === "belval");
+}
+
+// The campus an order belongs to, from the restaurant it was placed at.
+function orderCampus(order) {
+  return campusOfRestaurant(state.restaurants.find((r) => r.name === order.restaurant_name));
+}
+
 function deliveryOrderListContent(data, onChanged) {
   const wrap = el(`<div></div>`);
-  if (state.deliveryCampusFilter === "belval") {
+  if (deliveryCampusIsEmpty()) {
     wrap.append(emptyState("receipt", tr("deliveryBelvalComingSoonTitle"), tr("deliveryBelvalComingSoonBody")));
     return wrap;
   }
-  const { orders, mine } = data;
+  const inCampus = (o) => orderCampus(o) === state.deliveryCampusFilter;
+  const orders = data.orders.filter(inCampus);
+  // A delivery you are carrying is shown whichever campus tab is open.
+  const { mine } = data;
   const online = loadCourierOnline();
 
   // 1) what I'm carrying right now
@@ -2757,11 +2770,11 @@ async function renderDelivery() {
     if (DEMO) return;
     // Not over the order someone just sent a link to -- let them look at it first.
     if (state.sharedOrderId != null) return;
-    if (loadCourierOnline() && state.deliveryCampusFilter !== "belval") openDeliveryRegisterSheet();
+    if (loadCourierOnline() && !deliveryCampusIsEmpty()) openDeliveryRegisterSheet();
   };
   const paint = () => {
     onlineSlot.innerHTML = "";
-    if (state.deliveryCampusFilter !== "belval") onlineSlot.append(courierOnlineRow(changed, askForEmail));
+    if (!deliveryCampusIsEmpty()) onlineSlot.append(courierOnlineRow(changed, askForEmail));
     body.innerHTML = "";
     body.append(deliveryOrderListContent(data, changed));
   };
@@ -2945,8 +2958,11 @@ function belvalComingContent() {
 // "coming soon" cards that used to sit mixed in below them.
 function restaurantGridContent() {
   const grid = el(`<div class="restaurant-grid"></div>`);
-  if (state.restaurantsCampusFilter === "belval") return belvalComingContent();
-  for (const r of state.restaurants) {
+  // The Belval tab is the vote until a Belval restaurant has opened; after that it lists the real ones.
+  const campus = state.restaurantsCampusFilter;
+  const here = state.restaurants.filter((r) => campusOfRestaurant(r) === campus);
+  if (campus === "belval" && here.length === 0) return belvalComingContent();
+  for (const r of here) {
     const card = el(`
       <button class="restaurant-card" aria-label="${tr("select")}: ${escapeHtml(r.name)}">
         <div class="restaurant-card-main">
@@ -6110,7 +6126,23 @@ const DELIVERY_BUILDINGS = [
   // The Lycée Technique du Centre's Annexe Kirchberg (6, rue Coudenhove-Kalergi), whose restaurant is on
   // the app too: pupils and staff there can have an order brought to their own building.
   { code: "ltc_annex", key: "deliveryBuildingLtc", suffixKey: "deliveryBuildingKirchbergAnnex", label: "Lycée Technique du Centre (Kirchberg annex)" },
+  // Campus Belval (Food House is there): proper nouns, the same in every language.
+  { code: "maison_du_savoir", key: "deliveryBuildingMaisonSavoir", suffixKey: null, label: "Maison du Savoir" },
+  { code: "maison_sciences_humaines", key: "deliveryBuildingMaisonSH", suffixKey: null, label: "Maison des Sciences Humaines" },
+  { code: "maison_innovation", key: "deliveryBuildingMaisonInnovation", suffixKey: null, label: "Maison de l'Innovation" },
 ];
+// Which of the above are on Campus Belval; the rest are Kirchberg. An order form offers only the buildings of
+// the chosen restaurant's campus.
+const BELVAL_BUILDING_CODES = new Set(["maison_du_savoir", "maison_sciences_humaines", "maison_innovation"]);
+
+function campusOfRestaurant(restaurant) {
+  return (restaurant && restaurant.campus) || "kirchberg";
+}
+
+function buildingsForCurrentRestaurant() {
+  const campus = campusOfRestaurant(state.restaurants.find((r) => r.slug === state.slug));
+  return DELIVERY_BUILDINGS.filter((b) => (campus === "belval") === BELVAL_BUILDING_CODES.has(b.code));
+}
 
 function buildingOptionLabel(building) {
   return building.suffixKey ? `${tr(building.key)} (${tr(building.suffixKey)})` : tr(building.key);
@@ -6125,6 +6157,11 @@ function buildingOptionLabel(building) {
 // Confirmed at submit time as one combined string (see confirmOrder) --
 // the backend still only has a single delivery_location field.
 function buildDeliveryBuildingField() {
+  // A building remembered from another campus's restaurant isn't on this form's list: start blank.
+  if (state.deliveryBuilding && !buildingsForCurrentRestaurant().some((b) => b.label === state.deliveryBuilding)) {
+    state.deliveryBuilding = "";
+    saveCart();
+  }
   const selectedCode = DELIVERY_BUILDINGS.find((b) => b.label === state.deliveryBuilding)?.code || "";
 
   const block = el(`
@@ -6132,7 +6169,7 @@ function buildDeliveryBuildingField() {
       <label for="delivery-building">${escapeHtml(tr("deliveryBuildingLabel"))}</label>
       <select id="delivery-building">
         <option value="" ${selectedCode === "" ? "selected" : ""}>${escapeHtml(tr("deliveryBuildingPlaceholder"))}</option>
-        ${DELIVERY_BUILDINGS.map(
+        ${buildingsForCurrentRestaurant().map(
           (b) => `<option value="${b.code}" ${selectedCode === b.code ? "selected" : ""}>${escapeHtml(buildingOptionLabel(b))}</option>`
         ).join("")}
       </select>

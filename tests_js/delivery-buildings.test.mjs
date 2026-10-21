@@ -13,8 +13,9 @@ const buildings = [...block.matchAll(/\{ code: "([^"]+)", key: "([^"]+)", suffix
 test("the delivery form offers the campus buildings and the lycée annex", () => {
   assert.deepEqual(buildings.map((b) => b.code), [
     "building_a", "building_b", "building_c", "building_d", "building_g", "jfk_building", "weicker_building", "ltc_annex",
+    "maison_du_savoir", "maison_sciences_humaines", "maison_innovation",
   ]);
-  assert.equal(buildings.at(-1).label, "Lycée Technique du Centre (Kirchberg annex)");
+  assert.equal(buildings.find((b) => b.code === "ltc_annex").label, "Lycée Technique du Centre (Kirchberg annex)");
 });
 
 test("codes and stored labels are unique, and no label is a prefix of another", () => {
