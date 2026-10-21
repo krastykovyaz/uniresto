@@ -2414,6 +2414,15 @@ def test_admin_orders_shows_customer_note(client, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _voting_stays_open(monkeypatch):
+    """The real vote ended on 20 Oct 2026; without this, every test that records a vote would start
+    failing the day after. Tests of the closed vote set their own end date (see below)."""
+    import app as app_module
+
+    monkeypatch.setattr(app_module, "COMING_SOON_VOTING_ENDS", datetime.date(2099, 1, 1))
+
+
 def test_coming_soon_click_records_a_known_location(client):
     resp = client.post("/api/coming-soon/click", json={"location": "Food House"})
     assert resp.status_code == 200
@@ -4697,7 +4706,7 @@ def test_results_list_every_option_with_votes_and_percent(client):
     assert [o["location"] for o in body["options"]] == ["Food House", "Food Café", "Food Lab", "Food Zone"]
     assert {o["location"]: (o["votes"], o["percent"]) for o in body["options"]} == {"Food House": (1, 25), "Food Café": (0, 0), "Food Lab": (3, 75), "Food Zone": (0, 0)}
     assert body["total"] == 4 and sum(o["percent"] for o in body["options"]) == 100
-    assert (body["voting_ends"], body["opens_on"]) == ("2026-10-20", "2026-11-01")
+    assert (body["voting_ends"], body["opens_on"]) == ("2099-01-01", "2026-11-01")  # the end date _voting_stays_open sets
 
 
 def test_results_with_no_votes_are_all_zero(client):

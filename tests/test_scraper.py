@@ -64,7 +64,7 @@ def test_resolve_target_dates_defaults_to_today():
 def test_resolve_restaurants_defaults_to_all():
     all_restaurants = load_restaurants()
     result = resolve_restaurants(argparse.Namespace(restaurant=None), all_restaurants)
-    assert len(result) == 3  # Altius, Brasserie John's and the Lycée Technique du Centre annexe
+    assert len(result) == 4  # Altius, Brasserie John's, the Lycée Technique du Centre annexe and Food House (Belval)
 
 
 def test_resolve_restaurants_filters_by_slug():
