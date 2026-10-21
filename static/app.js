@@ -831,6 +831,12 @@ function fmtLong(dateStr) {
   return new Intl.DateTimeFormat(currentLocale(), { weekday: "long", day: "numeric", month: "long" }).format(d);
 }
 
+// "13:00" -- the time alone, in the visitor's locale.
+function fmtDeadlineTime(iso) {
+  if (!iso) return null;
+  return new Intl.DateTimeFormat(currentLocale(), { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso));
+}
+
 function fmtDeadline(iso) {
   if (!iso) return null;
   const d = new Date(iso);
@@ -3426,14 +3432,15 @@ function dateCard(d, onPick) {
   // Restopolis's own status is "available" but our deadline passed --
   // the only case isDateOrderable disagrees with d.status.
   const displayStatus = !isAvailable && d.status === "available" ? "closed" : d.status;
-  const deadline = fmtDeadline(d.our_delivery && d.our_delivery.deadline);
+  // Only the time: the card already shows which day it is.
+  const deadline = fmtDeadlineTime(d.our_delivery && d.our_delivery.deadline);
   const ariaPrefix = isAvailable ? tr("select") : `${tr("unavailable")}:`;
   const card = el(`
     <button class="date-card ${isAvailable ? "" : "is-disabled"}" aria-label="${ariaPrefix} ${dow} ${dom}${!isAvailable ? `, ${dateStatusLabel(displayStatus)}` : ""}">
       <div class="dow">${dow}</div>
       <div class="dom">${dom}</div>
       <span class="status-chip ${displayStatus}">${escapeHtml(dateStatusLabel(displayStatus))}</span>
-      ${isAvailable && deadline ? `<div class="deadline">${escapeHtml(tr("orderBefore"))}<br>${deadline}</div>` : ""}
+      ${isAvailable && deadline ? `<div class="deadline">${escapeHtml(tr("orderBefore"))} ${deadline}</div>` : ""}
     </button>
   `);
   // Every day stays tappable (even when disabled) so the reason is

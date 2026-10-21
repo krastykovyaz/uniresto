@@ -31,6 +31,12 @@ test("the open pill shows the weekday and the opening window, not just the hour"
   assert.equal((i18n.match(/dayOpenWindow:/g) || []).length, 11);
 });
 
+test("a day card says \"Order before 13:00\": the time only, since the card shows the day", () => {
+  assert.match(app, /function fmtDeadlineTime\(iso\)/);
+  assert.match(app, /const deadline = fmtDeadlineTime\(d\.our_delivery && d\.our_delivery\.deadline\)/);
+  assert.match(app, /\$\{escapeHtml\(tr\("orderBefore"\)\)\} \$\{deadline\}/);
+});
+
 test("tapping a restaurant opens its menu for the chosen day, and back returns to the list", () => {
   assert.match(app, /const info = await loadDayStatus\(r\.slug, state\.listDate\)/);
   assert.match(app, /selectDate\(info, "restaurants"\)/);
