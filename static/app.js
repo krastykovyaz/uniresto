@@ -108,7 +108,7 @@ const NOTIFY_CHOICE_STORAGE_KEY = "uniresto.notifyChoice.v1";
 
 const state = {
   sharedOrderId: null,
-  expandedSlug: null, // the restaurant whose days are open on the restaurant list
+  listDate: null, // the day chosen above the restaurant list
   menuBack: "dates", // where the menu screen's back button goes
   screen: "restaurants",
   lang: getLanguage(),
@@ -3062,8 +3062,8 @@ function belvalComingContent() {
 // currently selects (Part 68) -- Kirchberg shows the real, orderable
 // restaurants exactly as before; Belval shows the same de-emphasized
 // "coming soon" cards that used to sit mixed in below them.
-// The next days a restaurant can still be ordered from, kept for a couple of minutes so tapping
-// back and forth between restaurants doesn't ask the server again each time.
+// The next days a restaurant can still be ordered from, kept for a couple of minutes so going back and
+// forth between campuses doesn't ask the server again each time.
 const orderableDatesCache = new Map(); // slug -> { at, list }
 const ORDERABLE_DATES_TTL_MS = 2 * 60 * 1000;
 const ORDERABLE_DATES_SHOWN = 10;
@@ -3076,84 +3076,121 @@ async function loadOrderableDates(slug) {
   return list;
 }
 
-async function fillDateSlot(slot, restaurant) {
-  slot.innerHTML = `<p class="restaurant-dates-hint">${escapeHtml(tr("chooseYourDay"))}</p><div class="loading-state">${escapeHtml(tr("checkingAvailability"))}</div>`;
-  let dates;
-  try {
-    dates = await loadOrderableDates(restaurant.slug);
-  } catch {
-    slot.innerHTML = `<p class="restaurant-dates-hint">${escapeHtml(tr("couldNotLoadDatesTitle"))}</p>`;
-    return;
-  }
-  if (slot.hidden || !slot.isConnected) return; // closed or left meanwhile
-  slot.innerHTML = `<p class="restaurant-dates-hint">${escapeHtml(tr(dates.length ? "chooseYourDay" : "noDaysToOrder"))}</p>`;
-  if (dates.length) {
-    const scroller = el(`<div class="date-scroller"></div>`);
-    dates.forEach((d, i) => {
-      scroller.append(
-        dateCard(d, () => {
-          state.slug = restaurant.slug;
-          state.restaurantName = restaurant.name;
-          selectDate(d, "restaurants");
-        }),
-      );
-      if (i < 3) prefetchMenu(restaurant.slug, d.date); // the first days open instantly
-    });
-    slot.append(scroller);
-    getDishPhotos(restaurant.slug); // head start for the menu screen
-  }
-  const all = el(`<button type="button" class="link-button restaurant-all-days">${escapeHtml(tr("seeAllDays"))}</button>`);
-  all.addEventListener("click", () => selectRestaurant(restaurant));
-  slot.append(all);
+// One restaurant's status on one day (what selectDate() needs), cached for the same short while.
+const dayStatusCache = new Map(); // "slug::date" -> { at, info }
+async function loadDayStatus(slug, date) {
+  const key = menuCacheKey(slug, date);
+  const hit = dayStatusCache.get(key);
+  if (hit && Date.now() - hit.at < ORDERABLE_DATES_TTL_MS) return hit.info;
+  const info = await api(`/api/restaurants/${slug}/status?date=${encodeURIComponent(date)}`);
+  dayStatusCache.set(key, { at: Date.now(), info });
+  return info;
 }
 
+// The campus's days: every restaurant there is asked, and a day counts if any of them can take an order.
+async function loadCampusDates(restaurants) {
+  const lists = await Promise.all(restaurants.map((r) => loadOrderableDates(r.slug).catch(() => [])));
+  const byDate = new Map();
+  for (const list of lists) for (const d of list) if (!byDate.has(d.date)) byDate.set(d.date, d);
+  return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)).slice(0, ORDERABLE_DATES_SHOWN);
+}
+
+// What the restaurant card says about the chosen day: open (with its deadline), or why not.
+function setCardDayStatus(card, info) {
+  const chip = card.querySelector(".restaurant-day-status");
+  const ok = isDateOrderable(info);
+  const status = !ok && info.status === "available" ? "closed" : info.status;
+  card.classList.toggle("is-day-closed", !ok);
+  const deadline = fmtDeadline(info.our_delivery && info.our_delivery.deadline);
+  chip.innerHTML = `<span class="status-chip ${status}">${escapeHtml(dateStatusLabel(status))}</span>${ok && deadline ? ` <span class="restaurant-day-deadline">${escapeHtml(tr("orderBefore"))} ${deadline}</span>` : ""}`;
+}
+
+// The restaurants of the chosen campus, with ONE day carousel above all of them: pick the day once,
+// then the restaurant, and the menu opens. Full width on every screen size.
 function restaurantGridContent() {
-  const grid = el(`<div class="restaurant-grid"></div>`);
   // The Belval tab is the vote until a Belval restaurant has opened; after that it lists the real ones.
   const campus = state.restaurantsCampusFilter;
   const here = state.restaurants.filter((r) => campusOfRestaurant(r) === campus);
   if (campus === "belval" && here.length === 0) return belvalComingContent();
+
+  const wrap = el(`<div class="campus-content"></div>`);
+  const datesBox = el(`<div class="campus-dates"><p class="campus-dates-hint">${escapeHtml(tr("chooseYourDay"))}</p></div>`);
+  const grid = el(`<div class="restaurant-grid"></div>`);
+  wrap.append(datesBox, grid);
+
+  const cards = new Map(); // slug -> card element
   for (const r of here) {
     const card = el(`
-      <button class="restaurant-card" aria-expanded="false" aria-label="${tr("select")}: ${escapeHtml(r.name)}">
+      <button class="restaurant-card" aria-label="${tr("select")}: ${escapeHtml(r.name)}">
         <div class="restaurant-card-main">
           <div class="icon-avatar is-other">${icon("fork", 20)}</div>
           <div>
             <h2>${escapeHtml(shortName(r.name))}</h2>
             <p class="kind">${escapeHtml(tr(r.kind === "school" ? "schoolRestaurant" : "universityRestaurant"))}${r.building ? ` · ${escapeHtml(buildingLabel(r.building))}` : ""}</p>
+            <p class="restaurant-day-status"></p>
           </div>
         </div>
       </button>
     `);
-    // The days to pick from open right under the restaurant -- no separate date screen.
-    const block = el(`<div class="restaurant-block"></div>`);
-    const slot = el(`<div class="restaurant-dates" hidden></div>`);
-    const toggle = () => {
-      const open = slot.hidden;
-      for (const other of grid.querySelectorAll(".restaurant-dates")) other.hidden = true;
-      for (const c of grid.querySelectorAll(".restaurant-card")) {
-        c.setAttribute("aria-expanded", "false");
-        c.classList.remove("is-expanded");
+    card.addEventListener("click", async () => {
+      // The day chosen above, or -- if the days never loaded -- the old day-by-day screen.
+      if (!state.listDate) return selectRestaurant(r);
+      try {
+        const info = await loadDayStatus(r.slug, state.listDate);
+        state.slug = r.slug;
+        state.restaurantName = r.name;
+        selectDate(info, "restaurants");
+      } catch {
+        selectRestaurant(r);
       }
-      state.expandedSlug = open ? r.slug : null;
-      if (!open) return;
-      slot.hidden = false;
-      card.setAttribute("aria-expanded", "true");
-      card.classList.add("is-expanded");
-      fillDateSlot(slot, r);
-    };
-    card.addEventListener("click", toggle);
-    block.append(card, slot);
-    grid.append(block);
-    // Coming back from a menu: that restaurant is still open, its days one tap away.
-    if (state.expandedSlug === r.slug) {
-      slot.hidden = false;
-      card.setAttribute("aria-expanded", "true");
-      card.classList.add("is-expanded");
-      fillDateSlot(slot, r);
-    }
+    });
+    cards.set(r.slug, card);
+    grid.append(card);
   }
-  return grid;
+
+  // Which day is chosen: shows on every card, which then says whether that restaurant is open that day.
+  const chooseDay = async (date, scroller) => {
+    state.listDate = date;
+    for (const c of scroller.querySelectorAll(".date-card")) c.classList.toggle("is-selected", c.dataset.date === date);
+    await Promise.all(
+      here.map(async (r) => {
+        try {
+          const info = await loadDayStatus(r.slug, date);
+          if (state.listDate !== date || !grid.isConnected) return; // another day was picked, or this screen was left
+          setCardDayStatus(cards.get(r.slug), info);
+          if (info.status === "available") prefetchMenu(r.slug, date);
+        } catch {
+          /* the card just shows no status */
+        }
+      }),
+    );
+  };
+
+  (async () => {
+    let dates = [];
+    try {
+      dates = await loadCampusDates(here);
+    } catch {
+      /* handled below: no days */
+    }
+    if (!wrap.isConnected && !grid.isConnected) return;
+    if (dates.length === 0) {
+      datesBox.innerHTML = `<p class="campus-dates-hint">${escapeHtml(tr("noDaysToOrder"))}</p>`;
+      state.listDate = null;
+      return;
+    }
+    const scroller = el(`<div class="date-scroller"></div>`);
+    for (const d of dates) {
+      const dc = dateCard(d, () => chooseDay(d.date, scroller));
+      dc.dataset.date = d.date;
+      scroller.append(dc);
+    }
+    datesBox.append(scroller);
+    for (const r of here) getDishPhotos(r.slug); // head start for the menu screen
+    const keep = dates.some((d) => d.date === state.listDate) ? state.listDate : dates[0].date;
+    chooseDay(keep, scroller);
+  })();
+  return wrap;
 }
 
 function renderRestaurants() {

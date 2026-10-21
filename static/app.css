@@ -2260,11 +2260,11 @@ svg { display: block; }
 @keyframes ptr-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .ptr-indicator.is-spinning svg { animation: none; } }
 
-/* The day carousel that opens under a restaurant on the list (see fillDateSlot in app.js). */
-.restaurant-block { display: flex; flex-direction: column; min-width: 0; }
-.restaurant-card.is-expanded { border-color: var(--color-primary); }
-.restaurant-dates { margin: calc(-1 * var(--space-1)) 0 var(--space-3); padding-top: var(--space-2); min-width: 0; max-width: 100%; }
-.restaurant-dates[hidden] { display: none; }
-.restaurant-dates-hint { margin: 0; padding: var(--space-2) var(--space-4) 0; font-size: 0.8rem; font-weight: 600; color: var(--color-text-muted); }
-.restaurant-dates .date-scroller { padding-bottom: var(--space-2); }
-.restaurant-all-days { display: block; margin: 0 var(--space-4) var(--space-2); padding: var(--space-1) 0; background: none; border: 0; font: inherit; font-size: 0.85rem; font-weight: 600; color: var(--color-primary); cursor: pointer; }
+/* One day carousel above the restaurants of the chosen campus (see restaurantGridContent in app.js). */
+.campus-dates { margin: var(--space-2) 0 var(--space-1); width: 100%; min-width: 0; }
+.campus-dates-hint { margin: 0; padding: 0 var(--space-4); font-size: 0.8rem; font-weight: 600; color: var(--color-text-muted); }
+.campus-dates .date-scroller { padding-top: var(--space-2); padding-bottom: var(--space-3); }
+.campus-dates .date-card.is-selected { border-color: var(--color-primary); background: var(--color-primary-bg); }
+.restaurant-day-status { margin: 4px 0 0; min-height: 1.4em; font-size: 0.78rem; color: var(--color-text-muted); }
+.restaurant-day-status .status-chip { margin-right: 4px; }
+.restaurant-card.is-day-closed { opacity: 0.6; }
