@@ -3098,12 +3098,15 @@ async function loadCampusDates(restaurants) {
   return perDay.filter(Boolean);
 }
 
-// "Thu 13:00" in the visitor's language.
-function deadlineWithDay(d) {
+// The weekday and the closing time of a day's order deadline, in the visitor's language: { day: "Thu", to: "13:00" }.
+function deadlineParts(d) {
   const day = new Intl.DateTimeFormat(currentLocale(), { weekday: "short" }).format(d);
-  const time = new Intl.DateTimeFormat(currentLocale(), { hour: "2-digit", minute: "2-digit", hour12: false }).format(d);
-  return `${day} ${time}`;
+  const to = new Intl.DateTimeFormat(currentLocale(), { hour: "2-digit", minute: "2-digit", hour12: false }).format(d);
+  return { day, to };
 }
+
+// When the day's service starts, as shown on the open pill ("Open Thu 11:30–13:00").
+const ORDER_OPEN_FROM = "11:30";
 
 // What the restaurant card says about the chosen day, as one pill with a coloured dot: green "Open until
 // 13:00", red "Closed", grey "No menu yet", amber when it couldn't be checked.
@@ -3115,10 +3118,9 @@ function setCardDayStatus(card, info) {
   if (ok) {
     kind = "open";
     const iso = info.our_delivery && info.our_delivery.deadline;
-    // With the weekday: "Open until Thu 13:00" -- the deadline of THAT day, not of today (it may well be
-    // the afternoon already when a later day is picked).
-    const when = iso ? deadlineWithDay(new Date(iso)) : "";
-    text = when ? tr("dayOpenUntil", { time: when }) : tr("dayOpen");
+    // With the weekday: "Open Thu 11:30–13:00" -- the window of THAT day, not of today (it may well be the
+    // afternoon already when a later day is picked).
+    text = iso ? tr("dayOpenWindow", { ...deadlineParts(new Date(iso)), from: ORDER_OPEN_FROM }) : tr("dayOpen");
   } else if (info.status === "no_menu") {
     kind = "none";
     text = tr("dayNoMenu");
