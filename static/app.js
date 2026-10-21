@@ -3062,37 +3062,39 @@ function belvalComingContent() {
 // currently selects (Part 68) -- Kirchberg shows the real, orderable
 // restaurants exactly as before; Belval shows the same de-emphasized
 // "coming soon" cards that used to sit mixed in below them.
-// The next days a restaurant can still be ordered from, kept for a couple of minutes so going back and
-// forth between campuses doesn't ask the server again each time.
-const orderableDatesCache = new Map(); // slug -> { at, list }
-const ORDERABLE_DATES_TTL_MS = 2 * 60 * 1000;
-const ORDERABLE_DATES_SHOWN = 10;
-
-async function loadOrderableDates(slug) {
-  const hit = orderableDatesCache.get(slug);
-  if (hit && Date.now() - hit.at < ORDERABLE_DATES_TTL_MS) return hit.list;
-  const list = await api(`/api/restaurants/${slug}/available-dates?count=${ORDERABLE_DATES_SHOWN}`);
-  orderableDatesCache.set(slug, { at: Date.now(), list });
-  return list;
-}
+// How long a looked-up status is reused, so going back and forth between campuses or days doesn't ask
+// the server again each time.
+const DAY_STATUS_TTL_MS = 2 * 60 * 1000;
+// How many days the carousel above the restaurants shows, starting today -- closed days and weekends too,
+// each saying why it can't be ordered.
+const CAROUSEL_DAYS = 14;
 
 // One restaurant's status on one day (what selectDate() needs), cached for the same short while.
 const dayStatusCache = new Map(); // "slug::date" -> { at, info }
 async function loadDayStatus(slug, date) {
   const key = menuCacheKey(slug, date);
   const hit = dayStatusCache.get(key);
-  if (hit && Date.now() - hit.at < ORDERABLE_DATES_TTL_MS) return hit.info;
+  if (hit && Date.now() - hit.at < DAY_STATUS_TTL_MS) return hit.info;
   const info = await api(`/api/restaurants/${slug}/status?date=${encodeURIComponent(date)}`);
   dayStatusCache.set(key, { at: Date.now(), info });
   return info;
 }
 
-// The campus's days: every restaurant there is asked, and a day counts if any of them can take an order.
+// The campus's next days, closed ones and weekends included: every restaurant there is asked about each day.
+// A day is orderable if any of them can take an order; otherwise it shows the most telling reason among them.
+const STATUS_PRIORITY = ["ordering_closed", "available", "closed", "no_menu", "past_date", "unknown"];
 async function loadCampusDates(restaurants) {
-  const lists = await Promise.all(restaurants.map((r) => loadOrderableDates(r.slug).catch(() => [])));
-  const byDate = new Map();
-  for (const list of lists) for (const d of list) if (!byDate.has(d.date)) byDate.set(d.date, d);
-  return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)).slice(0, ORDERABLE_DATES_SHOWN);
+  const days = Array.from({ length: CAROUSEL_DAYS }, (_, i) => localDateString(i));
+  const perDay = await Promise.all(
+    days.map(async (date) => {
+      const infos = (await Promise.all(restaurants.map((r) => loadDayStatus(r.slug, date).catch(() => null)))).filter(Boolean);
+      const orderable = infos.find(isDateOrderable);
+      if (orderable) return orderable;
+      infos.sort((x, y) => STATUS_PRIORITY.indexOf(x.status) - STATUS_PRIORITY.indexOf(y.status));
+      return infos[0] || null;
+    }),
+  );
+  return perDay.filter(Boolean);
 }
 
 // What the restaurant card says about the chosen day, as one pill with a coloured dot: green "Open until
@@ -3203,8 +3205,10 @@ function restaurantGridContent() {
     }
     datesBox.append(scroller);
     for (const r of here) getDishPhotos(r.slug); // head start for the menu screen
-    const keep = dates.some((d) => d.date === state.listDate) ? state.listDate : dates[0].date;
+    const firstOpen = dates.find(isDateOrderable);
+    const keep = dates.some((d) => d.date === state.listDate) ? state.listDate : (firstOpen || dates[0]).date;
     chooseDay(keep, scroller);
+    scroller.querySelector(".date-card.is-selected")?.scrollIntoView({ inline: "center", block: "nearest" });
   })();
   return wrap;
 }
