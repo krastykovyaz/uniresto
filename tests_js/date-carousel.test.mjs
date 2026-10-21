@@ -24,11 +24,12 @@ test("the open/closed indicator is a coloured pill, translated, with the closing
   for (const key of ["dayOpenUntil", "dayOpen", "dayClosed", "dayNoMenu", "dayUnknown"]) assert.equal((i18n.match(new RegExp(`${key}:`, "g")) || []).length, 11);
 });
 
-test("the open pill shows the weekday and the opening window, not just the hour", () => {
-  assert.match(app, /function deadlineParts\(d\)/);
+test("the open pill shows the opening window", () => {
   assert.match(app, /const ORDER_OPEN_FROM = "11:30"/);
-  assert.match(app, /tr\("dayOpenWindow", \{ \.\.\.deadlineParts\(new Date\(iso\)\), from: ORDER_OPEN_FROM \}\)/);
+  assert.match(app, /const ORDER_OPEN_TO = "14:00"/);
+  assert.match(app, /tr\("dayOpenWindow", \{ from: ORDER_OPEN_FROM, to: ORDER_OPEN_TO \}\)/);
   assert.equal((i18n.match(/dayOpenWindow:/g) || []).length, 11);
+  assert.ok(!/dayOpenWindow: "[^"]*\{day\}/.test(i18n));
 });
 
 test("a day card says \"Order before 13:00\": the time only, since the card shows the day", () => {
