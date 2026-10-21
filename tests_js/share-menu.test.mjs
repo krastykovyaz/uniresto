@@ -48,3 +48,7 @@ test("the dish photo list is refreshed after a few minutes, not kept for the who
   assert.match(app, /DISH_PHOTOS_TTL_MS = 5 \* 60 \* 1000/);
   assert.match(app, /if \(dishPhotosFresh\(slug\)\) return dishPhotosCache\.get\(slug\)/);
 });
+
+test("confirming an order shows the animated loader like the other loading screens", () => {
+  assert.match(app, /app\.append\(loadingState\(tr\("confirmingOrder"\), true\)\)/);
+});

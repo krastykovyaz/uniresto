@@ -6779,7 +6779,7 @@ function render() {
       break;
     case "confirming":
       app.innerHTML = "";
-      app.append(loadingState(tr("confirmingOrder")));
+      app.append(loadingState(tr("confirmingOrder"), true));
       break;
     case "confirmation":
       renderConfirmation();
