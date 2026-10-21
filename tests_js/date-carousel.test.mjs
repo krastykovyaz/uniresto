@@ -8,7 +8,7 @@ const i18n = readFileSync(new URL("../static/i18n.js", import.meta.url), "utf8")
 test("one day carousel sits above all the restaurants of the chosen campus", () => {
   assert.match(app, /async function loadCampusDates\(restaurants\)/);
   assert.match(app, /const CAROUSEL_DAYS = 14/);
-  assert.match(app, /Array\.from\(\{ length: CAROUSEL_DAYS \}, \(_, i\) => localDateString\(i\)\)/); // every calendar day, weekends and closed days too
+  assert.match(app, /Array\.from\(\{ length: DATE_PICKER_PAST_DAYS \+ CAROUSEL_DAYS \}, \(_, i\) => localDateString\(i - DATE_PICKER_PAST_DAYS\)\)/); // yesterday, then every calendar day, weekends and closed days too
   assert.match(app, /wrap\.append\(datesBox, grid\)/); // carousel first, full width, then the grid
   assert.match(app, /const dc = dateCard\(d, \(\) => chooseDay\(d\.date, scroller\)\)/);
 });

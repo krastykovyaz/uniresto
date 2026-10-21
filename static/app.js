@@ -3065,7 +3065,7 @@ function belvalComingContent() {
 // How long a looked-up status is reused, so going back and forth between campuses or days doesn't ask
 // the server again each time.
 const DAY_STATUS_TTL_MS = 2 * 60 * 1000;
-// How many days the carousel above the restaurants shows, starting today -- closed days and weekends too,
+// How many days the carousel above the restaurants shows from today on -- closed days and weekends too,
 // each saying why it can't be ordered.
 const CAROUSEL_DAYS = 14;
 
@@ -3084,7 +3084,8 @@ async function loadDayStatus(slug, date) {
 // A day is orderable if any of them can take an order; otherwise it shows the most telling reason among them.
 const STATUS_PRIORITY = ["ordering_closed", "available", "closed", "no_menu", "past_date", "unknown"];
 async function loadCampusDates(restaurants) {
-  const days = Array.from({ length: CAROUSEL_DAYS }, (_, i) => localDateString(i));
+  // Yesterday too (DATE_PICKER_PAST_DAYS): closed, but its menu can still be looked at.
+  const days = Array.from({ length: DATE_PICKER_PAST_DAYS + CAROUSEL_DAYS }, (_, i) => localDateString(i - DATE_PICKER_PAST_DAYS));
   const perDay = await Promise.all(
     days.map(async (date) => {
       const infos = (await Promise.all(restaurants.map((r) => loadDayStatus(r.slug, date).catch(() => null)))).filter(Boolean);
