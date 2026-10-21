@@ -30,6 +30,7 @@ import {
   filterItems,
 } from "./filters.js";
 import { searchItems } from "./search.js";
+import { isPullingDown, pullDistance, shouldRefresh } from "./pull-refresh.js";
 import { TIPS, loadSeenTips, markTipSeen, placeTip } from "./tips.js";
 import { hasTwoEmails, normalizeNotifyChoice, pickNotifyEmail } from "./notify-email.js";
 import { NOTIFICATION_EVENTS, loadNotificationPrefs, notificationState, saveNotificationPrefs } from "./notifications.js";
@@ -645,6 +646,108 @@ function showToast(message, durationMs = 2500) {
   }, durationMs);
 }
 
+// -------------------------------------------------- Pull down to refresh
+//
+// On the menu screen, pulling down from the very top fetches today's menu, its status and the
+// dish photos again -- the page stays open for hours on a phone, and menus and photos change.
+// What is in the basket stays; dishes that are no longer on the menu are dropped from it.
+let menuRefreshing = false;
+
+async function refreshMenu() {
+  if (menuRefreshing || state.screen !== "menu" || !state.slug || !state.targetDate) return;
+  menuRefreshing = true;
+  const slug = state.slug;
+  const date = state.targetDate;
+  try {
+    menuCache.delete(menuCacheKey(slug, date));
+    dishPhotosCache.delete(slug);
+    const [menu, photos, dateInfo] = await Promise.all([
+      getMenu(slug, date),
+      getDishPhotos(slug),
+      api(`/api/restaurants/${slug}/status?date=${encodeURIComponent(date)}`).catch(() => state.dateInfo),
+    ]);
+    if (state.screen !== "menu" || state.slug !== slug || state.targetDate !== date) return; // left meanwhile
+    state.menu = menu;
+    state.dishPhotos = photos;
+    state.dateInfo = dateInfo;
+    state.menuError = null;
+    const ids = new Set(menu.items.map((it) => it.id));
+    state.selection = state.selection.filter((s) => ids.has(s.menuItemId));
+    render();
+    showToast(tr("menuUpdated"));
+  } catch {
+    showToast(tr("menuUpdateFailed"));
+  } finally {
+    menuRefreshing = false;
+  }
+}
+
+function setupPullToRefresh() {
+  const indicator = el(`<div class="ptr-indicator" aria-hidden="true">${icon("refresh", 18)}</div>`);
+  deviceScreen.append(indicator);
+  let startX = 0;
+  let startY = 0;
+  let tracking = false;
+  let pulling = false;
+  let distance = 0;
+  const atTop = () => Math.max(window.scrollY, scroller.scrollTop) <= 0;
+  const usable = () => state.screen === "menu" && !menuRefreshing && !document.querySelector(".sheet-overlay, .dish-detail-overlay");
+  const draw = (d, spinning = false) => {
+    indicator.style.transform = `translate(-50%, ${d - 44}px) rotate(${d * 3}deg)`;
+    indicator.style.opacity = String(Math.min(1, d / 40));
+    indicator.classList.toggle("is-spinning", spinning);
+  };
+  const reset = () => {
+    indicator.classList.add("is-settling");
+    draw(0);
+    setTimeout(() => indicator.classList.remove("is-settling"), 220);
+  };
+
+  document.addEventListener("touchstart", (e) => {
+    tracking = usable() && atTop() && e.touches.length === 1;
+    pulling = false;
+    distance = 0;
+    if (tracking) {
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+    }
+  }, { passive: true });
+
+  document.addEventListener("touchmove", (e) => {
+    if (!tracking) return;
+    const dx = e.touches[0].clientX - startX;
+    const dy = e.touches[0].clientY - startY;
+    if (!pulling) {
+      if (!isPullingDown({ atTop: atTop(), dx, dy })) {
+        if (dy < -8 || Math.abs(dx) > 16) tracking = false; // a normal scroll or a sideways swipe
+        return;
+      }
+      pulling = true;
+    }
+    distance = pullDistance(dy);
+    e.preventDefault(); // no rubber-band scroll underneath while pulling
+    draw(distance);
+  }, { passive: false });
+
+  const end = async () => {
+    if (!pulling) return;
+    const go = shouldRefresh(distance);
+    tracking = false;
+    pulling = false;
+    if (!go) return reset();
+    indicator.classList.add("is-settling");
+    draw(56, true);
+    await refreshMenu();
+    reset();
+  };
+  document.addEventListener("touchend", end);
+  document.addEventListener("touchcancel", () => {
+    if (pulling) reset();
+    tracking = false;
+    pulling = false;
+  });
+}
+
 // ------------------------------------------------------------ Floating tips
 //
 // One small bubble pointing at a control, the first time a person reaches its screen. It goes
@@ -872,6 +975,7 @@ const ICON_PATHS = {
   minus: '<path d="M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>',
   check: '<path d="M5 12.5l4.5 4.5L19 7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
   search: '<circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2" fill="none"/><path d="M21 21l-4.3-4.3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  refresh: '<path d="M20 12a8 8 0 1 1-2.6-5.9M20 4v5h-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
   sparkle: '<path d="M12 2l1.8 5.4L19 9l-5.2 1.8L12 16l-1.8-5.2L5 9l5.2-1.6L12 2z" fill="currentColor"/>',
   clock: '<circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" fill="none"/><path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>',
   home: '<path d="M4 11.5L12 4l8 7.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M6 10v9a1 1 0 0 0 1 1h3v-5h4v5h3a1 1 0 0 0 1-1v-9" stroke="currentColor" stroke-width="2" stroke-linejoin="round" fill="none"/>',
@@ -6818,6 +6922,7 @@ async function init() {
   syncLangInUrl(state.lang);
   applyLanguage();
   playIntro();
+  setupPullToRefresh();
   // Part 74/78: a real "the app actually opened" signal for the admin's
   // evening report -- fired exactly once per load, only from here (never
   // at GET / itself, which a link-preview crawler also fetches without

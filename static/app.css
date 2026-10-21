@@ -2233,3 +2233,29 @@ svg { display: block; }
 }
 .app-tip.is-above .app-tip-arrow { top: auto; bottom: -6px; transform: rotate(225deg); }
 @media (prefers-reduced-motion: reduce) { .app-tip { transition: none; } }
+
+/* Pull down to refresh on the menu screen (see setupPullToRefresh in app.js). */
+.ptr-indicator {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  z-index: 44;
+  width: 36px;
+  height: 36px;
+  margin-top: env(safe-area-inset-top, 0px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-surface);
+  color: var(--color-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  box-shadow: 0 4px 14px rgba(20, 23, 26, 0.14);
+  opacity: 0;
+  transform: translate(-50%, -44px);
+  pointer-events: none;
+}
+.ptr-indicator.is-settling { transition: transform 0.2s ease, opacity 0.2s ease; }
+.ptr-indicator.is-spinning svg { animation: ptr-spin 0.8s linear infinite; }
+@keyframes ptr-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ptr-indicator.is-spinning svg { animation: none; } }
