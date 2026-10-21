@@ -108,6 +108,8 @@ const NOTIFY_CHOICE_STORAGE_KEY = "uniresto.notifyChoice.v1";
 
 const state = {
   sharedOrderId: null,
+  expandedSlug: null, // the restaurant whose days are open on the restaurant list
+  menuBack: "dates", // where the menu screen's back button goes
   screen: "restaurants",
   lang: getLanguage(),
   restaurants: [],
@@ -3060,6 +3062,51 @@ function belvalComingContent() {
 // currently selects (Part 68) -- Kirchberg shows the real, orderable
 // restaurants exactly as before; Belval shows the same de-emphasized
 // "coming soon" cards that used to sit mixed in below them.
+// The next days a restaurant can still be ordered from, kept for a couple of minutes so tapping
+// back and forth between restaurants doesn't ask the server again each time.
+const orderableDatesCache = new Map(); // slug -> { at, list }
+const ORDERABLE_DATES_TTL_MS = 2 * 60 * 1000;
+const ORDERABLE_DATES_SHOWN = 10;
+
+async function loadOrderableDates(slug) {
+  const hit = orderableDatesCache.get(slug);
+  if (hit && Date.now() - hit.at < ORDERABLE_DATES_TTL_MS) return hit.list;
+  const list = await api(`/api/restaurants/${slug}/available-dates?count=${ORDERABLE_DATES_SHOWN}`);
+  orderableDatesCache.set(slug, { at: Date.now(), list });
+  return list;
+}
+
+async function fillDateSlot(slot, restaurant) {
+  slot.innerHTML = `<p class="restaurant-dates-hint">${escapeHtml(tr("chooseYourDay"))}</p><div class="loading-state">${escapeHtml(tr("checkingAvailability"))}</div>`;
+  let dates;
+  try {
+    dates = await loadOrderableDates(restaurant.slug);
+  } catch {
+    slot.innerHTML = `<p class="restaurant-dates-hint">${escapeHtml(tr("couldNotLoadDatesTitle"))}</p>`;
+    return;
+  }
+  if (slot.hidden || !slot.isConnected) return; // closed or left meanwhile
+  slot.innerHTML = `<p class="restaurant-dates-hint">${escapeHtml(tr(dates.length ? "chooseYourDay" : "noDaysToOrder"))}</p>`;
+  if (dates.length) {
+    const scroller = el(`<div class="date-scroller"></div>`);
+    dates.forEach((d, i) => {
+      scroller.append(
+        dateCard(d, () => {
+          state.slug = restaurant.slug;
+          state.restaurantName = restaurant.name;
+          selectDate(d, "restaurants");
+        }),
+      );
+      if (i < 3) prefetchMenu(restaurant.slug, d.date); // the first days open instantly
+    });
+    slot.append(scroller);
+    getDishPhotos(restaurant.slug); // head start for the menu screen
+  }
+  const all = el(`<button type="button" class="link-button restaurant-all-days">${escapeHtml(tr("seeAllDays"))}</button>`);
+  all.addEventListener("click", () => selectRestaurant(restaurant));
+  slot.append(all);
+}
+
 function restaurantGridContent() {
   const grid = el(`<div class="restaurant-grid"></div>`);
   // The Belval tab is the vote until a Belval restaurant has opened; after that it lists the real ones.
@@ -3068,7 +3115,7 @@ function restaurantGridContent() {
   if (campus === "belval" && here.length === 0) return belvalComingContent();
   for (const r of here) {
     const card = el(`
-      <button class="restaurant-card" aria-label="${tr("select")}: ${escapeHtml(r.name)}">
+      <button class="restaurant-card" aria-expanded="false" aria-label="${tr("select")}: ${escapeHtml(r.name)}">
         <div class="restaurant-card-main">
           <div class="icon-avatar is-other">${icon("fork", 20)}</div>
           <div>
@@ -3078,8 +3125,33 @@ function restaurantGridContent() {
         </div>
       </button>
     `);
-    card.addEventListener("click", () => selectRestaurant(r));
-    grid.append(card);
+    // The days to pick from open right under the restaurant -- no separate date screen.
+    const block = el(`<div class="restaurant-block"></div>`);
+    const slot = el(`<div class="restaurant-dates" hidden></div>`);
+    const toggle = () => {
+      const open = slot.hidden;
+      for (const other of grid.querySelectorAll(".restaurant-dates")) other.hidden = true;
+      for (const c of grid.querySelectorAll(".restaurant-card")) {
+        c.setAttribute("aria-expanded", "false");
+        c.classList.remove("is-expanded");
+      }
+      state.expandedSlug = open ? r.slug : null;
+      if (!open) return;
+      slot.hidden = false;
+      card.setAttribute("aria-expanded", "true");
+      card.classList.add("is-expanded");
+      fillDateSlot(slot, r);
+    };
+    card.addEventListener("click", toggle);
+    block.append(card, slot);
+    grid.append(block);
+    // Coming back from a menu: that restaurant is still open, its days one tap away.
+    if (state.expandedSlug === r.slug) {
+      slot.hidden = false;
+      card.setAttribute("aria-expanded", "true");
+      card.classList.add("is-expanded");
+      fillDateSlot(slot, r);
+    }
   }
   return grid;
 }
@@ -3273,6 +3345,35 @@ function dateStatusLabel(status) {
   return key ? tr(key) : status.toUpperCase();
 }
 
+// One day as a card: weekday, number, status, and -- when it can still be ordered -- the deadline.
+// Used by the full date picker below and by the carousel under a restaurant on the list.
+function dateCard(d, onPick) {
+  const { dow, dom } = fmtShort(d.date);
+  // Once our own deadline is passed, the card reads "Closed" regardless
+  // of what Restopolis's raw status says (see isDateOrderable). The
+  // menu stays reachable either way (every card stays tappable),
+  // matching that api_menu itself never gates on our_delivery.
+  const isAvailable = isDateOrderable(d);
+  // Restopolis's own status is "available" but our deadline passed --
+  // the only case isDateOrderable disagrees with d.status.
+  const displayStatus = !isAvailable && d.status === "available" ? "closed" : d.status;
+  const deadline = fmtDeadline(d.our_delivery && d.our_delivery.deadline);
+  const ariaPrefix = isAvailable ? tr("select") : `${tr("unavailable")}:`;
+  const card = el(`
+    <button class="date-card ${isAvailable ? "" : "is-disabled"}" aria-label="${ariaPrefix} ${dow} ${dom}${!isAvailable ? `, ${dateStatusLabel(displayStatus)}` : ""}">
+      <div class="dow">${dow}</div>
+      <div class="dom">${dom}</div>
+      <span class="status-chip ${displayStatus}">${escapeHtml(dateStatusLabel(displayStatus))}</span>
+      ${isAvailable && deadline ? `<div class="deadline">${escapeHtml(tr("orderBefore"))}<br>${deadline}</div>` : ""}
+    </button>
+  `);
+  // Every day stays tappable (even when disabled) so the reason is
+  // never just hidden -- tapping an unavailable day still opens the
+  // menu screen, which shows the specific empty state for it.
+  card.addEventListener("click", onPick);
+  return card;
+}
+
 function renderDates() {
   app.innerHTML = "";
   app.append(header({ title: shortName(state.restaurantName), subtitle: tr("chooseYourDay"), back: () => goTo("restaurants") }));
@@ -3287,29 +3388,7 @@ function renderDates() {
 
   const scroller = el(`<div class="date-scroller"></div>`);
   for (const d of state.availableDates) {
-    const { dow, dom } = fmtShort(d.date);
-    // Once our own deadline is passed, the card reads "Closed" regardless
-    // of what Restopolis's raw status says (see isDateOrderable). The
-    // menu stays reachable either way (every card stays tappable below),
-    // matching that api_menu itself never gates on our_delivery.
-    const isAvailable = isDateOrderable(d);
-    // Restopolis's own status is "available" but our deadline passed --
-    // the only case isDateOrderable disagrees with d.status.
-    const displayStatus = !isAvailable && d.status === "available" ? "closed" : d.status;
-    const deadline = fmtDeadline(d.our_delivery && d.our_delivery.deadline);
-    const ariaPrefix = isAvailable ? tr("select") : `${tr("unavailable")}:`;
-    const card = el(`
-      <button class="date-card ${isAvailable ? "" : "is-disabled"}" aria-label="${ariaPrefix} ${dow} ${dom}${!isAvailable ? `, ${dateStatusLabel(displayStatus)}` : ""}">
-        <div class="dow">${dow}</div>
-        <div class="dom">${dom}</div>
-        <span class="status-chip ${displayStatus}">${escapeHtml(dateStatusLabel(displayStatus))}</span>
-        ${isAvailable && deadline ? `<div class="deadline">${escapeHtml(tr("orderBefore"))}<br>${deadline}</div>` : ""}
-      </button>
-    `);
-    // Every day stays tappable (even when disabled) so the reason is
-    // never just hidden -- tapping an unavailable day still opens the
-    // menu screen, which shows the specific empty state for it.
-    card.addEventListener("click", () => selectDate(d));
+    scroller.append(dateCard(d, () => selectDate(d)));
     // Every day that HAS a menu, orderable or not: a day whose own 13:00
     // deadline already passed (yesterday, or today after 13:00) still opens
     // its menu read-only, so it needs the same head start -- prefetching
@@ -3317,12 +3396,12 @@ function renderDates() {
     // time the picker was loaded. Days with no menu at all (no_menu,
     // closed, past_date ...) show an empty state instead, nothing to fetch.
     if (d.status === "available") prefetchMenu(state.slug, d.date);
-    scroller.append(card);
   }
   app.append(scroller);
 }
 
-async function selectDate(dateInfo) {
+async function selectDate(dateInfo, back = "dates") {
+  state.menuBack = back; // where the menu's back button leads: the day picker, or straight to the restaurant list
   state.targetDate = dateInfo.date;
   state.dateInfo = dateInfo;
   state.selection = [];
@@ -4601,7 +4680,7 @@ async function reorderPastOrder(order) {
 
 function renderMenu() {
   app.innerHTML = "";
-  const menuHeader = header({ title: shortName(state.restaurantName), subtitle: fmtLong(state.targetDate), back: () => goTo("dates") });
+  const menuHeader = header({ title: shortName(state.restaurantName), subtitle: fmtLong(state.targetDate), back: () => goTo(state.menuBack || "dates") });
   const shareMenuBtn = el(`<button type="button" class="back-button menu-share-button" aria-label="${escapeHtml(tr("shareDish", { name: shortName(state.restaurantName) }))}">${icon("share", 18)}</button>`);
   shareMenuBtn.addEventListener("click", () =>
     openShareSheet(null, `${shortName(state.restaurantName)} · ${fmtLong(state.targetDate)}`, menuShareUrl(state.slug, state.targetDate)),
