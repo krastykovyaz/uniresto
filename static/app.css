@@ -2266,5 +2266,11 @@ svg { display: block; }
 .campus-dates .date-scroller { padding-top: var(--space-2); padding-bottom: var(--space-3); }
 .campus-dates .date-card.is-selected { border-color: var(--color-primary); background: var(--color-primary-bg); }
 .restaurant-day-status { margin: 4px 0 0; min-height: 1.4em; font-size: 0.78rem; color: var(--color-text-muted); }
-.restaurant-day-status .status-chip { margin-right: 4px; }
+.day-pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 8px; border-radius: 999px; font-size: 0.78rem; font-weight: 700; }
+.day-dot { width: 8px; height: 8px; border-radius: 999px; background: currentColor; flex: none; }
+.day-pill.is-open { color: var(--color-available); background: var(--color-available-bg); }
+.day-pill.is-open .day-dot { box-shadow: 0 0 0 3px rgba(26, 168, 96, 0.22); }
+.day-pill.is-closed { color: var(--color-closed); background: var(--color-closed-bg); }
+.day-pill.is-none { color: var(--color-text-muted); background: var(--color-border); }
+.day-pill.is-unknown { color: var(--color-unknown); background: var(--color-unknown-bg); }
 .restaurant-card.is-day-closed { opacity: 0.6; }

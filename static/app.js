@@ -3095,14 +3095,30 @@ async function loadCampusDates(restaurants) {
   return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)).slice(0, ORDERABLE_DATES_SHOWN);
 }
 
-// What the restaurant card says about the chosen day: open (with its deadline), or why not.
+// What the restaurant card says about the chosen day, as one pill with a coloured dot: green "Open until
+// 13:00", red "Closed", grey "No menu yet", amber when it couldn't be checked.
 function setCardDayStatus(card, info) {
   const chip = card.querySelector(".restaurant-day-status");
   const ok = isDateOrderable(info);
-  const status = !ok && info.status === "available" ? "closed" : info.status;
+  let kind;
+  let text;
+  if (ok) {
+    kind = "open";
+    const iso = info.our_delivery && info.our_delivery.deadline;
+    const time = iso ? new Intl.DateTimeFormat(currentLocale(), { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso)) : "";
+    text = time ? tr("dayOpenUntil", { time }) : tr("dayOpen");
+  } else if (info.status === "no_menu") {
+    kind = "none";
+    text = tr("dayNoMenu");
+  } else if (info.status === "unknown") {
+    kind = "unknown";
+    text = tr("dayUnknown");
+  } else {
+    kind = "closed"; // closed, our deadline passed, or in the past
+    text = tr("dayClosed");
+  }
   card.classList.toggle("is-day-closed", !ok);
-  const deadline = fmtDeadline(info.our_delivery && info.our_delivery.deadline);
-  chip.innerHTML = `<span class="status-chip ${status}">${escapeHtml(dateStatusLabel(status))}</span>${ok && deadline ? ` <span class="restaurant-day-deadline">${escapeHtml(tr("orderBefore"))} ${deadline}</span>` : ""}`;
+  chip.innerHTML = `<span class="day-pill is-${kind}"><i class="day-dot" aria-hidden="true"></i>${escapeHtml(text)}</span>`;
 }
 
 // The restaurants of the chosen campus, with ONE day carousel above all of them: pick the day once,

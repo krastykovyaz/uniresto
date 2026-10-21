@@ -17,6 +17,12 @@ test("each restaurant card says whether it is open on the chosen day", () => {
   assert.match(app, /setCardDayStatus\(cards\.get\(r\.slug\), info\)/);
 });
 
+test("the open/closed indicator is a coloured pill, translated, with the closing time", () => {
+  for (const kind of ["open", "closed", "none", "unknown"]) assert.ok(app.includes(`kind = "${kind}"`));
+  assert.match(app, /day-pill is-\$\{kind\}/);
+  for (const key of ["dayOpenUntil", "dayOpen", "dayClosed", "dayNoMenu", "dayUnknown"]) assert.equal((i18n.match(new RegExp(`${key}:`, "g")) || []).length, 11);
+});
+
 test("tapping a restaurant opens its menu for the chosen day, and back returns to the list", () => {
   assert.match(app, /const info = await loadDayStatus\(r\.slug, state\.listDate\)/);
   assert.match(app, /selectDate\(info, "restaurants"\)/);
