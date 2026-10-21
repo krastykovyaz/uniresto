@@ -24,6 +24,11 @@ test("the open/closed indicator is a coloured pill, translated, with the closing
   for (const key of ["dayOpenUntil", "dayOpen", "dayClosed", "dayNoMenu", "dayUnknown"]) assert.equal((i18n.match(new RegExp(`${key}:`, "g")) || []).length, 11);
 });
 
+test("the open pill names the weekday of the deadline, not just the hour", () => {
+  assert.match(app, /function deadlineWithDay\(d\)/);
+  assert.match(app, /tr\("dayOpenUntil", \{ time: when \}\)/);
+});
+
 test("tapping a restaurant opens its menu for the chosen day, and back returns to the list", () => {
   assert.match(app, /const info = await loadDayStatus\(r\.slug, state\.listDate\)/);
   assert.match(app, /selectDate\(info, "restaurants"\)/);
