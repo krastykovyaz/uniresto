@@ -137,6 +137,16 @@ def qr_uri(slug: str, src: str, lang: str) -> str:
     return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
+def qr_uri_for(url: str, lang: str) -> str:
+    """A QR code (data URI) for any UniResto link, opened in the advert's language."""
+    import segno
+
+    joiner = "&" if "?" in url else "?"
+    buf = io.BytesIO()
+    segno.make(f"{url}{joiner}lang={lang}", error="m").save(buf, kind="png", scale=10, border=2)
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+
+
 def has_menu(date: str) -> bool:
     """True when at least one restaurant has a daily menu for `date` (a weekend or a holiday has none)."""
     for slug, _, _ in RESTAURANTS:
