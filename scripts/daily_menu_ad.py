@@ -78,6 +78,17 @@ def send_pdf(path: Path, caption: str) -> bool:
     return telegram("sendDocument", body, ctype)
 
 
+def gaps_message(day: date, gaps: dict) -> str | None:
+    """A note for the admin: which of the day's dishes still need a photo. None when every dish has one."""
+    if not gaps:
+        return None
+    lines = [f"Dishes without a photo on {day.strftime('%A %-d %B')} (send a photo of any of them and it is attached for every day the dish returns):"]
+    for restaurant, names in gaps.items():
+        lines.append(f"\n{restaurant}")
+        lines += [f"  • {name}" for name in names]
+    return "\n".join(lines)
+
+
 def prune(directory: Path) -> None:
     cutoff = datetime.now().timestamp() - KEEP_DAYS * 86400
     for old in directory.glob("uniresto-menu-*.pdf"):
@@ -105,6 +116,9 @@ def main() -> int:
     made = asyncio.run(menu_ad.build(day.isoformat(), lang, OUT_DIR))
     prune(OUT_DIR)
     print(f"{day}: built {', '.join(p.name for p in made)}")
+    note = gaps_message(day, menu_ad.photo_gaps(day.isoformat()))
+    if note:
+        print(note)
     if args.no_send:
         return 0
     label = f"{day.strftime('%A %-d %B')} · {menu_ad.LANG_NAMES[lang]}"
@@ -112,6 +126,8 @@ def main() -> int:
         send_pdf(path, f"{label} · {'with QR codes' if path.name.endswith('-qr.pdf') else 'web address only (no QR)'}")
         for path in made
     )
+    if note:
+        send_text(note)
     return 0 if ok else 2
 
 

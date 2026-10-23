@@ -54,3 +54,9 @@ def test_the_multipart_body_carries_the_fields_and_the_file(tmp_path):
     assert body.count(f"--{boundary}".encode()) == 4  # two fields, the file, and the closing line
     assert body.endswith(f"--{boundary}--\r\n".encode())
     assert b'name="chat_id"' in body and b'filename="a.pdf"' in body and b"%PDF-1.4 test" in body
+
+
+def test_the_photo_note_lists_the_dishes_still_without_a_photo():
+    note = daily.gaps_message(date(2026, 10, 26), {"Altius": ["Soupe aux poireaux"], "Brasserie John's": ["Curry de poulet", "Soupe aux poireaux"]})
+    assert "Monday 26 October" in note and "Altius" in note and "• Curry de poulet" in note
+    assert daily.gaps_message(date(2026, 10, 26), {}) is None  # nothing to say when every dish has a photo

@@ -161,6 +161,25 @@ def has_menu(date: str) -> bool:
     return False
 
 
+def photo_gaps(date: str) -> dict[str, list[str]]:
+    """The day's own dishes (hot dishes and the rotating takeaway items) that have no photo yet, per restaurant, in
+    the menu's original language -- what is worth photographing next."""
+    gaps: dict[str, list[str]] = {}
+    for slug, label, _ in RESTAURANTS:
+        try:
+            items = _get(f"/api/restaurants/{slug}/menu/{date}")["items"]
+        except Exception:  # noqa: BLE001
+            continue
+        have = photos(slug)
+        missing = []
+        for it in items:
+            if it["category"] in OF_THE_DAY and not have.get(it["category"], {}).get(it["name"]) and it["name"] not in missing:
+                missing.append(it["name"])
+        if missing:
+            gaps[label] = missing
+    return gaps
+
+
 def picks_for(date: str, text: dict) -> list[tuple]:
     """12 cards: the day's photographed hot dishes first, then the always-available foods."""
     names = {slug: label for slug, label, _ in RESTAURANTS}
