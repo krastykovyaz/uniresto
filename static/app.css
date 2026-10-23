@@ -2274,3 +2274,14 @@ svg { display: block; }
 .day-pill.is-none { color: var(--color-text-muted); background: var(--color-border); }
 .day-pill.is-unknown { color: var(--color-unknown); background: var(--color-unknown-bg); }
 .restaurant-card.is-day-closed { opacity: 0.6; }
+
+/* Home screen: "order the same again" and "why try UniResto". */
+.reorder-card { display: flex; align-items: center; gap: var(--space-3); width: calc(100% - 2 * var(--space-4)); margin: var(--space-2) var(--space-4) var(--space-1); padding: 12px 14px; text-align: start; background: var(--color-primary-bg); border: 1.5px solid var(--color-primary); border-radius: var(--radius-lg); color: var(--color-text); font: inherit; cursor: pointer; }
+.reorder-card-icon { flex: none; width: 36px; height: 36px; border-radius: 999px; display: flex; align-items: center; justify-content: center; background: var(--color-primary); color: var(--color-primary-contrast); }
+.reorder-card-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.reorder-card-text strong { font-size: 0.95rem; }
+.reorder-card-text span { font-size: 0.8rem; color: var(--color-text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reorder-card-cta { flex: none; padding: 6px 12px; border-radius: 999px; background: var(--color-primary); color: var(--color-primary-contrast); font-size: 0.8rem; font-weight: 700; }
+.try-card { margin: var(--space-2) var(--space-4) var(--space-1); padding: 12px 16px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); }
+.try-card strong { font-size: 0.95rem; color: var(--color-primary-dark); }
+.try-card ul { margin: 6px 0 0; padding-inline-start: 18px; font-size: 0.85rem; line-height: 1.45; color: var(--color-text); }

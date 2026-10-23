@@ -237,9 +237,65 @@ function menuById() {
 // launch, by design -- opening the app always lands on the restaurant
 // list (see README.md Part 21), never mid-cart from a previous visit.
 const CART_STORAGE_KEY = "uniresto.cart.v1";
+// Where you usually get your food, kept per campus even after the basket is emptied by an order, and the
+// order you placed last (for "order the same again").
+const DELIVERY_SPOT_STORAGE_KEY = "uniresto.deliverySpot.v1";
+const LAST_ORDER_STORAGE_KEY = "uniresto.lastOrder.v1";
 
 function cartItemKey(item) {
   return `${item.category}||${item.name}`;
+}
+
+// ---------------------------------------------------------- Remembered spot / last order
+
+function readJson(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeJson(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* localStorage unavailable -- just not remembered */
+  }
+}
+
+// The campus the order form is for (the chosen restaurant's), "kirchberg" or "belval".
+function currentCampus() {
+  return campusOfRestaurant(state.restaurants && state.restaurants.find((r) => r.slug === state.slug));
+}
+
+// Remember the building and room as typed on the order form -- per campus, since a Belval room means nothing at Kirchberg.
+function saveDeliverySpot() {
+  if (!state.deliveryBuilding && !state.deliveryLocationText.trim()) return;
+  const spots = readJson(DELIVERY_SPOT_STORAGE_KEY) || {};
+  spots[currentCampus()] = { building: state.deliveryBuilding, text: state.deliveryLocationText.trim() };
+  writeJson(DELIVERY_SPOT_STORAGE_KEY, spots);
+}
+
+// Fill an empty order form with the spot last used on this campus: the second order needs no typing there.
+function applyRememberedSpot() {
+  if (state.deliveryBuilding || state.deliveryLocationText.trim()) return;
+  const spot = (readJson(DELIVERY_SPOT_STORAGE_KEY) || {})[currentCampus()];
+  if (!spot) return;
+  if (spot.building && buildingsForCurrentRestaurant().some((b) => b.label === spot.building)) state.deliveryBuilding = spot.building;
+  if (spot.text) state.deliveryLocationText = spot.text;
+}
+
+// What "order the same again" needs from the order just placed: the restaurant, the dishes, the delivery spot.
+function rememberLastOrder(order) {
+  writeJson(LAST_ORDER_STORAGE_KEY, {
+    restaurant_code: order.restaurant_code,
+    restaurant_name: order.restaurant_name,
+    items: order.items.map((it) => ({ category: it.category, name: it.name, quantity: it.quantity })),
+    delivery_location: order.delivery_location || "",
+    customer_note: order.customer_note || "",
+  });
 }
 
 function saveCart() {
@@ -2070,11 +2126,74 @@ function discountBanner() {
   return banner;
 }
 
+// "Order the same again": the last order placed on this device, one tap from the home screen. It opens the review
+// screen on the next day that can be ordered, with the same dishes (or close ones), building and room.
+function reorderAgainCard() {
+  const last = readJson(LAST_ORDER_STORAGE_KEY);
+  if (!last || !Array.isArray(last.items) || last.items.length === 0) return null;
+  if (!state.restaurants.some((r) => r.code === last.restaurant_code)) return null;
+  const dishes = last.items.map((it) => `${dishTitle(it.name, state.lang)}${it.quantity > 1 ? ` ×${it.quantity}` : ""}`).join(", ");
+  const card = el(`
+    <button type="button" class="reorder-card">
+      <span class="reorder-card-icon">${icon("refresh", 20)}</span>
+      <span class="reorder-card-text">
+        <strong>${escapeHtml(tr("reorderAgainTitle"))}</strong>
+        <span>${escapeHtml(shortName(last.restaurant_name))} · ${escapeHtml(dishes)}</span>
+      </span>
+      <span class="reorder-card-cta">${escapeHtml(tr("reorderAgainCta"))}</span>
+    </button>
+  `);
+  card.addEventListener("click", () => reorderPastOrder(last));
+  return card;
+}
+
+// A device that ordered before "order the same again" existed knows only its order numbers: read the newest one back
+// once, remember it, and show the card in place.
+let backfillingLastOrder = false;
+async function backfillLastOrder() {
+  if (backfillingLastOrder || DEMO) return;
+  const ids = loadOrderHistoryIds();
+  if (ids.length === 0) return;
+  backfillingLastOrder = true;
+  try {
+    const order = await api(`/api/orders/${Math.max(...ids)}`);
+    if (order && Array.isArray(order.items) && order.items.length > 0 && order.status !== "cancelled") {
+      rememberLastOrder(order);
+      if (state.screen === "role") render();
+    }
+  } catch {
+    /* no card this time; the next visit tries again */
+  } finally {
+    backfillingLastOrder = false;
+  }
+}
+
+// For someone who has not ordered yet: what is in it for them, and where the food is brought.
+function tryReasonCard() {
+  const names = (belval) => DELIVERY_BUILDINGS.filter((b) => BELVAL_BUILDING_CODES.has(b.code) === belval).map((b) => tr(b.key));
+  const places = [...names(false), ...(state.restaurants.some((r) => campusOfRestaurant(r) === "belval") ? names(true) : [])];
+  return el(`
+    <div class="try-card">
+      <strong>${escapeHtml(tr("tryReasonTitle"))}</strong>
+      <ul>
+        <li>${escapeHtml(tr("tryReasonLuni"))}</li>
+        <li>${escapeHtml(tr("tryReasonDelivery"))}</li>
+        <li>${escapeHtml(tr("tryReasonBuildings", { list: places.join(", ") }))}</li>
+      </ul>
+    </div>
+  `);
+}
+
 function renderRole() {
   app.innerHTML = "";
   app.append(el(`<h1 class="large-title" style="padding-top:28px">${escapeHtml(tr("roleQuestion"))}</h1>`));
   const discount = discountBanner();
   if (discount) app.append(discount);
+  // Someone who has ordered before gets their last order one tap away; someone who hasn't gets a reason to try.
+  const again = reorderAgainCard();
+  if (again) app.append(again);
+  else if (loadOrderHistoryIds().length === 0) app.append(tryReasonCard());
+  else backfillLastOrder(); // ordered before this feature existed: find out what, then show the card
 
   maybeShowTip("home-eat");
   const grid = el(`<div class="restaurant-grid"></div>`);
@@ -6439,6 +6558,7 @@ function buildDeliveryBuildingField() {
     const building = DELIVERY_BUILDINGS.find((b) => b.code === e.target.value);
     state.deliveryBuilding = building ? building.label : "";
     saveCart();
+    saveDeliverySpot();
   });
   return block;
 }
@@ -6453,6 +6573,7 @@ function buildDeliveryLocationTextField() {
   block.querySelector("input").addEventListener("input", (e) => {
     state.deliveryLocationText = e.target.value;
     saveCart();
+    saveDeliverySpot();
   });
   return block;
 }
@@ -6506,6 +6627,7 @@ function splitDeliveryLocation(combined) {
 }
 
 async function renderReview() {
+  applyRememberedSpot();
   app.innerHTML = "";
   app.append(header({ title: tr("yourOrder"), subtitle: `${shortName(state.restaurantName)} · ${fmtLong(state.targetDate)}`, back: () => goTo("menu") }));
 
@@ -6717,6 +6839,8 @@ async function submitOrder(email, phone) {
     state.serverQuote = null;
     clearSavedCart();
     addToOrderHistory(order.id);
+    saveDeliverySpot();
+    rememberLastOrder(order);
     goTo("confirmation");
   } catch (err) {
     showToast(err.message);
