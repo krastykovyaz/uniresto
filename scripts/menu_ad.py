@@ -31,6 +31,8 @@ CHROME = "/root/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headles
 RESTAURANTS = [("altius", "Altius", "adv-altius"), ("brasserie-johns", "Brasserie John's", "adv-brasserie")]
 BOTH = "Altius & Brasserie John's"
 DAILY = ("Entrée", "Végétarien", "Végan", "Pasta", "Non-végétarien", "Féculents", "Légumes", "Dessert")
+# The takeaway salads and wraps change from day to day too: when one has a photo it counts as a dish of the day.
+OF_THE_DAY = DAILY + ("Snack à emporter",)
 RTL = {"ar", "ur"}
 LANG_NAMES = {
     "en": "English", "fr": "Français", "es": "Español", "pt": "Português", "ru": "Русский", "zh": "中文",
@@ -59,7 +61,7 @@ TEXT = {
     "en": dict(title="Today's menu", ad="Skip the queue — order ahead",
                body="Choose your dish on your phone, no account needed, just your university email. Order before 13:00 and a fellow student can bring it to your building.",
                fine="UniResto is an independent student project. It is not an official service of the University of Luxembourg.",
-               scan="Scan to see today's menu and order", link="Type this address in your phone's browser", hot="Hot dish"),
+               scan="Scan to see today's menu and order", link="Type this address in your phone's browser", hot="Dish of the day"),
     "fr": dict(title="Menu du jour", ad="Évitez la file — commandez à l'avance",
                body="Choisissez votre plat sur votre téléphone, sans compte, seulement avec votre e-mail universitaire. Commandez avant 13h00 et un autre étudiant peut vous l'apporter dans votre bâtiment.",
                fine="UniResto est un projet étudiant indépendant. Ce n'est pas un service officiel de l'Université du Luxembourg.",
@@ -75,31 +77,31 @@ TEXT = {
     "ru": dict(title="Меню на сегодня", ad="Не стойте в очереди — заказывайте заранее",
                body="Выберите блюдо на телефоне — без регистрации, только с университетской почтой. Закажите до 13:00, и другой студент принесёт заказ в ваше здание.",
                fine="UniResto — независимый студенческий проект. Это не официальный сервис Университета Люксембурга.",
-               scan="Отсканируйте, чтобы увидеть меню на сегодня и заказать", link="Введите этот адрес в браузере телефона", hot="Горячее блюдо"),
+               scan="Отсканируйте, чтобы увидеть меню на сегодня и заказать", link="Введите этот адрес в браузере телефона", hot="Блюдо дня"),
     "zh": dict(title="今日菜单", ad="免排队——提前点餐",
                body="用手机选菜，无需注册，只需大学邮箱。13:00前下单，另一位同学可将餐点送到你所在的楼。",
                fine="UniResto 是独立的学生项目，并非卢森堡大学的官方服务。",
-               scan="扫码查看今日菜单并点餐", link="在手机浏览器中输入此网址", hot="热菜"),
+               scan="扫码查看今日菜单并点餐", link="在手机浏览器中输入此网址", hot="今日菜品"),
     "hi": dict(title="आज का मेनू", ad="कतार से बचें — पहले से ऑर्डर करें",
                body="अपने फ़ोन पर पकवान चुनें, किसी खाते की ज़रूरत नहीं, बस आपका विश्वविद्यालय ईमेल। 13:00 से पहले ऑर्डर करें और कोई साथी छात्र उसे आपकी इमारत तक पहुँचा सकता है।",
                fine="UniResto एक स्वतंत्र छात्र परियोजना है। यह लक्ज़मबर्ग विश्वविद्यालय की आधिकारिक सेवा नहीं है।",
-               scan="आज का मेनू देखने और ऑर्डर करने के लिए स्कैन करें", link="इस पते को अपने फ़ोन के ब्राउज़र में लिखें", hot="गरम व्यंजन"),
+               scan="आज का मेनू देखने और ऑर्डर करने के लिए स्कैन करें", link="इस पते को अपने फ़ोन के ब्राउज़र में लिखें", hot="आज का व्यंजन"),
     "ar": dict(title="قائمة اليوم", ad="تجنّب الطابور — اطلب مسبقًا",
                body="اختر طبقك من هاتفك، دون حساب، فقط ببريدك الجامعي. اطلب قبل الساعة 13:00 ويمكن لزميل طالب إيصاله إلى مبناك.",
                fine="UniResto مشروع طلابي مستقل، وليس خدمة رسمية لجامعة لوكسمبورغ.",
-               scan="امسح الرمز لعرض قائمة اليوم والطلب", link="اكتب هذا العنوان في متصفح هاتفك", hot="طبق ساخن"),
+               scan="امسح الرمز لعرض قائمة اليوم والطلب", link="اكتب هذا العنوان في متصفح هاتفك", hot="طبق اليوم"),
     "bn": dict(title="আজকের মেনু", ad="লাইন এড়ান — আগেই অর্ডার করুন",
                body="আপনার ফোনে খাবার বেছে নিন, কোনো অ্যাকাউন্ট লাগবে না, শুধু বিশ্ববিদ্যালয়ের ইমেল। ১৩:০০-এর আগে অর্ডার করুন, আর একজন সহপাঠী আপনার ভবনে পৌঁছে দিতে পারবে।",
                fine="UniResto একটি স্বাধীন ছাত্র প্রকল্প। এটি লুক্সেমবার্গ বিশ্ববিদ্যালয়ের অফিসিয়াল সেবা নয়।",
-               scan="আজকের মেনু দেখতে ও অর্ডার করতে স্ক্যান করুন", link="আপনার ফোনের ব্রাউজারে এই ঠিকানা লিখুন", hot="গরম খাবার"),
+               scan="আজকের মেনু দেখতে ও অর্ডার করতে স্ক্যান করুন", link="আপনার ফোনের ব্রাউজারে এই ঠিকানা লিখুন", hot="আজকের খাবার"),
     "ur": dict(title="آج کا مینو", ad="قطار سے بچیں — پہلے سے آرڈر کریں",
                body="اپنے فون پر ڈش چنیں، اکاؤنٹ کی ضرورت نہیں، صرف آپ کی یونیورسٹی کی ای میل۔ 13:00 سے پہلے آرڈر کریں اور کوئی ساتھی طالب علم اسے آپ کی عمارت تک پہنچا سکتا ہے۔",
                fine="UniResto ایک آزاد طلبہ منصوبہ ہے۔ یہ لکسمبرگ یونیورسٹی کی سرکاری سروس نہیں ہے۔",
-               scan="آج کا مینو دیکھنے اور آرڈر کرنے کے لیے اسکین کریں", link="یہ پتہ اپنے فون کے براؤزر میں لکھیں", hot="گرم کھانا"),
+               scan="آج کا مینو دیکھنے اور آرڈر کرنے کے لیے اسکین کریں", link="یہ پتہ اپنے فون کے براؤزر میں لکھیں", hot="آج کی ڈش"),
     "lb": dict(title="Menü vum Dag", ad="Spuert d'Schlaang — bestellt am Viraus",
                body="Wielt Äert Iessen um Handy, ouni Kont, nëmmen mat Ärer Uni-E-Mail. Bestellt virun 13:00 an e Matstudent kann et bei Äert Gebai bréngen.",
                fine="UniResto ass e onofhängegt Studenteprojet. Et ass keen offiziellen Déngscht vun der Universitéit Lëtzebuerg.",
-               scan="Scannt fir de Menü vum Dag ze gesinn a ze bestellen", link="Gitt dës Adress am Browser vum Handy an", hot="Waarmt Geriicht"),
+               scan="Scannt fir de Menü vum Dag ze gesinn a ze bestellen", link="Gitt dës Adress am Browser vum Handy an", hot="Geriicht vum Dag"),
 }
 
 
@@ -164,13 +166,17 @@ def picks_for(date: str, text: dict) -> list[tuple]:
     names = {slug: label for slug, label, _ in RESTAURANTS}
     seen: dict = {}
     picks: list = []
+    menus: dict = {}
     for slug, _, _ in RESTAURANTS:
         try:
-            items = _get(f"/api/restaurants/{slug}/menu/{date}")["items"]
+            menus[slug] = _get(f"/api/restaurants/{slug}/menu/{date}")["items"]
         except Exception:  # noqa: BLE001
-            continue
+            menus[slug] = []
+    on_menu = {(it["category"], it["name"]) for it in menus.get("altius", [])} & {(it["category"], it["name"]) for it in menus.get("brasserie-johns", [])}
+    for slug, _, _ in RESTAURANTS:
+        items = menus[slug]
         for it in items:
-            if it["category"] in DAILY and photos(slug).get(it["category"], {}).get(it["name"]):
+            if it["category"] in OF_THE_DAY and photos(slug).get(it["category"], {}).get(it["name"]):
                 key = (it["category"], it["name"])
                 if key in seen:
                     seen[key][3].append(names[slug])
@@ -178,10 +184,14 @@ def picks_for(date: str, text: dict) -> list[tuple]:
                     seen[key] = [slug, it["category"], it["name"], [names[slug]]]
                     picks.append(seen[key])
     out = [(s, c, n, f"{text['hot']} · " + " & ".join(w)) for s, c, n, w in picks][:6]
+    used = {(c, n) for _, c, n, _ in out}
     for cat, name in ALWAYS:
         if len(out) >= 12:
             break
-        out.append(("altius", cat, name, BOTH))
+        # Only what is really on that day's menu at both restaurants: a wrap or a pastry that is not sold that day
+        # must not be on the poster.
+        if (cat, name) not in used and (cat, name) in on_menu:
+            out.append(("altius", cat, name, BOTH))
     return out
 
 
