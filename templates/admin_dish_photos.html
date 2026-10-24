@@ -17,9 +17,9 @@
         <strong>{{ entry.name }}</strong>
         <div class="muted">{{ entry.slug }} &middot; {{ entry.category }} &middot; submitted {{ entry.submitted_at }}</div>
         <div style="margin-top: 0.5rem; display: flex; gap: 0.75rem;">
-            <form method="post" action="/admin/dish-photos/{{ entry.id }}/approve" style="display: inline;"><input type="hidden" name="token" value="{{ token }}"><button class="button" type="submit">Approve</button></form>
-            <form method="post" action="/admin/dish-photos/{{ entry.id }}/reject" style="display: inline;"><input type="hidden" name="token" value="{{ token }}"><button class="button" type="submit">Reject</button></form>
-            <a href="/admin/dish-photos/{{ entry.id }}?token={{ token }}">View full card</a>
+            <form method="post" action="/admin/dish-photos/{{ entry.id }}/approve" style="display: inline;"><input type="hidden" name="token" value="{{ token or '' }}"><button class="button" type="submit">Approve</button></form>
+            <form method="post" action="/admin/dish-photos/{{ entry.id }}/reject" style="display: inline;"><input type="hidden" name="token" value="{{ token or '' }}"><button class="button" type="submit">Reject</button></form>
+            <a href="/admin/dish-photos/{{ entry.id }}">View full card</a>
         </div>
     </div>
 </div>

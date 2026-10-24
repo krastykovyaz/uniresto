@@ -30,17 +30,17 @@
     </div>
     <div style="margin-top: 0.5rem; display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
         {% if o.status == 'pending' %}
-        <a href="/admin/orders/{{ o.id }}/mark-reviewing?token={{ token }}">Mark as reviewing</a>
+        <a href="/admin/orders/{{ o.id }}/mark-reviewing">Mark as reviewing</a>
         {% endif %}
         {% if o.customer_email %}
-        <form method="post" action="/admin/orders/{{ o.id }}/set-price?token={{ token }}" style="display: flex; gap: 0.5rem; align-items: center;">
-            <input type="hidden" name="token" value="{{ token }}">
+        <form method="post" action="/admin/orders/{{ o.id }}/set-price" style="display: flex; gap: 0.5rem; align-items: center;">
+            <input type="hidden" name="token" value="{{ token or '' }}">
             <label>Real price (€) <input type="number" step="0.01" min="0" name="real_price" required style="width: 6rem;"></label>
             <button type="submit">Record &amp; email customer</button>
         </form>
         {% endif %}
-        <form method="post" action="/admin/orders/{{ o.id }}/cancel?token={{ token }}" onsubmit="return confirm('Cancel order #{{ o.id }}? This cannot be undone.');" style="margin-left: auto;">
-            <input type="hidden" name="token" value="{{ token }}">
+        <form method="post" action="/admin/orders/{{ o.id }}/cancel" onsubmit="return confirm('Cancel order #{{ o.id }}? This cannot be undone.');" style="margin-left: auto;">
+            <input type="hidden" name="token" value="{{ token or '' }}">
             <button type="submit" style="background: #b02a37;">Cancel order</button>
         </form>
     </div>
@@ -58,8 +58,8 @@
         Real price: €{{ '%.2f'|format(o.real_price) }} &middot; sent to {{ o.customer_email }}
     </div>
     <div style="margin-top: 0.5rem; display: flex;">
-        <form method="post" action="/admin/orders/{{ o.id }}/cancel?token={{ token }}" onsubmit="return confirm('Cancel order #{{ o.id }}? This cannot be undone.');" style="margin-left: auto;">
-            <input type="hidden" name="token" value="{{ token }}">
+        <form method="post" action="/admin/orders/{{ o.id }}/cancel" onsubmit="return confirm('Cancel order #{{ o.id }}? This cannot be undone.');" style="margin-left: auto;">
+            <input type="hidden" name="token" value="{{ token or '' }}">
             <button type="submit" style="background: #b02a37;">Cancel order</button>
         </form>
     </div>

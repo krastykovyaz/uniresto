@@ -37,6 +37,13 @@
         .item-row:last-child { border-bottom: none; }
         code { background: #eee; padding: 0.1rem 0.3rem; border-radius: 3px; }
     </style>
+    <script>
+      // The admin session now lives in a cookie: drop ?token= from the address bar and history.
+      if (/[?&]token=/.test(location.search)) {
+        const u = new URL(location.href); u.searchParams.delete("token");
+        history.replaceState(null, "", u.pathname + (u.search || "") + u.hash);
+      }
+    </script>
 </head>
 <body>
     <header><a href="/">UniResto &mdash; Cluster Kirchberg</a></header>

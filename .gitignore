@@ -13,3 +13,6 @@ data/raw/
 *.egg-info/
 .env
 og_cache/
+
+# Any other SQLite file (a stray empty one appeared in the project folder once)
+*.db

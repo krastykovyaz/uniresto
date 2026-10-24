@@ -278,14 +278,30 @@ def _building_only(delivery_location: str | None) -> str | None:
 # ethos elsewhere (e.g. email verification is a code, not a password).
 # The admin page is simply unreachable (every request 404s) until
 # ADMIN_TOKEN is actually set -- no accidentally-guessable default.
+# After the first admin page opened with ?token=, the browser holds a short-lived signed session in an
+# HttpOnly cookie (path /admin), so every following link and form works WITHOUT the token in the address --
+# which otherwise ends up in web-server logs and browser history. The first hop is the only URL that still
+# carries one (a bookmark, or a Telegram link with its own 2-day token); base.html then removes it from the
+# address bar.
+ADMIN_SESSION_COOKIE = "uniresto_admin"
+ADMIN_SESSION_SECONDS = 12 * 3600
+
+
+def _admin_token_valid(given: str | None, expected: str) -> bool:
+    return bool(given) and (secrets.compare_digest(given, expected) or _is_valid_admin_link_token(given, expected))
+
+
+def _admin_query_or_form_token() -> str | None:
+    return request.args.get("token") or (request.form.get("token") if request.method == "POST" else None)
+
+
 def _is_admin_authorized() -> bool:
     expected = os.environ.get("ADMIN_TOKEN")
     if not expected:
         return False
-    given = request.args.get("token") or (request.form.get("token") if request.method == "POST" else None)
-    if given is None:
-        return False
-    return secrets.compare_digest(given, expected) or _is_valid_admin_link_token(given, expected)
+    return _admin_token_valid(_admin_query_or_form_token(), expected) or _admin_token_valid(
+        request.cookies.get(ADMIN_SESSION_COOKIE), expected
+    )
 
 
 # Links inside Telegram messages (buttons, "see it" URLs) used to carry the
@@ -301,13 +317,13 @@ def _admin_link_signature(admin_token: str, expires: str) -> str:
     return hmac.new(admin_token.encode(), f"admin-link|{expires}".encode(), hashlib.sha256).hexdigest()
 
 
-def _admin_link_token() -> str | None:
-    """A fresh expiring token for links sent over Telegram; None when
-    ADMIN_TOKEN isn't set (the admin pages are unreachable then)."""
+def _admin_link_token(ttl_seconds: int = ADMIN_LINK_TTL_SECONDS) -> str | None:
+    """A fresh expiring token for links sent over Telegram (and, shorter-lived, for the admin session
+    cookie); None when ADMIN_TOKEN isn't set (the admin pages are unreachable then)."""
     admin_token = os.environ.get("ADMIN_TOKEN")
     if not admin_token:
         return None
-    expires = str(int(time.time()) + ADMIN_LINK_TTL_SECONDS)
+    expires = str(int(time.time()) + ttl_seconds)
     return f"{expires}.{_admin_link_signature(admin_token, expires)}"
 
 
@@ -2039,6 +2055,21 @@ def create_app(
 
     # -------------------------------------------------------------- Admin
 
+    @app.after_request
+    def _admin_session_cookie(resp):
+        """The first admin page opened with a valid ?token= (or form token) gets the session cookie, so the
+        pages after it need no token in their links."""
+        if request.path.startswith("/admin"):
+            expected = os.environ.get("ADMIN_TOKEN")
+            if expected and _admin_token_valid(_admin_query_or_form_token(), expected):
+                session = _admin_link_token(ADMIN_SESSION_SECONDS)
+                if session:
+                    resp.set_cookie(
+                        ADMIN_SESSION_COOKIE, session, max_age=ADMIN_SESSION_SECONDS, path="/admin",
+                        secure=True, httponly=True, samesite="Lax",
+                    )
+        return resp
+
     @app.get("/admin/orderability")
     def admin_orderability():
         # Same admin gate as every other /admin page: this debug table shows
@@ -2337,7 +2368,7 @@ def create_app(
         if not _is_admin_authorized():
             abort(404)
         store().mark_reviewing(order_id)
-        return redirect(f"/admin/orders?token={request.args.get('token', '')}")
+        return redirect("/admin/orders")
 
     @app.get("/admin/orders/<int:order_id>/cancel")
     def admin_cancel_order_page(order_id):
@@ -2386,7 +2417,7 @@ def create_app(
                 f"{cancelled['restaurant_name']}, {cancelled['order_date']}. No charge was made.",
                 tag=f"order-{order_id}",
             )
-        return redirect(f"/admin/orders?token={request.args.get('token') or request.form.get('token', '')}")
+        return redirect("/admin/orders")
 
     @app.post("/admin/orders/<int:order_id>/set-price")
     def admin_set_order_price(order_id):
@@ -2440,7 +2471,7 @@ def create_app(
                 {"Content-Type": "text/plain; charset=utf-8"},
             )
 
-        return redirect(f"/admin/orders?token={request.args.get('token', '')}")
+        return redirect("/admin/orders")
 
     # ------------------------------------------------ Customer confirmation
     #

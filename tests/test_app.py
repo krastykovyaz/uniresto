@@ -2534,7 +2534,7 @@ def test_admin_mark_reviewing_flips_status_and_redirects(client, monkeypatch):
     order_id = _create_basic_order(client)
     resp = client.get(f"/admin/orders/{order_id}/mark-reviewing?token=correct-token")
     assert resp.status_code == 302
-    assert resp.headers["Location"] == "/admin/orders?token=correct-token"
+    assert resp.headers["Location"] == "/admin/orders"  # the token rides in the session cookie, not the URL
     order = client.get(f"/api/orders/{order_id}").get_json()
     assert order["status"] == "reviewing"
 
@@ -2555,7 +2555,7 @@ def test_admin_set_price_success_emails_customer_and_redirects(client, monkeypat
             data={"real_price": "8.50", "token": "correct-token"},
         )
     assert resp.status_code == 302
-    assert resp.headers["Location"] == "/admin/orders?token=correct-token"
+    assert resp.headers["Location"] == "/admin/orders"  # the token rides in the session cookie, not the URL
     mock_send.assert_called_once()
     call_args = mock_send.call_args[0]
     assert call_args[0] == "student@uni.lu"
@@ -3488,8 +3488,8 @@ def test_the_admin_panel_shows_a_cancel_button_per_order(client, monkeypatch):
     awaiting = _create_basic_order(client, customer_email="courier@uni.lu")
     client.application.config["ORDER_STORE"].set_real_price(awaiting, 8.50)
     page = client.get("/admin/orders?token=correct-token").data.decode()
-    assert f"/admin/orders/{pending}/cancel?token=correct-token" in page
-    assert f"/admin/orders/{awaiting}/cancel?token=correct-token" in page
+    assert f'action="/admin/orders/{pending}/cancel"' in page  # no token in the form action: the session cookie carries it
+    assert f'action="/admin/orders/{awaiting}/cancel"' in page
 
 
 def test_cancelling_frees_the_customers_daily_slot_and_closes_it_for_couriers(client, monkeypatch):
@@ -3933,6 +3933,7 @@ def test_telegram_links_carry_an_expiring_token_not_the_admin_key(client, monkey
     assert client.get(f"/admin/orders?token={link}").status_code == 200
     expires, _, signature = link.partition(".")
     for bad in (f"{int(expires) + 1}.{signature}", f"{expires}.{'0' * len(signature)}", "x.y", ".", link.split(".")[0]):
+        client.delete_cookie("uniresto_admin", path="/admin")  # the good link above left a session cookie behind
         assert client.get(f"/admin/orders?token={bad}").status_code == 404
     monkeypatch.setattr(app_module.time, "time", lambda: int(expires) + 1)
     assert client.get(f"/admin/orders?token={link}").status_code == 404
@@ -4942,3 +4943,48 @@ def test_food_house_appears_on_belval_from_its_opening_day(client):
 def test_the_day_before_opening_it_is_still_hidden(client):
     client.application.config["ORDERABILITY_SERVICE"]._now_override = datetime.datetime(2026, 10, 31, 23, 59, tzinfo=TZINFO)
     assert "udl-cbv-fh" not in _restaurant_slugs(client)
+
+
+# ---------------------------------------------------------------------------
+# Admin session cookie: the token is needed in the URL only for the first page
+# ---------------------------------------------------------------------------
+
+
+def _admin_cookie_from(resp):
+    header = next((v for k, v in resp.headers.items() if k.lower() == "set-cookie" and v.startswith("uniresto_admin=")), None)
+    return header
+
+
+def test_the_first_admin_page_hands_out_a_safe_session_cookie(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    header = _admin_cookie_from(client.get("/admin/orders?token=correct-token"))
+    assert header is not None
+    lowered = header.lower()
+    assert "httponly" in lowered and "secure" in lowered and "samesite=lax" in lowered and "path=/admin" in lowered
+    assert "correct-token" not in header  # the cookie is a signed, expiring session -- never the admin key itself
+
+
+def test_admin_pages_work_with_the_cookie_alone(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    session = _admin_cookie_from(client.get("/admin/orders?token=correct-token")).split(";")[0]
+    resp = client.get("/admin/orders", headers={"Cookie": session})
+    assert resp.status_code == 200
+    import re
+
+    assert not re.search(rb'(href|action)="[^"]*token=', resp.data)  # links and forms no longer carry the token
+
+
+def test_a_forged_or_missing_cookie_is_refused(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    assert client.get("/admin/orders").status_code == 404
+    assert client.get("/admin/orders", headers={"Cookie": "uniresto_admin=9999999999.deadbeef"}).status_code == 404
+
+
+def test_a_wrong_token_gets_no_cookie(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    assert _admin_cookie_from(client.get("/admin/orders?token=wrong-token")) is None
+
+
+def test_public_pages_never_get_the_admin_cookie(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    assert _admin_cookie_from(client.get("/?token=correct-token")) is None
