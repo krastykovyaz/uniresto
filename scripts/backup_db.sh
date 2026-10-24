@@ -8,12 +8,15 @@
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-/root/uniresto}"
-BACKUP_DIR="${BACKUP_DIR:-/root/backups}"
+# Its own folder (not shared with other projects): a second machine pulls exactly this folder, read-only
+# (see scripts/pull_backups.sh).
+BACKUP_DIR="${BACKUP_DIR:-/root/backups/uniresto}"
 KEEP_DAYS="${KEEP_DAYS:-14}"
 STAMP="$(date +%F)"
 
 mkdir -p "$BACKUP_DIR"
-sqlite3 "$APP_DIR/orders.db" ".backup '$BACKUP_DIR/uniresto-orders-$STAMP.db'"
+# .timeout: wait up to 10 s for a busy database instead of failing the night's backup at once.
+sqlite3 "$APP_DIR/orders.db" ".timeout 10000" ".backup '$BACKUP_DIR/uniresto-orders-$STAMP.db'"
 sqlite3 "$BACKUP_DIR/uniresto-orders-$STAMP.db" "PRAGMA integrity_check;" | grep -qx ok
 tar -czf "$BACKUP_DIR/uniresto-dish-photos-$STAMP.tar.gz" -C "$APP_DIR/static" dish_photos
 
