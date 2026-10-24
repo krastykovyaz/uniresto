@@ -1367,7 +1367,7 @@ def create_app(
             [courier_email for courier_email, _lang in subscribers],
             "newDelivery",
             "New order to deliver",
-            f"{order['restaurant_name']}, {_building_only(order.get('delivery_location')) or 'Belval'}.",
+            f"{order['restaurant_name']}, {_building_only(order.get('delivery_location')) or 'campus'}.",
             tag=f"delivery-{order['id']}",
         )
 
@@ -1713,7 +1713,9 @@ def create_app(
         if newly_claimed:
             send_order_claimed_notification(order, admin_url=_admin_orders_url())
             send_delivery_notification(
-                notify_email or courier_email, order, restopolis_url=_restopolis_url_for(order["restaurant_code"]), courier_lang=courier_lang or "en"
+                notify_email or courier_email, order, restopolis_url=_restopolis_url_for(order["restaurant_code"]),
+                courier_lang=courier_lang or "en",
+                private_details=True,  # the courier who took it needs the room and the note
             )
             # At most once per order (Part 76): a release + re-claim
             # must never email the customer again for the SAME claim.

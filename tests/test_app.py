@@ -1899,6 +1899,7 @@ def test_claim_order_emails_the_courier_the_order_description(client):
     assert mock_email.call_args[0][0] == "courier@uni.lu"
     assert mock_email.call_args[0][1]["id"] == order_id
     assert mock_email.call_args.kwargs["courier_lang"] == "fr"
+    assert mock_email.call_args.kwargs["private_details"] is True  # the claiming courier gets the room and note
 
 
 def test_claim_order_emails_the_customer_accepted_when_an_email_was_given(client):
@@ -2233,6 +2234,8 @@ def test_create_order_notifies_every_registered_courier(client):
     mock_notify.assert_called_once()
     assert mock_notify.call_args[0][0] == "courier@uni.lu"
     assert mock_notify.call_args[0][1]["id"] == resp.get_json()["id"]
+    # the broadcast to every registered courier never asks for the room or the note
+    assert not mock_notify.call_args.kwargs.get("private_details")
 
 
 def test_create_order_with_no_registered_couriers_notifies_no_one(client):

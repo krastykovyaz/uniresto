@@ -188,7 +188,7 @@ def test_delivery_notification_escapes_html_in_customer_supplied_fields(monkeypa
         items=[{"category": "Non-végétarien", "name": "Rôti de porc Orloff", "quantity": 1, "price": None}],
     )
     with patch("orderability_engine.mailer.requests.post", return_value=_mock_response()) as mock_post:
-        send_delivery_notification("courier@uni.lu", order)
+        send_delivery_notification("courier@uni.lu", order, private_details=True)  # only the claiming courier sees these fields
 
     html = mock_post.call_args.kwargs["json"]["html"]
     assert "<img src=x onerror=alert(1)>" not in html
@@ -524,3 +524,38 @@ def test_no_deal_line_for_an_order_with_no_priced_meal(monkeypatch):
     items = [{"category": "Dessert", "name": "Panna cotta", "quantity": 1, "price": None}]
     text, html = _delivery_bodies(monkeypatch, "mean", items)
     assert "Deal price" not in text and "Deal price" not in html
+
+
+def test_the_new_order_email_to_every_courier_shows_the_building_but_not_the_room_or_note(monkeypatch):
+    monkeypatch.setenv("RESEND_API_KEY", "re_placeholder")
+    order = _order(
+        delivery_location="Building G — 2211 room",
+        customer_note="call me at 0612345678",
+        items=[{"category": "Non-végétarien", "name": "Rôti de porc Orloff", "quantity": 1, "price": None}],
+    )
+    with patch("orderability_engine.mailer.requests.post", return_value=_mock_response()) as mock_post:
+        send_delivery_notification("anyone@gmail.com", order)
+    payload = mock_post.call_args.kwargs["json"]
+    for body in (payload["text"], payload["html"]):
+        assert "Building G" in body
+        assert "2211" not in body and "0612345678" not in body
+        assert "room shown once you take the order" in body
+
+
+def test_the_courier_who_took_the_order_gets_the_room_and_note(monkeypatch):
+    monkeypatch.setenv("RESEND_API_KEY", "re_placeholder")
+    order = _order(delivery_location="Building G — 2211 room", customer_note="call me at 0612345678",
+                   items=[{"category": "Non-végétarien", "name": "Rôti de porc Orloff", "quantity": 1, "price": None}])
+    with patch("orderability_engine.mailer.requests.post", return_value=_mock_response()) as mock_post:
+        send_delivery_notification("courier@uni.lu", order, private_details=True)
+    text = mock_post.call_args.kwargs["json"]["text"]
+    assert "Building G — 2211 room" in text and "call me at 0612345678" in text
+
+
+def test_a_location_without_a_building_reveals_nothing(monkeypatch):
+    monkeypatch.setenv("RESEND_API_KEY", "re_placeholder")
+    order = _order(delivery_location="the blue door next to the library",
+                   items=[{"category": "Non-végétarien", "name": "Rôti de porc Orloff", "quantity": 1, "price": None}])
+    with patch("orderability_engine.mailer.requests.post", return_value=_mock_response()) as mock_post:
+        send_delivery_notification("anyone@gmail.com", order)
+    assert "blue door" not in mock_post.call_args.kwargs["json"]["text"]

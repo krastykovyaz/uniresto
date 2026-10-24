@@ -546,8 +546,23 @@ def _format_delivery_html(order: dict, restopolis_url: str | None, courier_lang:
         <p style="margin:20px 0 0;color:#6b7280;font-size:13px;">Order #{order['id']}</p>"""
 
 
+# What every registered courier may see about an order before anyone has taken it: the same as the public
+# Delivery list -- the building, never the room or office, and never the customer's own note. The full
+# location and note go only to the courier who takes the order (claim time, private_details=True).
+ROOM_AFTER_CLAIM = "room shown once you take the order"
+
+
+def _public_view(order: dict) -> dict:
+    location = order.get("delivery_location") or ""
+    building = location.split(" — ", 1)[0] if " — " in location else ""
+    shown = dict(order)
+    shown["delivery_location"] = f"{building} ({ROOM_AFTER_CLAIM})" if building else ROOM_AFTER_CLAIM.capitalize()
+    shown.pop("customer_note", None)
+    return shown
+
+
 def send_delivery_notification(
-    to_email: str, order: dict, restopolis_url: str | None = None, courier_lang: str = "en"
+    to_email: str, order: dict, restopolis_url: str | None = None, courier_lang: str = "en", private_details: bool = False
 ) -> tuple[bool, str | None]:
     """Best-effort send to ONE registered courier address (Part 52+) --
     same (sent, error) contract as every other function here. Called once
@@ -558,7 +573,9 @@ def send_delivery_notification(
     real Restopolis restaurant link (BtnChangeRestaurant deep link, same
     one telegram_notify.py's admin ping uses; see its docstring for why
     it can only go that far, not to the exact date/items). Deliberately
-    never includes the customer's own email.
+    never includes the customer's own email -- and, unless
+    `private_details` (only for the courier who took the order), never
+    the room or the customer's note either: see _public_view().
 
     `courier_lang` is THIS recipient's own registered language (Part 72
     -- see delivery_subscribers.py's `lang` column); each item's name is
@@ -568,6 +585,8 @@ def send_delivery_notification(
     config = _mail_config()
     if config is None:
         return False, "Email not configured (RESEND_API_KEY unset)"
+    if not private_details:
+        order = _public_view(order)
     subject = f"New order to deliver -- {order['restaurant_name']}"
     text_body = _format_delivery_text(order, restopolis_url, courier_lang)
     html_body = _html_shell(
