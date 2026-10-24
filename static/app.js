@@ -725,12 +725,20 @@ async function refreshMenu() {
       api(`/api/restaurants/${slug}/status?date=${encodeURIComponent(date)}`).catch(() => state.dateInfo),
     ]);
     if (state.screen !== "menu" || state.slug !== slug || state.targetDate !== date) return; // left meanwhile
-    state.menu = menu;
     state.dishPhotos = photos;
     state.dateInfo = dateInfo;
     state.menuError = null;
-    const ids = new Set(menu.items.map((it) => it.id));
-    state.selection = state.selection.filter((s) => ids.has(s.menuItemId));
+    // Keep the basket by what each dish IS: ids are just positions in the menu and may have moved.
+    const before = menuById();
+    const live = new Map(menu.items.map((it) => [cartItemKey(it), it]));
+    state.menu = menu; // after the basket is re-pinned: menuById() above still needs the OLD menu
+    state.selection = state.selection
+      .map((s) => {
+        const was = before.get(s.menuItemId);
+        const now = was && live.get(cartItemKey(was));
+        return now ? { menuItemId: now.id, quantity: s.quantity } : null;
+      })
+      .filter(Boolean);
     render();
     showToast(tr("menuUpdated"));
   } catch {
@@ -6401,6 +6409,41 @@ function debounce(fn, delayMs) {
 // client-side preview (priceBreakdown()/computeOrderTotals() below),
 // matching the task's "never trust the browser for price/weight" rule
 // one step earlier than confirm, not just at it.
+// What the server is told about the basket: each dish by WHAT it is (category + name) as well as its id. The id is
+// only the dish's position in the menu as fetched, and moves when Restopolis changes the menu -- the server pins
+// every dish by category+name, so an order can never silently buy a different dish.
+function selectionPayload() {
+  const byId = menuById();
+  return state.selection.map((s) => {
+    const item = byId.get(s.menuItemId);
+    return item ? { id: s.menuItemId, quantity: s.quantity, category: item.category, name: item.name } : { id: s.menuItemId, quantity: s.quantity };
+  });
+}
+
+// Re-read the live menu for this restaurant and day and re-pin the basket to it by what each dish is; a dish that is
+// no longer there is dropped. Called when the server says "menu_changed".
+async function recoverFromMenuChange(goneDishes) {
+  const slug = state.slug;
+  const date = state.targetDate;
+  const before = menuById();
+  menuCache.delete(menuCacheKey(slug, date));
+  const menu = await getMenu(slug, date);
+  const live = new Map(menu.items.map((it) => [cartItemKey(it), it]));
+  const next = [];
+  for (const s of state.selection) {
+    const was = before.get(s.menuItemId);
+    const now = was && live.get(cartItemKey(was));
+    if (now) next.push({ menuItemId: now.id, quantity: s.quantity });
+  }
+  if (state.slug !== slug || state.targetDate !== date) return; // left meanwhile
+  state.menu = menu;
+  state.selection = next;
+  state.serverQuote = null;
+  saveCart();
+  const names = (goneDishes || []).map((n) => dishTitle(n, state.lang));
+  if (names.length > 0) showToast(tr("menuChangedBasket", { dishes: names.join(", ") }), 5000);
+}
+
 async function refreshServerQuote() {
   if (state.selection.length === 0 || !state.slug || !state.targetDate) {
     state.serverQuote = null;
@@ -6412,11 +6455,20 @@ async function refreshServerQuote() {
       body: JSON.stringify({
         restaurant: state.slug,
         date: state.targetDate,
-        items: state.selection.map((s) => ({ id: s.menuItemId, quantity: s.quantity })),
+        items: selectionPayload(),
       }),
     });
     state.serverQuote = quote;
-  } catch {
+  } catch (err) {
+    if (err && err.body && err.body.error === "menu_changed") {
+      try {
+        await recoverFromMenuChange(err.body.items);
+        if (state.screen === "review") render();
+      } catch {
+        /* the next quote tries again */
+      }
+      return;
+    }
     // Network hiccup or a line no longer on the live menu -- fall back
     // to the (clearly-marked, see buildTotalsBox) local preview rather
     // than blocking the cart screen on it.
@@ -6814,7 +6866,7 @@ async function submitOrder(email, phone) {
         date: state.targetDate,
         // API selection shape is {id, quantity}; local state uses
         // menuItemId internally (see order-math.js). Map at the boundary.
-        items: state.selection.map((s) => ({ id: s.menuItemId, quantity: s.quantity })),
+        items: selectionPayload(),
         delivery_location: combinedDeliveryLocation() || null,
         customer_email: email,
         // Who the order belongs to (limits, Luni) -- customer_email above
@@ -6843,6 +6895,16 @@ async function submitOrder(email, phone) {
     rememberLastOrder(order);
     goTo("confirmation");
   } catch (err) {
+    if (err && err.body && err.body.error === "menu_changed") {
+      // Nothing was ordered. Re-pin the basket to the live menu, say what went, and let them confirm again.
+      try {
+        await recoverFromMenuChange(err.body.items);
+      } catch {
+        showToast(err.message);
+      }
+      goTo("review");
+      return;
+    }
     showToast(err.message);
     const needsUniEmail = err.body && (err.body.error === "university_email_required" || err.body.error === "university_email_not_verified");
     goTo(needsUniEmail ? "profile" : "review");

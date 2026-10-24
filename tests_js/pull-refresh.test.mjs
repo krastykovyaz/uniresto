@@ -30,7 +30,7 @@ test("the app refreshes the menu, status and photos, keeps the basket, and speak
   const i18n = readFileSync(new URL("../static/i18n.js", import.meta.url), "utf8");
   assert.match(app, /menuCache\.delete\(menuCacheKey\(slug, date\)\)/);
   assert.match(app, /dishPhotosCache\.delete\(slug\)/);
-  assert.match(app, /state\.selection = state\.selection\.filter\(\(s\) => ids\.has\(s\.menuItemId\)\)/);
+  assert.match(app, /const now = was && live\.get\(cartItemKey\(was\)\);/); // the basket is kept by what each dish is, not by its id
   assert.match(app, /setupPullToRefresh\(\);/);
   assert.equal((i18n.match(/menuUpdated:/g) || []).length, 11);
   assert.equal((i18n.match(/menuUpdateFailed:/g) || []).length, 11);

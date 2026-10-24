@@ -59,7 +59,9 @@ from orderability_engine.orders import (
     DailyOrderLimitError,
     OrderDatesLimitError,
     OrderStore,
+    MenuChangedError,
     OrderValidationError,
+    resolve_selection,
     recalculate_order,
     validate_selection_shape,
 )
@@ -1157,6 +1159,9 @@ def create_app(
         result = svc().check_orderability(restaurant, d)
         try:
             validate_selection_shape(selection)
+            selection = resolve_selection(flat_items, selection)  # dishes are matched by category+name, never by a stale id
+        except MenuChangedError as exc:
+            return jsonify({"error": "menu_changed", "message": str(exc), "items": exc.dishes}), 409
         except OrderValidationError as exc:
             return jsonify({"error": "invalid_selection", "message": str(exc)}), 400
         offending = _early_cutoff_violations(flat_items, selection, result.early_cutoff.available)
@@ -1273,6 +1278,9 @@ def create_app(
         flat_items, _ = _load_flat_menu(restaurant, d)
         try:
             validate_selection_shape(selection)
+            selection = resolve_selection(flat_items, selection)  # dishes are matched by category+name, never by a stale id
+        except MenuChangedError as exc:
+            return jsonify({"error": "menu_changed", "message": str(exc), "items": exc.dishes}), 409
         except OrderValidationError as exc:
             return jsonify({"error": "invalid_selection", "message": str(exc)}), 400
         offending = _early_cutoff_violations(flat_items, selection, result.early_cutoff.available)

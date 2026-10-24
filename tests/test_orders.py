@@ -5,10 +5,12 @@ import pytest
 
 from orderability_engine.orders import (
     MAX_QUANTITY,
+    MenuChangedError,
     OrderStore,
     OrderValidationError,
     aggregate_totals,
     recalculate_order,
+    resolve_selection,
 )
 
 
@@ -751,3 +753,53 @@ def test_mark_handed_over_refuses_a_closed_order(store, close):
     else:
         store.mark_delivered(order_id)
     assert store.mark_handed_over(order_id) is False
+
+
+# ---------------------------------------------------------------------------
+# resolve_selection: a dish is pinned by WHAT it is, never by a stale position id
+# ---------------------------------------------------------------------------
+
+
+def test_a_stale_id_still_buys_the_dish_that_was_chosen():
+    # the customer chose "Paris-Brest" when it was id 3; the menu has since been reordered and it is id 6 now
+    chosen = [{"id": 3, "quantity": 1, "category": "Dessert", "name": "Paris-Brest"}]
+    resolved = resolve_selection(MENU_ITEMS, chosen)
+    assert resolved[0]["id"] == 6
+    quote = recalculate_order(MENU_ITEMS, resolved)
+    assert quote["items"][0]["name"] == "Paris-Brest"  # NOT whatever dish now sits at id 3
+
+
+def test_an_id_that_now_belongs_to_another_dish_never_wins_over_the_name():
+    # id 5 is the pork roast today; the customer's page said id 5 meant the dessert
+    chosen = [{"id": 5, "quantity": 1, "category": "Dessert", "name": "Paris-Brest"}]
+    assert resolve_selection(MENU_ITEMS, chosen)[0]["id"] == 6
+
+
+def test_a_dish_that_left_the_menu_is_reported_by_name_and_nothing_is_substituted():
+    chosen = [{"id": 6, "quantity": 1, "category": "Dessert", "name": "Paris-Brest"},
+              {"id": 7, "quantity": 2, "category": "Dessert", "name": "Tarte aux pommes"}]
+    with pytest.raises(MenuChangedError) as exc:
+        resolve_selection(MENU_ITEMS, chosen)
+    assert exc.value.dishes == ["Tarte aux pommes"]
+
+
+def test_the_same_dish_twice_is_refused_even_under_two_stale_ids():
+    chosen = [{"id": 1, "quantity": 1, "category": "Dessert", "name": "Paris-Brest"},
+              {"id": 2, "quantity": 1, "category": "Dessert", "name": "Paris-Brest"}]
+    with pytest.raises(OrderValidationError):
+        resolve_selection(MENU_ITEMS, chosen)
+
+
+def test_an_old_page_without_category_and_name_still_works_by_id():
+    assert resolve_selection(MENU_ITEMS, [{"id": 6, "quantity": 1}]) == [{"id": 6, "quantity": 1}]
+
+
+def test_category_and_name_must_be_text():
+    with pytest.raises(OrderValidationError):
+        resolve_selection(MENU_ITEMS, [{"id": 6, "quantity": 1, "category": 5, "name": "Paris-Brest"}])
+
+
+def test_two_services_listing_the_same_dish_keep_the_chosen_one():
+    twin = [{**MENU_ITEMS[2], "id": 60}, *MENU_ITEMS]
+    assert resolve_selection(twin, [{"id": 60, "quantity": 1, "category": "Dessert", "name": "Paris-Brest"}])[0]["id"] == 60
+    assert resolve_selection(twin, [{"id": 6, "quantity": 1, "category": "Dessert", "name": "Paris-Brest"}])[0]["id"] == 6

@@ -215,6 +215,50 @@ def validate_selection_shape(selection) -> None:
         seen.add(item_id)
 
 
+class MenuChangedError(OrderValidationError):
+    """The dishes the customer picked are no longer on the menu as they saw it. `dishes` names them."""
+
+    def __init__(self, dishes: list[str]):
+        self.dishes = dishes
+        super().__init__("The menu changed since you opened it: " + ", ".join(dishes))
+
+
+def resolve_selection(menu_items: list[dict], selection: list[dict]) -> list[dict]:
+    """Pin each chosen dish to the live menu by WHAT it is (category + name), not by its id.
+
+    A menu item's id is just its position in the menu as parsed right now, so it moves whenever Restopolis adds,
+    removes or reorders a dish -- an order built from a menu fetched earlier could silently buy a different
+    dish. An entry that carries `category` and `name` is therefore matched on those: the id sent with it is
+    only a tie-breaker (two services can list the same dish), and a dish that is gone raises MenuChangedError.
+    An entry with no category/name (an old cached page) keeps the old id-only behaviour. Returns the selection
+    with every id replaced by the live one."""
+    validate_selection_shape(selection)
+    by_key: dict[tuple, list[dict]] = {}
+    for item in menu_items:
+        by_key.setdefault((item["category"], item["name"]), []).append(item)
+
+    resolved, gone, seen = [], [], set()
+    for entry in selection:
+        category, name = entry.get("category"), entry.get("name")
+        if category is None and name is None:
+            resolved.append(dict(entry))
+            continue
+        if not isinstance(category, str) or not isinstance(name, str):
+            raise OrderValidationError("'category' and 'name' must be text")
+        candidates = by_key.get((category, name), [])
+        if not candidates:
+            gone.append(name)
+            continue
+        chosen = next((c for c in candidates if c["id"] == entry.get("id")), candidates[0])
+        if chosen["id"] in seen:
+            raise OrderValidationError(f"Dish {name!r} is listed more than once")
+        seen.add(chosen["id"])
+        resolved.append({**entry, "id": chosen["id"]})
+    if gone:
+        raise MenuChangedError(gone)
+    return resolved
+
+
 def recalculate_order(menu_items: list[dict], selection: list[dict]) -> dict:
     """menu_items: the live, backend-fetched menu (each dict has at least
     id/category/name/description/price/weight_value/weight_unit/allergens).

@@ -4991,3 +4991,45 @@ def test_a_wrong_token_gets_no_cookie(client, monkeypatch):
 def test_public_pages_never_get_the_admin_cookie(client, monkeypatch):
     monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
     assert _admin_cookie_from(client.get("/?token=correct-token")) is None
+
+
+
+# ---------------------------------------------------------------------------
+# Orders pin dishes by category + name: a moved menu id can never buy another dish
+# ---------------------------------------------------------------------------
+
+
+def _quote(client, items):
+    return client.post("/api/orders/quote", json={"restaurant": "altius", "date": "2026-09-24", "items": items})
+
+
+def test_the_quote_follows_the_dish_not_the_stale_id(client):
+    salad = next(i for i in _menu_items(client) if i["id"] == SALAD_BAR_ID)
+    other = next(i for i in _menu_items(client) if i["id"] != SALAD_BAR_ID)
+    # the page remembered the salad bar under the id of a different dish
+    resp = _quote(client, [{"id": other["id"], "quantity": 1, "category": salad["category"], "name": salad["name"]}])
+    assert resp.status_code == 200
+    assert [it["name"] for it in resp.get_json()["items"]] == [salad["name"]]
+
+
+def test_a_dish_no_longer_on_the_menu_gets_a_409_menu_changed(client):
+    resp = _quote(client, [{"id": 0, "quantity": 1, "category": "Dessert", "name": "A dish Restopolis removed"}])
+    assert resp.status_code == 409
+    body = resp.get_json()
+    assert body["error"] == "menu_changed" and body["items"] == ["A dish Restopolis removed"]
+
+
+def test_creating_an_order_with_a_removed_dish_is_refused_and_creates_nothing(client):
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("student@uni.lu")
+    with patch("app.send_admin_notification", return_value=(True, None)):
+        resp = client.post("/api/orders", json={
+            "delivery_location": "Building A — Room 1.01", "restaurant": "altius", "date": "2026-09-24",
+            "items": [{"id": 0, "quantity": 1, "category": "Dessert", "name": "A dish Restopolis removed"}],
+            "customer_email": "student@uni.lu", "reward_email": "student@uni.lu"})
+    assert resp.status_code == 409 and resp.get_json()["error"] == "menu_changed"
+    assert client.application.config["ORDER_STORE"].list_recent_orders() == []
+
+
+def test_an_order_from_an_old_cached_page_without_names_still_works(client):
+    resp = _quote(client, [{"id": SALAD_BAR_ID, "quantity": 1}])
+    assert resp.status_code == 200
