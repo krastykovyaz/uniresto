@@ -2032,6 +2032,10 @@ let navSeq = 0;
 
 function goTo(screen) {
   navSeq++;
+  // Leaving the review screen with a basket and without confirming: note what was still missing.
+  if (state.screen === "review" && screen !== "review" && screen !== "confirming" && screen !== "confirmation" && state.selection.length > 0) {
+    trackFunnel("review_leave", reviewMissing());
+  }
   state.screen = screen;
   render();
   scrollToTop();
@@ -3668,6 +3672,7 @@ async function orderFavoriteNow(fav, dateInfo) {
     return;
   }
   state.selection.push({ menuItemId: item.id, quantity: 1 });
+  trackFunnel("basket_add", visitSource, { once: true });
   state.serverQuote = null;
   saveCart();
   goTo("review");
@@ -6044,6 +6049,7 @@ function toggleSelection(itemId) {
     state.selection = state.selection.filter((s) => s.menuItemId !== itemId);
   } else {
     state.selection.push({ menuItemId: itemId, quantity: 1 });
+    trackFunnel("basket_add", visitSource, { once: true });
   }
   state.serverQuote = null;
   saveCart();
@@ -6202,6 +6208,7 @@ function addSmartLunchOptionToSelection(option) {
     if (existing) existing.quantity = clampQuantity(existing.quantity + 1, maxQ);
     else state.selection.push({ menuItemId: liveItem.id, quantity: 1 });
   }
+  if (state.selection.length > 0) trackFunnel("basket_add", visitSource, { once: true });
   state.serverQuote = null;
   saveCart();
   showToast(tr("smartLunchOptionAdded"));
@@ -6680,6 +6687,7 @@ function splitDeliveryLocation(combined) {
 
 async function renderReview() {
   applyRememberedSpot();
+  if (state.selection.length > 0) trackFunnel("review_open", visitSource, { once: true });
   app.innerHTML = "";
   app.append(header({ title: tr("yourOrder"), subtitle: `${shortName(state.restaurantName)} · ${fmtLong(state.targetDate)}`, back: () => goTo("menu") }));
 
@@ -6808,15 +6816,19 @@ async function confirmOrder(triggerBtn) {
   // which api()'s error handling can't pull a specific reason out of --
   // this catches it locally with a real, translated message instead of
   // falling back to a generic "Request failed (400)" toast.
+  trackFunnel("confirm_press");
   if (!email) {
+    trackFunnel("confirm_blocked", "no_email");
     showToast(tr("emailRequired"));
     return;
   }
   if (!isValidEmailFormat(email)) {
+    trackFunnel("confirm_blocked", "bad_email");
     showToast(tr("invalidEmailFormat"));
     return;
   }
   if (phone && !isValidPhoneNumber(phone)) {
+    trackFunnel("confirm_blocked", "bad_phone");
     showToast(tr("invalidPhoneNumber"));
     return;
   }
@@ -6824,6 +6836,7 @@ async function confirmOrder(triggerBtn) {
   // email above is only where notifications go. Nothing to send without
   // one, so send them to Profile to verify it (the cart is saved).
   if (!state.registeredEmail) {
+    trackFunnel("confirm_blocked", "no_uni_email");
     showToast(tr("orderNeedsUniversityEmail"));
     goTo("profile");
     return;
@@ -6834,10 +6847,12 @@ async function confirmOrder(triggerBtn) {
   // stuck (see combinedDeliveryLocation()'s own comment on how these two
   // fields become the one delivery_location string the backend re-checks).
   if (!state.deliveryBuilding) {
+    trackFunnel("confirm_blocked", "no_building");
     showToast(tr("deliveryBuildingRequired"));
     return;
   }
   if (!state.deliveryLocationText.trim()) {
+    trackFunnel("confirm_blocked", "no_room");
     showToast(tr("deliveryLocationRequired"));
     return;
   }
@@ -6895,6 +6910,7 @@ async function submitOrder(email, phone) {
     rememberLastOrder(order);
     goTo("confirmation");
   } catch (err) {
+    trackFunnel("order_error", (err && err.body && err.body.error) || "other");
     if (err && err.body && err.body.error === "menu_changed") {
       // Nothing was ordered. Re-pin the basket to the live menu, say what went, and let them confirm again.
       try {
@@ -7228,6 +7244,30 @@ async function loadPriceTables() {
 // What the visit counts under in /admin/sources and the daily report: the link's own ?src=
 // label when it has one (a flyer's QR code), else which kind of shared link it is -- so the
 // share buttons' reach shows up as "share-menu" / "share-order" / "share-dish".
+// Anonymous ordering-funnel counters (see page_views.FUNNEL_EVENTS): one event, one short label, nothing that
+// identifies a person. Fire-and-forget; never blocks or breaks anything. The steps that are counted "once per visit"
+// carry the visit's own ?src= label so flyers can be compared; the others carry a reason.
+const funnelSent = new Set();
+let visitSource = "direct";
+function trackFunnel(event, label, { once = false } = {}) {
+  if (DEMO) return;
+  if (once) {
+    if (funnelSent.has(event)) return;
+    funnelSent.add(event);
+  }
+  api(`/api/visit/${event}`, { method: "POST", body: JSON.stringify(label ? { source: label } : {}) }).catch(() => {});
+}
+
+// What is still missing on the order form -- the label for "left the review screen".
+function reviewMissing() {
+  if (!state.deliveryBuilding) return "no_building";
+  if (!state.deliveryLocationText.trim()) return "no_room";
+  const email = (state.customerEmail || "").trim();
+  if (!email || !isValidEmailFormat(email)) return "no_email";
+  if (!state.registeredEmail) return "no_uni_email";
+  return "ready";
+}
+
 function trafficSource(params) {
   const src = params.get("src");
   if (src) return src;
@@ -7266,6 +7306,7 @@ async function init() {
   // never persisted, so it only ever attributes the visit it actually
   // arrived on, not anything the person does afterwards.
   const urlSource = trafficSource(new URLSearchParams(window.location.search));
+  visitSource = urlSource || "direct";
   if (!DEMO) api("/api/visit/home", { method: "POST", body: JSON.stringify({ source: urlSource }) }).catch(() => {});
   setInterval(tickStatusClock, 30000);
   app.append(loadingState(tr("loadingRestaurants")));

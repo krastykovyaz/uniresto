@@ -5033,3 +5033,41 @@ def test_creating_an_order_with_a_removed_dish_is_refused_and_creates_nothing(cl
 def test_an_order_from_an_old_cached_page_without_names_still_works(client):
     resp = _quote(client, [{"id": SALAD_BAR_ID, "quantity": 1}])
     assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Anonymous ordering-funnel counters: events from the browser, shown on /admin/funnel
+# ---------------------------------------------------------------------------
+
+
+def _track(client, event, source=None):
+    return client.post(f"/api/visit/{event}", json={"source": source} if source else {})
+
+
+@pytest.mark.parametrize("event", ["basket_add", "review_open", "confirm_press", "confirm_blocked", "review_leave", "order_error"])
+def test_the_funnel_events_are_recorded(client, event):
+    assert _track(client, event, "no_room").status_code == 200
+    rows = client.application.config["PAGE_VIEW_STORE"].funnel_rows(datetime.datetime.now(TZINFO) - datetime.timedelta(days=1))
+    assert any(r[1] == event and r[2] == "no_room" and r[3] == 1 for r in rows)
+
+
+def test_an_unknown_event_is_still_refused(client):
+    assert _track(client, "something_else").status_code == 404
+
+
+def test_the_funnel_page_is_admin_only_and_shows_counts_and_reasons(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    assert client.get("/admin/funnel").status_code == 404
+    for event, label in [("basket_add", "flyer-p"), ("review_open", "flyer-p"), ("confirm_blocked", "no_room"), ("review_leave", "no_building")]:
+        _track(client, event, label)
+    page = client.get("/admin/funnel?token=correct-token")
+    assert page.status_code == 200
+    html = page.data.decode()
+    assert "no_room" in html and "no_building" in html and "Added a dish" in html
+
+
+def test_the_funnel_stores_no_personal_data(client):
+    _track(client, "confirm_blocked", "no_email")
+    store = client.application.config["PAGE_VIEW_STORE"]
+    columns = [row[1] for row in store._conn.execute("PRAGMA table_info(page_views)").fetchall()]
+    assert set(columns) <= {"id", "event", "created_at", "source"}  # an event, a day and a short label -- nothing else

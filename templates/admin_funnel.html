@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Admin: ordering funnel{% endblock %}
+{% block content %}
+<h1>Admin &mdash; Ordering funnel (last 14 days)</h1>
+<p class="muted">
+    Anonymous event counts (no address, account or device is recorded). Each step is counted once per visit,
+    except confirm/blocked/error which count every press. A visit that looked at menus, then added a dish,
+    then opened the review screen, then pressed confirm, leaves one row in each column.
+</p>
+
+{% if not days %}
+<p class="muted">Nothing recorded yet.</p>
+{% else %}
+<table>
+    <tr>
+        <th>Day</th><th>Menu views</th><th>Added a dish</th><th>Opened review</th><th>Pressed confirm</th>
+        <th>Form stopped them</th><th>Left review</th><th>Server refused</th>
+    </tr>
+    {% for day in days %}
+    <tr>
+        <td>{{ day }}</td><td>{{ menus[day] }}</td>
+        {% for event in events %}<td>{{ table[day][event] }}</td>{% endfor %}
+    </tr>
+    {% endfor %}
+</table>
+
+{% for event, rows in labels.items() %}
+<h2>{{ event }}</h2>
+<table>
+    <tr><th>Label</th><th>Count</th></tr>
+    {% for label, count in rows %}<tr><td>{{ label }}</td><td>{{ count }}</td></tr>{% endfor %}
+</table>
+{% endfor %}
+{% endif %}
+{% endblock %}

@@ -65,7 +65,7 @@ from orderability_engine.orders import (
     recalculate_order,
     validate_selection_shape,
 )
-from orderability_engine.page_views import MAX_SOURCE_LENGTH, PageViewStore
+from orderability_engine.page_views import FUNNEL_EVENTS, MAX_SOURCE_LENGTH, PageViewStore
 from orderability_engine.pending_dish_photos import PendingDishPhotoStore
 from orderability_engine.push_notify import PushSubscriptionStore, notify_in_background, push_config, sanitize_prefs, valid_subscription
 from orderability_engine.photo_sanitize import sanitize_dish_photo
@@ -1956,7 +1956,7 @@ def create_app(
     # background, so counting at api_menu() inflated one real view into
     # ~5. "delivery" stays server-side in api_delivery_orders(), which is
     # only ever called when that screen actually renders.
-    CLIENT_TRACKED_EVENTS = ("home", "menu")
+    CLIENT_TRACKED_EVENTS = ("home", "menu", *FUNNEL_EVENTS)
 
     # /api/visit/ is what static/app.js calls: ad/content blockers and DNS
     # filters drop any URL containing "track", which silently lost QR-code
@@ -2137,6 +2137,30 @@ def create_app(
             abort(404)
         return render_template(
             "admin_sources.html", counts=page_views().source_counts("home"), token=request.args.get("token")
+        )
+
+    @app.get("/admin/funnel")
+    def admin_funnel():
+        """Where people stop between looking at a menu and placing an order: anonymous counts per day for each
+        step, the reasons the form stopped people, and what was missing when they left. Gated like /admin/sources."""
+        if not _is_admin_authorized():
+            abort(404)
+        since = datetime.now(TZINFO) - timedelta(days=14)
+        rows = page_views().funnel_rows(since)
+        days = sorted({r[0] for r in rows}, reverse=True)
+        table = {day: {event: 0 for event in FUNNEL_EVENTS} for day in days}
+        labels = {event: {} for event in FUNNEL_EVENTS}
+        for day, event, label, n in rows:
+            table[day][event] += n
+            if label:
+                labels[event][label] = labels[event].get(label, 0) + n
+        menus = {}
+        for day in days:
+            start = datetime.combine(date.fromisoformat(day), datetime.min.time(), tzinfo=TZINFO)
+            menus[day] = page_views().count_between("menu", start, start + timedelta(days=1))
+        return render_template(
+            "admin_funnel.html", days=days, table=table, events=FUNNEL_EVENTS, menus=menus,
+            labels={e: sorted(v.items(), key=lambda kv: -kv[1]) for e, v in labels.items() if v},
         )
 
     @app.get("/admin/feedback")

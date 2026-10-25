@@ -56,6 +56,19 @@ _MIGRATIONS = [
 
 EVENTS = ("home", "menu", "delivery")
 
+# The ordering funnel, counted anonymously (no address, no account, no device id -- just an event and a short label):
+# where do people stop between "looked at a menu" and "placed an order"? The label of the first two is the visit's
+# own ?src= (so flyers can be compared); of the others, the reason or the field the person stopped at.
+FUNNEL_EVENTS = (
+    "basket_add",      # first dish added to the basket in this visit
+    "review_open",     # opened the review screen (basket with at least one dish)
+    "confirm_press",   # pressed "Confirm order"
+    "confirm_blocked", # ...but the form stopped them: no_building / no_room / no_email / bad_email / bad_phone / no_uni_email
+    "review_leave",    # left the review screen without confirming; label = what was still missing
+    "order_error",     # the server refused the order; label = its error code
+)
+EVENTS = EVENTS + FUNNEL_EVENTS
+
 # A QR code is a physical object -- no way to ever edit what it encodes
 # once printed, so this stays short and forgiving rather than a strict
 # format. Long enough for a real label ("flyer-kirchberg-noticeboard"),
@@ -104,6 +117,23 @@ class PageViewStore:
                 "INSERT INTO page_views (event, source, created_at) VALUES (?, ?, ?)", (event, source, now)
             )
             self._conn.commit()
+
+    def funnel_rows(self, since: datetime) -> list[tuple[str, str, str, int]]:
+        """[(local day, event, label, count)] for every funnel event since `since`, oldest day first. Days are
+        Luxembourg days; the label is "" for an event recorded without one."""
+        from orderability_engine.models import TZINFO
+
+        marks = ",".join("?" for _ in FUNNEL_EVENTS)
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT created_at, event, COALESCE(source, '') FROM page_views WHERE event IN ({marks}) AND created_at >= ?",
+                (*FUNNEL_EVENTS, since.astimezone(timezone.utc).isoformat()),
+            ).fetchall()
+        counts: dict[tuple[str, str, str], int] = {}
+        for created_at, event, label in rows:
+            day = datetime.fromisoformat(created_at).astimezone(TZINFO).date().isoformat()
+            counts[(day, event, label)] = counts.get((day, event, label), 0) + 1
+        return sorted((day, event, label, n) for (day, event, label), n in counts.items())
 
     def count_between(self, event: str, start: datetime, end: datetime) -> int:
         """Count of `event` rows in [start, end) -- both real, timezone-

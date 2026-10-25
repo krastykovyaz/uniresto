@@ -18,3 +18,14 @@ test("when the server says the menu changed, the basket is re-pinned and the cus
   assert.match(app, /tr\("menuChangedBasket", \{ dishes: names\.join\(", "\) \}\)/);
   assert.equal((i18n.match(/menuChangedBasket:/g) || []).length, 11);
 });
+
+test("the ordering funnel is counted anonymously: basket, review, confirm, what stopped them, why they left", () => {
+  assert.match(app, /function trackFunnel\(event, label, \{ once = false \} = \{\}\)/);
+  for (const step of ['trackFunnel("basket_add"', 'trackFunnel("review_open"', 'trackFunnel("confirm_press")', 'trackFunnel("review_leave"', 'trackFunnel("order_error"']) {
+    assert.ok(app.includes(step), step);
+  }
+  for (const reason of ["no_building", "no_room", "no_email", "bad_email", "bad_phone", "no_uni_email"]) {
+    assert.ok(app.includes(`trackFunnel("confirm_blocked", "${reason}")`), reason);
+  }
+  assert.match(app, /function reviewMissing\(\)/);
+});
