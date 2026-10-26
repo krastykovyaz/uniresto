@@ -33,7 +33,7 @@ def test_bottle_size_without_unit_letter():
 
 
 def test_unknown_or_ambiguous_products_are_left_out_not_guessed():
-    assert _lookup("10.2 Boissons froides - Jus", "Ramborn Apple Soda 0,33 l btl") is None
+    assert _lookup("11. Boissons chaudes", "Cappuccino") is None
 
 
 def test_category_must_match():
@@ -43,7 +43,7 @@ def test_category_must_match():
 def test_label_values_feed_calories_in_the_menu():
     menu = DailyMenu("x", "X", date(2026, 10, 27), "Lunch", None, "", items=[
         MenuItem("10.3 Boissons froides - Sodas", "Coca Cola 0,20 l btl", None, 2.0, weight_value=0.2, weight_unit="l"),
-        MenuItem("10.2 Boissons froides - Jus", "Ramborn Apple Soda 0,33 l btl", None, 2.0),
+        MenuItem("11. Boissons chaudes", "Cappuccino", None, 2.0),
     ])
     cola, wave = flatten_menu_items([menu])
     assert cola["calories"] == 84.0 and cola["nutrition"]["per100"]["kcal"] == 42
@@ -90,9 +90,13 @@ def test_auchan_values_for_the_lets_limos_and_ramborn():
     lime = _lookup("10.3 Boissons froides - Sodas", "Lët'z limo lemon & lime 0,33 btl")
     assert orange["per100"]["kcal"] == 37 and orange["serving"]["kcal"] == 122.1 and orange["per100"]["fat"] is None
     assert lime["per100"]["sugars"] == 9.5
-    apple = _lookup("10.2 Boissons froides - Jus", "Ramborn Apple Juice 0,33 btl")
-    assert apple["basis"] == "label" and apple["per100"]["kcal"] == 25
-    assert _lookup("10.2 Boissons froides - Jus", "Ramborn Pear Apple Juice 0,33 l btl")["basis"] == "similar"
+    # Auchan's "Jus de pomme 70cl" is 65% juice + 35% water + CO2: it describes the soda, NOT the pure juices
+    soda = _lookup("10.2 Boissons froides - Jus", "Ramborn Apple Soda 0,33 l btl")
+    assert soda["basis"] == "similar" and soda["per100"]["kcal"] == 25
+    for juice in ("Ramborn Apple Juice 0,33 btl", "Ramborn Pear Apple Juice 0,33 l btl"):
+        assert _lookup("10.2 Boissons froides - Jus", juice)["per100"]["kcal"] == 46
+    quince = _lookup("10.2 Boissons froides - Jus", "Ramborn Apple & Quince Juice 0,33 l btl")
+    assert quince["per100"]["kcal"] == 45 and quince["per100"]["sugars"] == 9.5 and quince["basis"] == "typical"
 
 
 def test_ice_cream_is_weighed_not_measured_in_millilitres():
