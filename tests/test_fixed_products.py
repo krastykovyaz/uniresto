@@ -62,3 +62,20 @@ def test_rosport_tables_from_the_makers_site():
     lemon = _lookup("10.2 Boissons froides - Jus", "Rosport Sunny Citron-Citron vert 0,50 l non consigné")
     assert peach["per100"]["sugars"] == 4.4 and lemon["per100"]["sugars"] == 4.3
     assert _lookup("10.3 Boissons froides - Sodas", "Rosport Pom's 0,50 l non consigné")["per100"]["kcal"] == 30
+
+
+def test_plain_hot_drinks_and_fruit_are_typical_values_with_a_usual_amount():
+    espresso = _lookup("11. Boissons chaudes", "Espresso double")
+    assert espresso["basis"] == "typical" and espresso["serving_amount"] == 60 and espresso["unit"] == "ml"
+    assert _lookup("11. Boissons chaudes", "Espresso")["serving_amount"] == 30  # not mistaken for the double
+    tea = _lookup("11. Boissons chaudes", 'Thé "commerce équitable"')
+    assert tea["serving"]["kcal"] == 2.0
+    banana = _lookup("06. Fruits", 'Banane "commerce équitable"')
+    assert banana["serving_amount"] == 120 and banana["serving"]["kcal"] == 106.8
+    # a named package size always wins over the usual amount
+    assert _lookup("11. Boissons chaudes", "Thermo Café 1,50 l")["serving_amount"] == 1500
+
+
+def test_milk_and_chocolate_drinks_stay_unknown():
+    assert _lookup("11. Boissons chaudes", "Cappuccino") is None
+    assert _lookup("11. Boissons chaudes", 'Chocolat chaud "Commerce équitable"') is None

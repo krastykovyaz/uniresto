@@ -126,3 +126,10 @@ def test_typical_does_not_apply_to_drinks_or_unknown_categories():
 def test_typical_sandwich_counter_and_cakes():
     assert estimate_typical("1/2 Levain jambon cuit", "01.3 Sandwiches non-végétariens")["portion_g"] == 190
     assert estimate_typical("Crispy Apple", "03. Gâteaux et cookies maison")["portion_g"] == 90
+
+
+def test_typical_range_for_whole_sections():
+    assert estimate_typical("Huit 80 g", "02. Viennoiseries")["portion_g"] == 80
+    assert estimate_typical("Mini salades 150 g", "04. Vitamines à emporter") is not None
+    assert estimate_typical("Dessert du Jour", "08. Pâtisserie")["low"] < estimate_typical("Dessert du Jour", "08. Pâtisserie")["high"]
+    assert estimate_typical("Consigne ECOBOX (500 ml)", "12.1 Emballages et articles réutilisables") is None

@@ -31,8 +31,10 @@ def _per100(kcal, fat, saturates, carbs, sugars, protein, salt=None) -> dict:
 
 _WATER = _per100(0, 0, 0, 0, 0, 0, 0)
 
-# (regex on the normalized menu name, category prefix, per-100 values, basis, source)
-_PRODUCTS: list[tuple[str, str, dict, str, str]] = [
+# (regex on the normalized menu name, category prefix, per-100 values, basis, source[, usual amount])
+# The optional last element is the usual amount of ONE item when the menu name gives no size (one banana, one cup of
+# coffee); it is only ever used for the "typical" basis.
+_PRODUCTS: list[tuple] = [
     (r"^(viva)\b", "10.1", _WATER, "label", "Open Food Facts 5450038030572 (Viva)"),
     (r"^rosport blue\b", "10.1", _WATER, "label", "Open Food Facts 5450038010574 (Rosport)"),
     (r"^lodyss\b", "10.1", _WATER, "label", "Open Food Facts 5450154904016 (Lodyss)"),
@@ -52,6 +54,22 @@ _PRODUCTS: list[tuple[str, str, dict, str, str]] = [
     (r"^ramborn (apple|pear apple|apple & quince) juice\b", "10.2", _per100(46, 0.1, 0, 11, 10, 0.1, 0), "typical",
      "typical clear apple juice"),
     (r"^letzbuerger drauwejus\b", "10.2", _per100(65, 0.1, 0, 16, 16, 0.4, 0), "typical", "typical grape juice"),
+    (r"^banane\b", "06.", _per100(89, 0.3, 0.1, 22.8, 12.2, 1.1, 0), "typical",
+     "typical banana, one medium (about 120 g peeled)", (120, "g")),
+    (r"^mini fruits decoupes\b", "06.", _per100(50, 0.2, 0, 11.5, 9.5, 0.6, 0), "typical", "typical mixed cut fruit"),
+    (r"^fruit frais entier\b", "06.", _per100(50, 0.2, 0, 12, 10, 0.6, 0), "typical",
+     "typical apple, pear or plum (the kind changes); a piece is about 150 g"),
+    (r"^thermo cafe\b", "11.", _per100(1, 0, 0, 0, 0, 0.1, 0), "typical", "typical brewed black coffee, no milk or sugar"),
+    (r"^espresso double\b", "11.", _per100(9, 0.2, 0, 1.7, 0, 0.1, 0), "typical",
+     "typical espresso, no sugar; a double is about 60 ml", (60, "ml")),
+    (r"^espresso\b", "11.", _per100(9, 0.2, 0, 1.7, 0, 0.1, 0), "typical",
+     "typical espresso, no sugar; a single is about 30 ml", (30, "ml")),
+    (r"^cafe\b", "11.", _per100(1, 0, 0, 0, 0, 0.1, 0), "typical",
+     "typical brewed black coffee, no milk or sugar; a cup is about 150 ml", (150, "ml")),
+    (r"^the\b", "11.", _per100(1, 0, 0, 0.2, 0, 0, 0), "typical",
+     "typical unsweetened tea, no milk; a cup is about 200 ml", (200, "ml")),
+    (r"^tisane\b", "11.", _per100(1, 0, 0, 0.2, 0, 0, 0), "typical",
+     "typical unsweetened herbal infusion; a cup is about 200 ml", (200, "ml")),
     (r"^lait luxlait bio\b", "05.", _per100(65, 3.6, 2.5, 5, 5, 3.3, 0.11), "label",
      "Open Food Facts 5450168519145 (Luxlait lait bio 3,5%); luxlait.lu: the 250 ml organic pack is the fresh 3.5% milk"),
     (r"^yaourt nature luxlait\b", "05.", _per100(65, 3.5, 2.5, 5, 5, 3.3, 0.11), "label",
@@ -63,7 +81,7 @@ _PRODUCTS: list[tuple[str, str, dict, str, str]] = [
     (r"^dame blanche luxlait\b", "07.", _per100(165, 3.5, 2.5, 28.1, 26.6, 3.3, 0.12), "label",
      "Open Food Facts 5450007611450 (Luxlait dame blanche)"),
 ]
-_COMPILED = [(re.compile(rx), cat, vals, basis, src) for rx, cat, vals, basis, src in _PRODUCTS]
+_COMPILED = [(re.compile(e[0]), e[1], e[2], e[3], e[4], e[5] if len(e) > 5 else None) for e in _PRODUCTS]
 
 
 def _amount(weight_value: float | None, weight_unit: str | None) -> tuple[float, str] | None:
@@ -87,20 +105,22 @@ def fixed_product_nutrition(category: str, name: str, weight_value: float | None
     """{"per100", "unit", "serving", "serving_amount", "basis", "source"} for a known fixed product, else None.
     `serving` is the per-package values (None when the menu name gives no size); `unit` is "g" or "ml"."""
     normalized = _normalize(name)
-    for pattern, cat_prefix, per100, basis, source in _COMPILED:
+    for pattern, cat_prefix, per100, basis, source, usual in _COMPILED:
         if category.startswith(cat_prefix) and pattern.search(normalized):
             amount = _amount(weight_value, weight_unit)
             if amount is None and cat_prefix.startswith("10"):
                 bottle = _BOTTLE_RE.search(normalized)
                 if bottle:
                     amount = (float(bottle.group(1).replace(",", ".")) * 1000, "ml")
+            if amount is None and basis == "typical" and usual is not None:
+                amount = (float(usual[0]), usual[1])
             serving = None
             if amount is not None:
                 factor = amount[0] / 100.0
                 serving = {k: (None if v is None else round(v * factor, 1)) for k, v in per100.items()}
             return {
                 "per100": dict(per100),
-                "unit": amount[1] if amount else ("ml" if cat_prefix.startswith("10") else "g"),
+                "unit": amount[1] if amount else ("ml" if cat_prefix.startswith(("10", "11")) else "g"),
                 "serving": serving,
                 "serving_amount": amount[0] if amount else None,
                 "basis": basis,

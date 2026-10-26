@@ -222,6 +222,14 @@ _PORTION_BY_CATEGORY = {
     "Féculents": (180, 130), "Légumes": (150, 50), "Dessert": (110, 260), "Snack à emporter": (260, 180),
 }  # category -> (grams, kcal per 100 g)
 _TYPICAL_CATEGORIES = set(_PORTION_BY_CATEGORY)
+# Whole menu sections with one ordinary item type: viennoiserie, small take-away salad / soup, house muesli, the
+# "dessert of the day" (prefix of the Restopolis category -> grams, kcal per 100 g, food type).
+_TYPICAL_BY_PREFIX = {
+    "02.": (80, 380.0, "pastry"),
+    "04.": (170, 70.0, None),
+    "05.": (150, 130.0, None),
+    "08.": (110, 260.0, "dessert"),
+}
 # A range, not a point: the same dish is served in different amounts, with different amounts of butter/oil.
 TYPICAL_SPREAD = 0.25
 
@@ -261,6 +269,8 @@ def estimate_typical(name: str, category: str) -> dict | None:
         grams, density, food_type = 190, 250.0, "bread_savory"
     elif category.startswith("03."):  # house cakes and cookies
         grams, density, food_type = 90, 420.0, "dessert"
+    elif category[:3] in _TYPICAL_BY_PREFIX:
+        grams, density, food_type = _TYPICAL_BY_PREFIX[category[:3]]
     elif category in _TYPICAL_CATEGORIES:
         default_grams, default_density = _PORTION_BY_CATEGORY[category]
         match = _classify_typical(name)
