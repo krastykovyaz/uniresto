@@ -5392,7 +5392,8 @@ function nutritionTable(item) {
     return key === "kcal" ? fmt(v) : `${fmt(v)} g`;
   };
   const body = rows
-    .filter(([key]) => key === "kcal" || n.per100[key] != null)
+    // a natural mineral water is zero in everything but salt: a column of "0 g" rows says nothing, so show kcal and salt
+    .filter(([key]) => (n.basis === "mineral" ? key === "kcal" || (key === "salt" && n.per100.salt != null) : key === "kcal" || n.per100[key] != null))
     .map(([key, label, , sub]) => {
       const name = key === "kcal" ? tr("kcal") : tr(label);
       const cols = [cell(n.per100, key)];
