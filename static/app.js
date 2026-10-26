@@ -5337,10 +5337,33 @@ function priceIsUnspecified(item) {
 // "not available" placeholder when there's nothing to show -- unlike
 // weight/price, an absent calorie estimate isn't a data-integrity fact
 // worth calling out on every single card.
+// Approximate per-portion table for a photographed dish: ranges (+/- n.spread), kcal, fat, carbs, protein.
+function dishNutritionTable(n) {
+  const spread = n.spread || 0.2;
+  const range = (v, step) => {
+    const lo = Math.round((v * (1 - spread)) / step) * step;
+    const hi = Math.round((v * (1 + spread)) / step) * step;
+    return `${lo}–${hi}`;
+  };
+  const rows = [
+    ["kcal", tr("kcal"), 10, ""],
+    ["fat", tr("nutFat"), 1, " g"],
+    ["carbs", tr("nutCarbs"), 1, " g"],
+    ["protein", tr("nutProtein"), 1, " g"],
+  ];
+  const body = rows
+    .filter(([key]) => n.serving[key] != null)
+    .map(([key, name, step, unit]) => `<tr><th scope="row">${escapeHtml(name)}</th><td>${escapeHtml(range(n.serving[key], step) + unit)}</td></tr>`)
+    .join("");
+  return `<table class="nut-table"><thead><tr><th></th><th>≈ ${escapeHtml(tr("nutPerServing", { amount: Math.round(n.serving_amount), unit: n.unit }))}</th></tr></thead><tbody>${body}</tbody></table>
+    <p class="nut-basis">${escapeHtml(tr("nutBasisDish"))}</p>`;
+}
+
 // Label-style table for packaged products (item.nutrition, from orderability_engine/fixed_products.py): fat,
 // carbs, protein... per 100 g/ml and, when the package size is known, per package. Says how close the source is.
 function nutritionTable(item) {
   const n = item.nutrition;
+  if (n && n.basis === "dish" && n.serving) return dishNutritionTable(n);
   if (!n || !n.per100) return "";
   const fmt = (v) => {
     if (v == null) return "–";
@@ -5382,7 +5405,10 @@ function nutritionTable(item) {
 }
 
 function caloriesText(item) {
-  if (item.calories != null) {
+  // A photographed dish carries its own approximate range (item.nutrition.basis === "dish"); show that one so the
+  // card and the table agree, even where a published weight also gave a density-based number.
+  const dishRange = item.nutrition && item.nutrition.basis === "dish";
+  if (item.calories != null && !(dishRange && item.calories_typical_low != null)) {
     return `${tr("estimated")} ${Math.round(item.calories)} ${tr("kcal")}`;
   }
   // No published weight: a rougher range for a typical portion, worded as such. Display only -- the calorie

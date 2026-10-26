@@ -16,6 +16,7 @@ from restopolis.weight import format_weight
 
 from orderability_engine.detector import MENU_SOURCE_URL
 from orderability_engine.nutrition import estimate_calories, estimate_typical
+from orderability_engine.dish_estimates import dish_estimate
 from orderability_engine.fixed_products import fixed_product_nutrition
 from orderability_engine.pricing import MAIN_CATEGORIES
 from orderability_engine.service import OrderabilityService
@@ -105,6 +106,16 @@ def flatten_menu_items(daily_menus: list[DailyMenu]) -> list[dict]:
                 nutrition = {"calories": fixed["serving"]["kcal"], "food_type": "fixed_product", "is_estimated": True}
             # A rougher range for dishes with no published weight; never fed to the calorie filter or Smart Lunch.
             typical = estimate_typical(item.name, item.category) if nutrition["calories"] is None else None
+            # A photographed dish has its own hand-made estimate (portion, kcal, fat, carbs, protein): it replaces
+            # the generic typical range for that dish (also where a published weight gave a density-based figure, so the card
+            # and the table agree). Still a range, and it never replaces `calories`, which the filters read.
+            if fixed is None:
+                fixed = dish_estimate(item.name)
+                if fixed:
+                    middle = fixed["serving"]["kcal"]
+                    typical = {"low": int(round(middle * (1 - fixed["spread"]) / 10.0) * 10),
+                               "high": int(round(middle * (1 + fixed["spread"]) / 10.0) * 10),
+                               "portion_g": fixed["serving_amount"]}
             flat.append(
                 {
                     "id": next_id,
