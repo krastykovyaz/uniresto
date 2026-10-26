@@ -5095,6 +5095,7 @@ def test_a_stale_available_for_a_past_week_is_not_served_from_the_cache(client):
     import datetime as dt
     from orderability_engine.models import TZINFO
 
+    service._today_override = dt.date(2026, 10, 5)  # the service's "today": the week has turned
     service._now_override = dt.datetime(2026, 10, 5, 9, 0, tzinfo=TZINFO)
     body = client.get("/api/restaurants/altius/status?date=2026-09-24").get_json()
     assert body["status"] == "past_date"

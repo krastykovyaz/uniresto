@@ -226,7 +226,7 @@ class OrderabilityService:
         # week onward), so it must NOT be answered from the cache: a stale "available" for last week's date made
         # the menu route try to load data that no longer exists and fail with a server error.
         try:
-            weeks_ahead_for(target_date, now.date())
+            weeks_ahead_for(target_date, self._today())
         except PastDateError as exc:
             return self._error_result(restaurant, target_date, now, "past_date", str(exc))
 
