@@ -3,13 +3,12 @@ ice cream, fresh cheese).
 
 Unlike a cooked dish, a bottle of Coca-Cola or a pot of Luxlait fromage frais is the same every day, so its
 nutrition label can be looked up once. The figures below are the values printed on the packaging as recorded in
-Open Food Facts (an open, crowd-sourced product database -- barcode in `source`); they are per 100 g or 100 ml
+Open Food Facts (an open, crowd-sourced product database -- barcode in `source`) or, for Rosport, the maker's own
+nutrition tables on rosport.com; they are per 100 g or 100 ml
 exactly as a label gives them, and every entry says how close the match is:
 
   "label"   -- the very product on the menu (same brand and variety)
   "similar" -- the same brand's closest product (named in `source`); the menu item has no entry of its own
-  "range"   -- no table for this product, only the maker's statement for its whole range of drinks (named in
-               `source`), so only the figures the statement gives are filled in
   "typical" -- no entry for this brand: a typical value for that KIND of drink, not this product
 
 Nothing here is Restopolis data, it is not medical or dietary advice, and a missing product means "not looked up
@@ -41,12 +40,15 @@ _PRODUCTS: list[tuple[str, str, dict, str, str]] = [
     (r"^fuze tea\b", "10.3", _per100(19, 0, 0, 4.3, 4.3, 0, 0.03), "label",
      "Open Food Facts 5449000237620 (Fuze Tea Peach Hibiscus)"),
     (r"^let'?z kola\b", "10.3", _per100(27, 0, 0, 6.8, 6.6, 0), "label", "Open Food Facts 5450322059395 (Lët'z kola)"),
-    (r"^rosport pom'?s\b", "10.3", _per100(27, 0.1, 0.1, 6.5, 6.2, 0.1, 0.014), "label",
-     "Open Food Facts 5450038050570 (Rosport Pom's)"),
-    (r"^rosport mat\b", "10.", _per100(0, None, None, None, 0, None), "range",
-     "paperjam.lu, 26 Oct 2026: Rosport Mat shows 0 calories, no sugar or sweeteners"),
-    (r"^rosport sunny\b", "10.", _per100(20, None, None, None, 4.5, None), "range",
-     "chronicle.lu, 14 Sep 2020: Rosport Sunny under 20 kcal and 4.5 g sugar per 100 ml (20 is the upper bound)"),
+    (r"^rosport mat\b", "10.1", _per100(0, 0, 0, 0, 0, 0, 0.012), "label", "rosport.com/en/products/rosport-mat (mint, lemon)"),
+    (r"^rosport wave\b", "10.3", _per100(16, 0.5, None, 3.6, 3.4, 0.5, None), "label",
+     "rosport.com/en/products/rosport-wave (grape and grapefruit juice; saturates < 0.1 g, salt < 0.015 g)"),
+    (r"^rosport sunny peche\b", "10.2", _per100(20, 0, 0, 4.6, 4.4, 0, 0.02), "label",
+     "rosport.com/en/products/rosport-sunny (peach)"),
+    (r"^rosport sunny citron\b", "10.2", _per100(19, 0, 0, 4.3, 4.3, 0, 0.02), "label",
+     "rosport.com/en/products/rosport-sunny (lemon-lime)"),
+    (r"^rosport pom'?s\b", "10.3", _per100(30, 0, 0, 7.3, 6.9, 0, 0.032), "label",
+     "rosport.com/en/products/rosport-poms (65% apple juice)"),
     (r"^ramborn (apple|pear apple|apple & quince) juice\b", "10.2", _per100(46, 0.1, 0, 11, 10, 0.1, 0), "typical",
      "typical clear apple juice"),
     (r"^letzbuerger drauwejus\b", "10.2", _per100(65, 0.1, 0, 16, 16, 0.4, 0), "typical", "typical grape juice"),

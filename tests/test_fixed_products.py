@@ -29,7 +29,7 @@ def test_bottle_size_without_unit_letter():
 
 
 def test_unknown_or_ambiguous_products_are_left_out_not_guessed():
-    assert _lookup("10.3 Boissons froides - Sodas", "Rosport Wave 0,50 l non-consigné") is None
+    assert _lookup("10.3 Boissons froides - Sodas", "Lët'z limo orange 0,33 btl") is None
 
 
 def test_category_must_match():
@@ -39,7 +39,7 @@ def test_category_must_match():
 def test_label_values_feed_calories_in_the_menu():
     menu = DailyMenu("x", "X", date(2026, 10, 27), "Lunch", None, "", items=[
         MenuItem("10.3 Boissons froides - Sodas", "Coca Cola 0,20 l btl", None, 2.0, weight_value=0.2, weight_unit="l"),
-        MenuItem("10.3 Boissons froides - Sodas", "Rosport Wave 0,50 l non-consigné", None, 2.0, weight_value=0.5, weight_unit="l"),
+        MenuItem("10.3 Boissons froides - Sodas", "Lët'z limo orange 0,33 btl", None, 2.0),
     ])
     cola, wave = flatten_menu_items([menu])
     assert cola["calories"] == 84.0 and cola["nutrition"]["per100"]["kcal"] == 42
@@ -53,8 +53,12 @@ def test_organic_milk_and_plain_yoghurt_are_the_whole_versions():
     assert yoghurt["per100"]["fat"] == 3.5 and yoghurt["serving"]["kcal"] == 81.2
 
 
-def test_range_statements_fill_only_what_the_maker_says():
+def test_rosport_tables_from_the_makers_site():
     mat = _lookup("10.1 Boissons froides - Eau minérale et pétillante", "Rosport mat Menthe 0,50 l non consigné")
-    assert mat["basis"] == "range" and mat["per100"]["kcal"] == 0 and mat["per100"]["fat"] is None
-    sunny = _lookup("10.2 Boissons froides - Jus", "Rosport Sunny Pêche 0,50 l non consigné")
-    assert sunny["per100"]["sugars"] == 4.5 and sunny["per100"]["protein"] is None
+    assert mat["basis"] == "label" and mat["serving"]["kcal"] == 0
+    wave = _lookup("10.3 Boissons froides - Sodas", "Rosport Wave 0,50 l non-consigné")
+    assert wave["per100"]["kcal"] == 16 and wave["serving"]["kcal"] == 80.0 and wave["per100"]["saturates"] is None
+    peach = _lookup("10.2 Boissons froides - Jus", "Rosport Sunny Pêche 0,50 l non consigné")
+    lemon = _lookup("10.2 Boissons froides - Jus", "Rosport Sunny Citron-Citron vert 0,50 l non consigné")
+    assert peach["per100"]["sugars"] == 4.4 and lemon["per100"]["sugars"] == 4.3
+    assert _lookup("10.3 Boissons froides - Sodas", "Rosport Pom's 0,50 l non consigné")["per100"]["kcal"] == 30
