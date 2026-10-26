@@ -5337,6 +5337,50 @@ function priceIsUnspecified(item) {
 // "not available" placeholder when there's nothing to show -- unlike
 // weight/price, an absent calorie estimate isn't a data-integrity fact
 // worth calling out on every single card.
+// Label-style table for packaged products (item.nutrition, from orderability_engine/fixed_products.py): fat,
+// carbs, protein... per 100 g/ml and, when the package size is known, per package. Says how close the source is.
+function nutritionTable(item) {
+  const n = item.nutrition;
+  if (!n || !n.per100) return "";
+  const fmt = (v) => {
+    if (v == null) return "–";
+    try {
+      return new Intl.NumberFormat(state.lang, { maximumFractionDigits: 1 }).format(v);
+    } catch (e) {
+      return String(Math.round(v * 10) / 10);
+    }
+  };
+  const rows = [
+    ["kcal", null, tr("kcal")],
+    ["fat", "nutFat"],
+    ["saturates", "nutSaturates", null, true],
+    ["carbs", "nutCarbs"],
+    ["sugars", "nutSugars", null, true],
+    ["protein", "nutProtein"],
+    ["salt", "nutSalt"],
+  ];
+  const unit = n.unit;
+  const head = [tr("nutPer100", { unit })];
+  if (n.serving) head.push(tr("nutPerServing", { amount: Math.round(n.serving_amount), unit }));
+  const cell = (values, key) => {
+    const v = values[key];
+    if (v == null) return "–";
+    return key === "kcal" ? fmt(v) : `${fmt(v)} g`;
+  };
+  const body = rows
+    .filter(([key]) => key === "kcal" || n.per100[key] != null)
+    .map(([key, label, , sub]) => {
+      const name = key === "kcal" ? tr("kcal") : tr(label);
+      const cols = [cell(n.per100, key)];
+      if (n.serving) cols.push(cell(n.serving, key));
+      return `<tr class="${sub ? "nut-sub" : ""}"><th scope="row">${escapeHtml(name)}</th>${cols.map((c) => `<td>${escapeHtml(c)}</td>`).join("")}</tr>`;
+    })
+    .join("");
+  const basisKey = { label: "nutBasisLabel", similar: "nutBasisSimilar", typical: "nutBasisTypical" }[n.basis] || "nutBasisTypical";
+  return `<table class="nut-table"><thead><tr><th></th>${head.map((h) => `<th>${escapeHtml(h)}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>
+    <p class="nut-basis">${escapeHtml(tr(basisKey))}</p>`;
+}
+
 function caloriesText(item) {
   if (item.calories != null) {
     return `${tr("estimated")} ${Math.round(item.calories)} ${tr("kcal")}`;
@@ -5939,6 +5983,7 @@ function openDishDetailSheet(item, trigger, earlyCutoffPassed = false) {
               ? `<div class="dish-detail-nutrition">
                   <p class="dish-detail-section-title">${escapeHtml(tr("nutritionEstimated"))}</p>
                   <p class="dish-detail-calories">${escapeHtml(calories)}</p>
+                  ${nutritionTable(item)}
                 </div>`
               : ""
           }

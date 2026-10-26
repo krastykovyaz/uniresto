@@ -2285,3 +2285,11 @@ svg { display: block; }
 .try-card { margin: var(--space-2) var(--space-4) var(--space-1); padding: 12px 16px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); }
 .try-card strong { font-size: 0.95rem; color: var(--color-primary-dark); }
 .try-card ul { margin: 6px 0 0; padding-inline-start: 18px; font-size: 0.85rem; line-height: 1.45; color: var(--color-text); }
+
+/* Label-style nutrition table in the dish detail (packaged products) */
+.nut-table { width: 100%; border-collapse: collapse; margin: 8px 0 4px; font-size: 0.9rem; }
+.nut-table th, .nut-table td { padding: 4px 0; text-align: right; border-bottom: 1px solid var(--border, rgba(127,127,127,.25)); font-variant-numeric: tabular-nums; }
+.nut-table thead th { font-weight: 600; font-size: 0.8rem; opacity: .75; }
+.nut-table tbody th { text-align: start; font-weight: 500; }
+.nut-table .nut-sub th { padding-inline-start: 12px; font-weight: 400; opacity: .8; }
+.nut-basis { margin: 4px 0 0; font-size: 0.78rem; opacity: .7; }

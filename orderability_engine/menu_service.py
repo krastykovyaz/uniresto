@@ -16,6 +16,7 @@ from restopolis.weight import format_weight
 
 from orderability_engine.detector import MENU_SOURCE_URL
 from orderability_engine.nutrition import estimate_calories, estimate_typical
+from orderability_engine.fixed_products import fixed_product_nutrition
 from orderability_engine.pricing import MAIN_CATEGORIES
 from orderability_engine.service import OrderabilityService
 
@@ -97,6 +98,11 @@ def flatten_menu_items(daily_menus: list[DailyMenu]) -> list[dict]:
     for menu in daily_menus:
         for item in menu.items:
             nutrition = estimate_calories(item.name, item.weight_value, item.weight_unit)
+            # Packaged products have a label: its values (and, with a known package size, the real kcal) win over
+            # the generic density estimate.
+            fixed = fixed_product_nutrition(item.category, item.name, item.weight_value, item.weight_unit)
+            if fixed and fixed["serving"] and fixed["serving"]["kcal"] is not None:
+                nutrition = {"calories": fixed["serving"]["kcal"], "food_type": "fixed_product", "is_estimated": True}
             # A rougher range for dishes with no published weight; never fed to the calorie filter or Smart Lunch.
             typical = estimate_typical(item.name, item.category) if nutrition["calories"] is None else None
             flat.append(
@@ -119,6 +125,7 @@ def flatten_menu_items(daily_menus: list[DailyMenu]) -> list[dict]:
                     "calories": nutrition["calories"],
                     "calories_food_type": nutrition["food_type"],
                     "calories_estimated": nutrition["is_estimated"],
+                    "nutrition": fixed,
                     "calories_typical_low": typical["low"] if typical else None,
                     "calories_typical_high": typical["high"] if typical else None,
                     "calories_typical_portion_g": typical["portion_g"] if typical else None,
