@@ -104,6 +104,10 @@ _PRODUCTS: list[tuple] = [
 _COMPILED = [(re.compile(e[0]), e[1], e[2], e[3], e[4], e[5] if len(e) > 5 else None) for e in _PRODUCTS]
 
 
+def _round_serving(value: float) -> float:
+    return round(value, 1) if value >= 0.1 or value == 0 else round(value, 3)
+
+
 def _amount(weight_value: float | None, weight_unit: str | None) -> tuple[float, str] | None:
     """The package size as (amount, "g" | "ml"), or None when the name states none."""
     if weight_value is None or weight_unit is None or weight_unit == "piece":
@@ -137,7 +141,8 @@ def fixed_product_nutrition(category: str, name: str, weight_value: float | None
             serving = None
             if amount is not None:
                 factor = amount[0] / 100.0
-                serving = {k: (None if v is None else round(v * factor, 1)) for k, v in per100.items()}
+                # one decimal, but trace amounts (salt in mineral water: 0.043 g a bottle) keep three, never rounded to 0
+                serving = {k: (None if v is None else _round_serving(v * factor)) for k, v in per100.items()}
             return {
                 "per100": dict(per100),
                 "unit": amount[1] if amount else ("ml" if cat_prefix.startswith(("10", "11")) else "g"),

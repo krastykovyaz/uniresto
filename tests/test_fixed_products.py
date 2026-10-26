@@ -106,3 +106,10 @@ def test_ice_cream_is_weighed_not_measured_in_millilitres():
     assert 220 <= cone["serving"]["kcal"] <= 250
     dame = _lookup("07. Glaces", "Dame Blanche Luxlait 200 ml")
     assert dame["serving_amount"] == 120 and dame["serving"]["kcal"] == 198.0
+
+
+def test_trace_salt_per_bottle_is_not_rounded_to_zero():
+    viva = _lookup("10.1 Boissons froides - Eau minérale et pétillante", "Viva 0,50 l btl")
+    assert viva["per100"]["salt"] == 0.0086 and viva["serving"]["salt"] == 0.043
+    assert viva["serving"]["kcal"] == 0  # a real zero stays zero
+    assert _lookup("10.3 Boissons froides - Sodas", "Coca Cola 0,50 l non consigné")["serving"]["kcal"] == 210.0
