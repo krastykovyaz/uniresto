@@ -5071,3 +5071,35 @@ def test_the_funnel_stores_no_personal_data(client):
     store = client.application.config["PAGE_VIEW_STORE"]
     columns = [row[1] for row in store._conn.execute("PRAGMA table_info(page_views)").fetchall()]
     assert set(columns) <= {"id", "event", "created_at", "source"}  # an event, a day and a short label -- nothing else
+
+
+# ---------------------------------------------------------------------------
+# A date in a past week never gives a server error, and never an "available" left over in the cache
+# ---------------------------------------------------------------------------
+
+
+def test_the_menu_of_a_past_week_is_a_clear_409_not_a_500(client):
+    # The fixture clock is Thursday 2026-09-24; 2026-09-14 is two weeks earlier.
+    resp = client.get("/api/restaurants/altius/menu/2026-09-14")
+    assert resp.status_code == 409
+    assert resp.get_json()["status"] == "past_date"
+
+
+def test_a_stale_available_for_a_past_week_is_not_served_from_the_cache(client):
+    from orderability_engine.models import RestopolisDayStatus  # noqa: F401  (documents what is being cached)
+
+    service = client.application.config["ORDERABILITY_SERVICE"]
+    # first look at a date that IS in the current week, so a cache row for it exists ...
+    assert client.get("/api/restaurants/altius/status?date=2026-09-24").get_json()["status"] == "available"
+    # ... then the week turns: the same date is now in a past week and must say so
+    import datetime as dt
+    from orderability_engine.models import TZINFO
+
+    service._now_override = dt.datetime(2026, 10, 5, 9, 0, tzinfo=TZINFO)
+    body = client.get("/api/restaurants/altius/status?date=2026-09-24").get_json()
+    assert body["status"] == "past_date"
+    assert client.get("/api/restaurants/altius/menu/2026-09-24").status_code == 409
+
+
+def test_the_status_of_a_past_week_does_not_depend_on_the_cache_at_all(client):
+    assert client.get("/api/restaurants/altius/status?date=2026-09-01").get_json()["status"] == "past_date"

@@ -222,6 +222,14 @@ class OrderabilityService:
         now = now or self._now()
         logger.info("[CHECK]\n%s\n%s", restaurant.code, target_date)
 
+        # A date in a week before the current one can never be checked again (Restopolis only shows the current
+        # week onward), so it must NOT be answered from the cache: a stale "available" for last week's date made
+        # the menu route try to load data that no longer exists and fail with a server error.
+        try:
+            weeks_ahead_for(target_date, now.date())
+        except PastDateError as exc:
+            return self._error_result(restaurant, target_date, now, "past_date", str(exc))
+
         # Ignores age entirely (get_raw_with_checked_at, not get()) --
         # this is the request path, and the request path now only ever
         # shows "the last state", however old, never live-fetching on

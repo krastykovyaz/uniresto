@@ -100,8 +100,10 @@ from orderability_engine.telegram_notify import (
     send_order_released_notification,
     webhook_secret,
 )
-from restopolis.client import BASE_URL as RESTOPOLIS_BASE_URL
+from orderability_engine.detector import PastDateError
+from restopolis.client import BASE_URL as RESTOPOLIS_BASE_URL, RestopolisError
 from restopolis.config import load_restaurants
+from restopolis.parser import MenuParseError
 from scraper import slug_for
 
 # Loads RESEND_API_KEY/etc from a git-ignored .env file in the
@@ -908,7 +910,14 @@ def create_app(
         if result.status != "available":
             return jsonify({"error": "date_not_available", "status": result.status, "reason": result.reason}), 409
 
-        flat_items, _daily_menus = _load_flat_menu(restaurant, d)
+        try:
+            flat_items, _daily_menus = _load_flat_menu(restaurant, d)
+        except PastDateError as exc:
+            # Belt and braces: check_orderability already refuses past weeks, but a menu must never answer with a 500.
+            return jsonify({"error": "date_not_available", "status": "past_date", "reason": str(exc)}), 409
+        except (RestopolisError, MenuParseError) as exc:
+            logging.getLogger("uniresto").warning("menu unavailable for %s %s: %s", restaurant.code, d, exc)
+            return jsonify({"error": "date_not_available", "status": "unknown", "reason": "The menu could not be loaded right now."}), 409
         service_time = f"{result.service_start}-{result.service_end}" if result.service_start else None
         return jsonify(
             {
