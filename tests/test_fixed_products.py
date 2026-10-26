@@ -33,7 +33,7 @@ def test_bottle_size_without_unit_letter():
 
 
 def test_unknown_or_ambiguous_products_are_left_out_not_guessed():
-    assert _lookup("10.3 Boissons froides - Sodas", "Lët'z limo orange 0,33 btl") is None
+    assert _lookup("10.2 Boissons froides - Jus", "Ramborn Apple Soda 0,33 l btl") is None
 
 
 def test_category_must_match():
@@ -43,7 +43,7 @@ def test_category_must_match():
 def test_label_values_feed_calories_in_the_menu():
     menu = DailyMenu("x", "X", date(2026, 10, 27), "Lunch", None, "", items=[
         MenuItem("10.3 Boissons froides - Sodas", "Coca Cola 0,20 l btl", None, 2.0, weight_value=0.2, weight_unit="l"),
-        MenuItem("10.3 Boissons froides - Sodas", "Lët'z limo orange 0,33 btl", None, 2.0),
+        MenuItem("10.2 Boissons froides - Jus", "Ramborn Apple Soda 0,33 l btl", None, 2.0),
     ])
     cola, wave = flatten_menu_items([menu])
     assert cola["calories"] == 84.0 and cola["nutrition"]["per100"]["kcal"] == 42
@@ -83,3 +83,22 @@ def test_plain_hot_drinks_and_fruit_are_typical_values_with_a_usual_amount():
 def test_milk_and_chocolate_drinks_stay_unknown():
     assert _lookup("11. Boissons chaudes", "Cappuccino") is None
     assert _lookup("11. Boissons chaudes", 'Chocolat chaud "Commerce équitable"') is None
+
+
+def test_auchan_values_for_the_lets_limos_and_ramborn():
+    orange = _lookup("10.3 Boissons froides - Sodas", "Lët'z limo orange 0,33 btl")
+    lime = _lookup("10.3 Boissons froides - Sodas", "Lët'z limo lemon & lime 0,33 btl")
+    assert orange["per100"]["kcal"] == 37 and orange["serving"]["kcal"] == 122.1 and orange["per100"]["fat"] is None
+    assert lime["per100"]["sugars"] == 9.5
+    apple = _lookup("10.2 Boissons froides - Jus", "Ramborn Apple Juice 0,33 btl")
+    assert apple["basis"] == "label" and apple["per100"]["kcal"] == 25
+    assert _lookup("10.2 Boissons froides - Jus", "Ramborn Pear Apple Juice 0,33 l btl")["basis"] == "similar"
+
+
+def test_ice_cream_is_weighed_not_measured_in_millilitres():
+    # sold as "130 ml" / "200 ml", but the label values are per 100 g and ice cream weighs about 0.6 g/ml
+    cone = _lookup("07. Glaces", "Cornet Luxlait 130 ml (Chocolat, Fraise, Vanille, Praliné, Mocca-vanille)")
+    assert cone["unit"] == "g" and cone["serving_amount"] == 78 and cone["basis"] == "similar"
+    assert 220 <= cone["serving"]["kcal"] <= 250
+    dame = _lookup("07. Glaces", "Dame Blanche Luxlait 200 ml")
+    assert dame["serving_amount"] == 120 and dame["serving"]["kcal"] == 198.0

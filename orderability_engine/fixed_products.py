@@ -38,7 +38,8 @@ def _water(salt):
 
 # (regex on the normalized menu name, category prefix, per-100 values, basis, source[, usual amount])
 # The optional last element is the usual amount of ONE item when the menu name gives no size (one banana, one cup of
-# coffee); it is only ever used for the "typical" basis.
+# coffee). With a third element True it REPLACES the size in the name: ice cream is sold by volume ("130 ml") but its
+# label values are per 100 g, and 130 ml of ice cream weighs about 78 g.
 _PRODUCTS: list[tuple] = [
     (r"^(viva)\b", "10.1", _water(0.0086), "mineral", "rosport.com/en/products/rosport-viva: sodium 34.2 mg/l"),
     (r"^rosport blue\b", "10.1", _water(0.0135), "mineral", "rosport.com/en/products/rosport-blue: sodium 53.9 mg/l"),
@@ -46,7 +47,12 @@ _PRODUCTS: list[tuple] = [
     (r"^coca cola\b", "10.3", _per100(42, 0, 0, 10.6, 10.6, 0, 0), "label", "Open Food Facts 54490147 (Coca-Cola)"),
     (r"^fuze tea\b", "10.3", _per100(19, 0, 0, 4.3, 4.3, 0, 0.03), "label",
      "Open Food Facts 5449000237620 (Fuze Tea Peach Hibiscus)"),
-    (r"^let'?z kola\b", "10.3", _per100(27, 0, 0, 6.8, 6.6, 0), "label", "Open Food Facts 5450322059395 (Lët'z kola)"),
+    (r"^let'?z kola\b", "10.3", _per100(27, None, None, 6.8, 6.6, None), "label",
+     "auchan.lu Limo Kola 4x330ml; same as Open Food Facts 5450322059395"),
+    (r"^let'?z limo orange\b", "10.3", _per100(37, None, None, 9.1, 9.1, None), "label",
+     "auchan.lu Limo Orange 4x330ml (8% fruit juice)"),
+    (r"^let'?z limo lemon\b", "10.3", _per100(41, None, None, 9.5, 9.5, None), "label",
+     "auchan.lu Limo Lemon & Lime 4x330ml (12% fruit juice)"),
     (r"^rosport mat\b", "10.1", _per100(0, 0, 0, 0, 0, 0, 0.012), "label", "rosport.com/en/products/rosport-mat (mint, lemon)"),
     (r"^rosport wave\b", "10.3", _per100(16, 0.5, None, 3.6, 3.4, 0.5, None), "label",
      "rosport.com/en/products/rosport-wave (grape and grapefruit juice; saturates < 0.1 g, salt < 0.015 g)"),
@@ -56,8 +62,10 @@ _PRODUCTS: list[tuple] = [
      "rosport.com/en/products/rosport-sunny (lemon-lime)"),
     (r"^rosport pom'?s\b", "10.3", _per100(30, 0, 0, 7.3, 6.9, 0, 0.032), "label",
      "rosport.com/en/products/rosport-poms (65% apple juice)"),
-    (r"^ramborn (apple|pear apple|apple & quince) juice\b", "10.2", _per100(46, 0.1, 0, 11, 10, 0.1, 0), "typical",
-     "typical clear apple juice"),
+    (r"^ramborn apple juice\b", "10.2", _per100(25, None, None, 6.5, 6, None), "label",
+     "auchan.lu Ramborn Jus de pomme 70cl"),
+    (r"^ramborn (pear apple|apple & quince) juice\b", "10.2", _per100(25, None, None, 6.5, 6, None), "similar",
+     "auchan.lu Ramborn Jus de pomme 70cl (the same maker's apple juice)"),
     (r"^letzbuerger drauwejus\b", "10.2", _per100(65, 0.1, 0, 16, 16, 0.4, 0), "typical", "typical grape juice"),
     (r"^banane\b", "06.", _per100(89, 0.3, 0.1, 22.8, 12.2, 1.1, 0), "typical",
      "typical banana, one medium (about 120 g peeled)", (120, "g")),
@@ -84,7 +92,11 @@ _PRODUCTS: list[tuple] = [
     (r"^mini fromage frais\b", "05.", _per100(128, 5, 3.5, 14.6, 10.8, 6.1, 0.17), "similar",
      "Open Food Facts 5450168561144 (Luxlait fromage blanc sur fraises)"),
     (r"^dame blanche luxlait\b", "07.", _per100(165, 3.5, 2.5, 28.1, 26.6, 3.3, 0.12), "label",
-     "Open Food Facts 5450007611450 (Luxlait dame blanche)"),
+     "Open Food Facts 5450007611450 (Luxlait dame blanche), per 100 g; 200 ml is taken as about 120 g",
+     (120, "g", True)),
+    (r"^cornet luxlait\b", "07.", _per100(301, 15.1, 10.6, 35.9, 24.4, 4.3, 0.12), "similar",
+     "auchan.lu: average of the Luxlait cones strawberry, vanilla, chocolate and praline, per 100 g; one cone is about 78 g "
+     "(luxlait.lu)", (78, "g", True)),
 ]
 _COMPILED = [(re.compile(e[0]), e[1], e[2], e[3], e[4], e[5] if len(e) > 5 else None) for e in _PRODUCTS]
 
@@ -117,7 +129,7 @@ def fixed_product_nutrition(category: str, name: str, weight_value: float | None
                 bottle = _BOTTLE_RE.search(normalized)
                 if bottle:
                     amount = (float(bottle.group(1).replace(",", ".")) * 1000, "ml")
-            if amount is None and basis == "typical" and usual is not None:
+            if usual is not None and (len(usual) > 2 or (amount is None and basis == "typical")):
                 amount = (float(usual[0]), usual[1])
             serving = None
             if amount is not None:
