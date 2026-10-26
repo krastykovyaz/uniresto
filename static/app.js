@@ -5368,7 +5368,8 @@ function nutritionTable(item) {
   const fmt = (v) => {
     if (v == null) return "–";
     try {
-      return new Intl.NumberFormat(state.lang, { maximumFractionDigits: 1 }).format(v);
+      // trace amounts (salt in mineral water) need more digits than a gram value
+      return new Intl.NumberFormat(state.lang, { maximumFractionDigits: v > 0 && v < 0.1 ? 3 : 1 }).format(v);
     } catch (e) {
       return String(Math.round(v * 10) / 10);
     }
@@ -5399,7 +5400,7 @@ function nutritionTable(item) {
       return `<tr class="${sub ? "nut-sub" : ""}"><th scope="row">${escapeHtml(name)}</th>${cols.map((c) => `<td>${escapeHtml(c)}</td>`).join("")}</tr>`;
     })
     .join("");
-  const basisKey = { label: "nutBasisLabel", similar: "nutBasisSimilar", typical: "nutBasisTypical" }[n.basis] || "nutBasisTypical";
+  const basisKey = { label: "nutBasisLabel", similar: "nutBasisSimilar", mineral: "nutBasisMineral", typical: "nutBasisTypical" }[n.basis] || "nutBasisTypical";
   return `<table class="nut-table"><thead><tr><th></th>${head.map((h) => `<th>${escapeHtml(h)}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>
     <p class="nut-basis">${escapeHtml(tr(basisKey))}</p>`;
 }

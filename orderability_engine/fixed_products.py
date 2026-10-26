@@ -8,6 +8,8 @@ nutrition tables on rosport.com; they are per 100 g or 100 ml
 exactly as a label gives them, and every entry says how close the match is:
 
   "label"   -- the very product on the menu (same brand and variety)
+  "mineral" -- a natural mineral water: no energy, fat, sugar or protein by nature, and no nutrition table, only a
+               mineral analysis; salt (where given) is worked out from the published sodium
   "similar" -- the same brand's closest product (named in `source`); the menu item has no entry of its own
   "typical" -- no entry for this brand: a typical value for that KIND of drink, not this product
 
@@ -29,15 +31,18 @@ def _per100(kcal, fat, saturates, carbs, sugars, protein, salt=None) -> dict:
     return dict(zip(_FIELDS, (kcal, fat, saturates, carbs, sugars, protein, salt)))
 
 
-_WATER = _per100(0, 0, 0, 0, 0, 0, 0)
+# Natural mineral water has no energy, fat, carbohydrate or protein, and carries no nutrition table (only a mineral
+# analysis); salt is derived from the published sodium (salt = sodium x 2.5), per 100 ml. Basis "mineral".
+def _water(salt):
+    return _per100(0, 0, 0, 0, 0, 0, salt)
 
 # (regex on the normalized menu name, category prefix, per-100 values, basis, source[, usual amount])
 # The optional last element is the usual amount of ONE item when the menu name gives no size (one banana, one cup of
 # coffee); it is only ever used for the "typical" basis.
 _PRODUCTS: list[tuple] = [
-    (r"^(viva)\b", "10.1", _WATER, "label", "Open Food Facts 5450038030572 (Viva)"),
-    (r"^rosport blue\b", "10.1", _WATER, "label", "Open Food Facts 5450038010574 (Rosport)"),
-    (r"^lodyss\b", "10.1", _WATER, "label", "Open Food Facts 5450154904016 (Lodyss)"),
+    (r"^(viva)\b", "10.1", _water(0.0086), "mineral", "rosport.com/en/products/rosport-viva: sodium 34.2 mg/l"),
+    (r"^rosport blue\b", "10.1", _water(0.0135), "mineral", "rosport.com/en/products/rosport-blue: sodium 53.9 mg/l"),
+    (r"^lodyss\b", "10.1", _water(None), "mineral", "natural mineral water (Lodyss analysis not looked up)"),
     (r"^coca cola\b", "10.3", _per100(42, 0, 0, 10.6, 10.6, 0, 0), "label", "Open Food Facts 54490147 (Coca-Cola)"),
     (r"^fuze tea\b", "10.3", _per100(19, 0, 0, 4.3, 4.3, 0, 0.03), "label",
      "Open Food Facts 5449000237620 (Fuze Tea Peach Hibiscus)"),

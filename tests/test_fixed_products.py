@@ -18,7 +18,11 @@ def test_cola_per_package():
 
 def test_water_is_a_real_zero_not_unknown():
     n = _lookup("10.1 Boissons froides - Eau minérale et pétillante", "Viva 0,25 l btl")
+    assert n["basis"] == "mineral"  # no label exists for mineral water; the card must not claim one
     assert n["serving"]["kcal"] == 0 and n["serving"]["protein"] == 0
+    blue = _lookup("10.1 Boissons froides - Eau minérale et pétillante", "Rosport Blue 0,50 l non consigné")
+    assert blue["per100"]["salt"] == 0.0135 and "Classic" not in blue["source"]
+    assert _lookup("10.1 Boissons froides - Eau minérale et pétillante", "Lodyss plate 0,25 l btl")["per100"]["salt"] is None
 
 
 def test_bottle_size_without_unit_letter():
