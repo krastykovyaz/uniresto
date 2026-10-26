@@ -36,3 +36,24 @@ def test_ordinary_main_dish_does_not_require_early_order():
 
 def test_case_insensitive_matching():
     assert requires_early_order("Non-végétarien", "GRILL MIXTE") is True
+
+
+def test_typical_range_only_where_no_weight_and_never_in_calories():
+    from datetime import date
+    from orderability_engine.menu_service import flatten_menu_items
+    from restopolis.models import DailyMenu, MenuItem
+
+    menu = DailyMenu(
+        restaurant_code="x", restaurant_name="X", menu_date=date(2026, 10, 27), service_name="Lunch",
+        service_time=None, source_url="",
+        items=[
+            MenuItem("Non-végétarien", "Chipolatas rôties, jus réduit", None, 7.0),
+            MenuItem("Féculents", "Riz", None, 2.0, weight_value=200, weight_unit="g"),
+            MenuItem("10.3 Boissons froides - Sodas", "Coca Cola 0,20 l btl", None, 2.0),
+        ],
+    )
+    sausage, rice, soda = flatten_menu_items([menu])
+    assert sausage["calories"] is None  # filters and Smart Lunch keep seeing "unknown"
+    assert sausage["calories_typical_low"] < sausage["calories_typical_high"]
+    assert rice["calories"] is not None and rice["calories_typical_low"] is None
+    assert soda["calories_typical_low"] is None

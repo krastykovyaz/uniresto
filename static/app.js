@@ -5338,8 +5338,15 @@ function priceIsUnspecified(item) {
 // weight/price, an absent calorie estimate isn't a data-integrity fact
 // worth calling out on every single card.
 function caloriesText(item) {
-  if (item.calories == null) return null;
-  return `${tr("estimated")} ${Math.round(item.calories)} ${tr("kcal")}`;
+  if (item.calories != null) {
+    return `${tr("estimated")} ${Math.round(item.calories)} ${tr("kcal")}`;
+  }
+  // No published weight: a rougher range for a typical portion, worded as such. Display only -- the calorie
+  // filter and Smart Lunch keep using `calories`, which stays null here.
+  if (item.calories_typical_low != null && item.calories_typical_high != null) {
+    return `${tr("estimated")} ${item.calories_typical_low}–${item.calories_typical_high} ${tr("kcal")} · ${tr("typicalPortion")}`;
+  }
+  return null;
 }
 
 // Purely a visual grouping cue for the icon-avatar's color -- derived

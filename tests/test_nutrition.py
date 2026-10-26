@@ -95,3 +95,34 @@ def test_iced_tea_is_not_classified_as_the_flavor_fruit():
     # (peach) is only the flavor descriptor, not the drink type.
     food_type, _ = classify_food_type("Fuze Tea - Black Tea Pêche/Hibiscus 0,20 l btl")
     assert food_type == "iced_tea"
+
+
+# --- typical-portion range (dishes with no published weight) ---
+
+from orderability_engine.nutrition import estimate_typical
+
+
+def test_typical_uses_the_dish_name_not_the_sauce():
+    # "jus réduit" must not make chipolatas a juice, "dip yaourt" must not make a strudel a dairy product.
+    assert estimate_typical("Chipolatas rôties, jus réduit", "Non-végétarien")["food_type"] == "red_meat"
+    assert estimate_typical("Strudel au potiron, dip yaourt grec", "Végétarien")["food_type"] == "savory_pastry"
+
+
+def test_typical_is_a_range_rounded_to_ten():
+    t = estimate_typical("Fish and chips, sauce rémoulade", "Non-végétarien")
+    assert t["low"] < t["high"] and t["low"] % 10 == 0 and t["high"] % 10 == 0
+    assert t["portion_g"] == 250
+
+
+def test_typical_falls_back_to_the_category_when_the_name_says_nothing():
+    t = estimate_typical("Les ailes de la nuit", "Entrée")
+    assert t is not None and t["food_type"] is None and t["portion_g"] == 130
+
+
+def test_typical_does_not_apply_to_drinks_or_unknown_categories():
+    assert estimate_typical("Coca Cola 0,20 l btl", "10.3 Boissons froides - Sodas") is None
+
+
+def test_typical_sandwich_counter_and_cakes():
+    assert estimate_typical("1/2 Levain jambon cuit", "01.3 Sandwiches non-végétariens")["portion_g"] == 190
+    assert estimate_typical("Crispy Apple", "03. Gâteaux et cookies maison")["portion_g"] == 90

@@ -15,7 +15,7 @@ from restopolis.parser import SERVICE_NAME_MENU, parse_week_html
 from restopolis.weight import format_weight
 
 from orderability_engine.detector import MENU_SOURCE_URL
-from orderability_engine.nutrition import estimate_calories
+from orderability_engine.nutrition import estimate_calories, estimate_typical
 from orderability_engine.pricing import MAIN_CATEGORIES
 from orderability_engine.service import OrderabilityService
 
@@ -97,6 +97,8 @@ def flatten_menu_items(daily_menus: list[DailyMenu]) -> list[dict]:
     for menu in daily_menus:
         for item in menu.items:
             nutrition = estimate_calories(item.name, item.weight_value, item.weight_unit)
+            # A rougher range for dishes with no published weight; never fed to the calorie filter or Smart Lunch.
+            typical = estimate_typical(item.name, item.category) if nutrition["calories"] is None else None
             flat.append(
                 {
                     "id": next_id,
@@ -117,6 +119,9 @@ def flatten_menu_items(daily_menus: list[DailyMenu]) -> list[dict]:
                     "calories": nutrition["calories"],
                     "calories_food_type": nutrition["food_type"],
                     "calories_estimated": nutrition["is_estimated"],
+                    "calories_typical_low": typical["low"] if typical else None,
+                    "calories_typical_high": typical["high"] if typical else None,
+                    "calories_typical_portion_g": typical["portion_g"] if typical else None,
                 }
             )
             next_id += 1
