@@ -86,3 +86,13 @@ def test_new_entries_read_correctly_in_the_email_language():
     assert dish_name_label("Croissant fourré 70 g", "en") == "Filled croissant 70 g"
     assert dish_name_label("Consigne ECOBOX (500 ml)", "es") == "Depósito ECOBOX (500 ml)"
     assert dish_name_label("Cornet Luxlait 130 ml (Chocolat, Fraise, Vanille, Praliné, Mocca-vanille)", "es").startswith("Cono Luxlait 130 ml (")
+
+
+def test_the_petit_pain_blanc_sandwiches_are_called_round_white_bread_in_english():
+    from orderability_engine.dish_name_labels import dish_name_label
+
+    assert dish_name_label("Petit pain blanc jambon cuit", "en") == "Round white bread with cooked ham"
+    assert dish_name_label("Petit pain blanc salami", "en") == "Round white bread with salami"
+    assert dish_name_label("Petit pain blanc fromage", "en") == "Round white bread with cheese"
+    assert dish_name_label("Petit pain blanc nature", "en") == "Plain round white bread"
+    assert dish_name_label('Petit pain blanc "Schockelasbotter végan"', "en") == 'Round white bread with vegan "Schockelasbotter" (chocolate spread)'

@@ -898,7 +898,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "lb": "Pain au chocolat 70 g"
     },
     "Petit pain blanc \"Schockelasbotter végan\"": {
-        "en": "White roll with vegan \"Schockelasbotter\" (chocolate spread)",
+        "en": "Round white bread with vegan \"Schockelasbotter\" (chocolate spread)",
         "zh": "纯素巧克力酱白面包卷“Schockelasbotter”",
         "hi": "वीगन \"Schockelasbotter\" (चॉकलेट स्प्रेड) वाला सफ़ेद रोल",
         "es": "Panecillo blanco con \"Schockelasbotter\" vegano (crema de chocolate)",
@@ -911,7 +911,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "lb": "Wäisst Brëtchen mat vegane \"Schockelasbotter\""
     },
     "Petit pain blanc fromage": {
-        "en": "White roll with cheese",
+        "en": "Round white bread with cheese",
         "zh": "奶酪白面包卷",
         "hi": "पनीर वाला सफ़ेद रोल",
         "es": "Panecillo blanco con queso",
@@ -924,7 +924,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "lb": "Wäisst Brëtchen mat Kéis"
     },
     "Petit pain blanc jambon cuit": {
-        "en": "White roll with cooked ham",
+        "en": "Round white bread with cooked ham",
         "zh": "熟火腿白面包卷",
         "hi": "पकी हैम वाला सफ़ेद रोल",
         "es": "Panecillo blanco con jamón cocido",
@@ -937,7 +937,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "lb": "Wäisst Brëtchen mat gekachtem Schinken"
     },
     "Petit pain blanc nature": {
-        "en": "Plain white roll",
+        "en": "Plain round white bread",
         "zh": "原味白面包卷",
         "hi": "सादा सफ़ेद रोल",
         "es": "Panecillo blanco natural",
@@ -950,7 +950,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "lb": "Nature wäisst Brëtchen"
     },
     "Petit pain blanc salami": {
-        "en": "White roll with salami",
+        "en": "Round white bread with salami",
         "zh": "萨拉米白面包卷",
         "hi": "सलामी वाला सफ़ेद रोल",
         "es": "Panecillo blanco con salami",
