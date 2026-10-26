@@ -5376,7 +5376,7 @@ function nutritionTable(item) {
       return `<tr class="${sub ? "nut-sub" : ""}"><th scope="row">${escapeHtml(name)}</th>${cols.map((c) => `<td>${escapeHtml(c)}</td>`).join("")}</tr>`;
     })
     .join("");
-  const basisKey = { label: "nutBasisLabel", similar: "nutBasisSimilar", typical: "nutBasisTypical" }[n.basis] || "nutBasisTypical";
+  const basisKey = { label: "nutBasisLabel", similar: "nutBasisSimilar", range: "nutBasisRange", typical: "nutBasisTypical" }[n.basis] || "nutBasisTypical";
   return `<table class="nut-table"><thead><tr><th></th>${head.map((h) => `<th>${escapeHtml(h)}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>
     <p class="nut-basis">${escapeHtml(tr(basisKey))}</p>`;
 }

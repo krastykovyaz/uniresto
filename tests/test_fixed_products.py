@@ -29,7 +29,6 @@ def test_bottle_size_without_unit_letter():
 
 
 def test_unknown_or_ambiguous_products_are_left_out_not_guessed():
-    assert _lookup("05. Laitages", "Lait Luxlait BIO 0,25 l Tétra Pack") is None  # semi-skimmed or whole: unknown
     assert _lookup("10.3 Boissons froides - Sodas", "Rosport Wave 0,50 l non-consigné") is None
 
 
@@ -45,3 +44,17 @@ def test_label_values_feed_calories_in_the_menu():
     cola, wave = flatten_menu_items([menu])
     assert cola["calories"] == 84.0 and cola["nutrition"]["per100"]["kcal"] == 42
     assert wave["nutrition"] is None
+
+
+def test_organic_milk_and_plain_yoghurt_are_the_whole_versions():
+    milk = _lookup("05. Laitages", "Lait Luxlait BIO 0,25 l Tétra Pack (gratuit)")
+    assert milk["per100"]["fat"] == 3.6 and milk["serving"]["kcal"] == 162.5
+    yoghurt = _lookup("05. Laitages", "Yaourt nature Luxlait 125 g")
+    assert yoghurt["per100"]["fat"] == 3.5 and yoghurt["serving"]["kcal"] == 81.2
+
+
+def test_range_statements_fill_only_what_the_maker_says():
+    mat = _lookup("10.1 Boissons froides - Eau minérale et pétillante", "Rosport mat Menthe 0,50 l non consigné")
+    assert mat["basis"] == "range" and mat["per100"]["kcal"] == 0 and mat["per100"]["fat"] is None
+    sunny = _lookup("10.2 Boissons froides - Jus", "Rosport Sunny Pêche 0,50 l non consigné")
+    assert sunny["per100"]["sugars"] == 4.5 and sunny["per100"]["protein"] is None

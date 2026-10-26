@@ -8,6 +8,8 @@ exactly as a label gives them, and every entry says how close the match is:
 
   "label"   -- the very product on the menu (same brand and variety)
   "similar" -- the same brand's closest product (named in `source`); the menu item has no entry of its own
+  "range"   -- no table for this product, only the maker's statement for its whole range of drinks (named in
+               `source`), so only the figures the statement gives are filled in
   "typical" -- no entry for this brand: a typical value for that KIND of drink, not this product
 
 Nothing here is Restopolis data, it is not medical or dietary advice, and a missing product means "not looked up
@@ -41,9 +43,17 @@ _PRODUCTS: list[tuple[str, str, dict, str, str]] = [
     (r"^let'?z kola\b", "10.3", _per100(27, 0, 0, 6.8, 6.6, 0), "label", "Open Food Facts 5450322059395 (Lët'z kola)"),
     (r"^rosport pom'?s\b", "10.3", _per100(27, 0.1, 0.1, 6.5, 6.2, 0.1, 0.014), "label",
      "Open Food Facts 5450038050570 (Rosport Pom's)"),
+    (r"^rosport mat\b", "10.", _per100(0, None, None, None, 0, None), "range",
+     "paperjam.lu, 26 Oct 2026: Rosport Mat shows 0 calories, no sugar or sweeteners"),
+    (r"^rosport sunny\b", "10.", _per100(20, None, None, None, 4.5, None), "range",
+     "chronicle.lu, 14 Sep 2020: Rosport Sunny under 20 kcal and 4.5 g sugar per 100 ml (20 is the upper bound)"),
     (r"^ramborn (apple|pear apple|apple & quince) juice\b", "10.2", _per100(46, 0.1, 0, 11, 10, 0.1, 0), "typical",
      "typical clear apple juice"),
     (r"^letzbuerger drauwejus\b", "10.2", _per100(65, 0.1, 0, 16, 16, 0.4, 0), "typical", "typical grape juice"),
+    (r"^lait luxlait bio\b", "05.", _per100(65, 3.6, 2.5, 5, 5, 3.3, 0.11), "label",
+     "Open Food Facts 5450168519145 (Luxlait lait bio 3,5%); luxlait.lu: the 250 ml organic pack is the fresh 3.5% milk"),
+    (r"^yaourt nature luxlait\b", "05.", _per100(65, 3.5, 2.5, 5, 5, 3.3, 0.11), "label",
+     "Open Food Facts 5450168544901 (Yaourt du Luxembourg nature, 2 pots); luxlait.lu: the plain one is 3.5% fat"),
     (r"^lait chocolate luxlait\b", "05.", _per100(94, 3.7, 2.6, 11.6, 10.9, 3.5, 0.1), "label",
      "Open Food Facts 5450168551282 (Luxlait chocolate milk)"),
     (r"^mini fromage frais\b", "05.", _per100(128, 5, 3.5, 14.6, 10.8, 6.1, 0.17), "similar",
