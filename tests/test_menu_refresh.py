@@ -103,6 +103,39 @@ def test_refresh_all_once_forces_a_live_fetch_even_if_something_is_already_cache
     assert len(client.calls) == first_sweep_calls * 2
 
 
+def test_refresh_all_once_re_reads_every_date_of_a_week_not_just_the_first(
+    tmp_path, altius_html, altius_closed_week_html, altius_config, fixture_today
+):
+    # Regression: only the first date of each week used to be re-parsed; every other date answered from the
+    # status it got when it first entered the window, so a day Restopolis changed later (a closure, a holiday, a
+    # menu published after all) stayed wrong for weeks. Next week starts closed on every day, then the site
+    # publishes it: Wednesday -- not the first date of that week the sweep sees -- must follow.
+    published = altius_closed_week_html.replace("formulaeContainer no-products", "formulaeContainer")
+    assert published != altius_closed_week_html
+    client = FakeRestopolisClient(week_html_by_offset={0: altius_html, 1: altius_closed_week_html})
+    service, _ = make_service(tmp_path, altius_html, altius_closed_week_html, altius_config, fixture_today, client)
+    wednesday = fixture_today + datetime.timedelta(days=7)
+    refresh_all_once(service, [altius_config])
+    assert service.check_orderability(altius_config, wednesday).menu_available is False
+
+    client.week_html_by_offset[1] = published
+    refresh_all_once(service, [altius_config])
+
+    assert service.check_orderability(altius_config, wednesday).menu_available is True
+
+
+def test_re_reading_a_date_does_not_fetch_again(
+    tmp_path, altius_html, altius_closed_week_html, altius_config, fixture_today
+):
+    service, client = make_service(tmp_path, altius_html, altius_closed_week_html, altius_config, fixture_today)
+    service.check_orderability(altius_config, fixture_today, refresh=True)
+    fetches = len(client.calls)
+
+    service.check_orderability(altius_config, fixture_today + datetime.timedelta(days=2), reparse=True)
+
+    assert len(client.calls) == fetches
+
+
 def test_refresh_all_once_only_one_live_fetch_per_distinct_week(
     tmp_path, altius_html, altius_closed_week_html, altius_config, fixture_today
 ):
@@ -130,11 +163,11 @@ def test_refresh_all_once_survives_one_restaurant_raising(
     checked = []
     real_check = service.check_orderability
 
-    def flaky_check(restaurant, target_date, refresh=False, now=None):
+    def flaky_check(restaurant, target_date, refresh=False, now=None, reparse=False):
         if restaurant.code == "BROKEN":
             raise RuntimeError("simulated bug")
         checked.append((restaurant.code, target_date))
-        return real_check(restaurant, target_date, refresh=refresh, now=now)
+        return real_check(restaurant, target_date, refresh=refresh, now=now, reparse=reparse)
 
     service.check_orderability = flaky_check
     broken_restaurant = RestaurantConfig(code="BROKEN", name="Broken", restaurant_id=0, service_id=0)

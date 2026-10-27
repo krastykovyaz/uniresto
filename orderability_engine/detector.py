@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date, datetime, timedelta
+from functools import lru_cache
 
 from bs4 import BeautifulSoup
 
@@ -117,10 +118,18 @@ def fetch_week_html_for_date(
         raise HorizonExceededError(str(exc)) from exc
 
 
+@lru_cache(maxsize=8)
+def _parsed_week(html: str) -> BeautifulSoup:
+    """The parsed tree of one week page. A refresh sweep reads up to 7 days (x 6 weeks) out of the same ~440 KB
+    page, and html.parser takes ~0.3 s per parse, so the tree is parsed once and shared. Everything below only
+    READS it (select / get_text), never modifies it."""
+    return BeautifulSoup(html, "html.parser")
+
+
 def parse_day_status_from_html(html: str, restaurant: RestaurantConfig, target_date: date) -> RestopolisDayStatus:
     """Pure parsing: read Restopolis's signals for one date out of an
     already-fetched week HTML. Raises MenuParseError on structural changes."""
-    soup = BeautifulSoup(html, "html.parser")
+    soup = _parsed_week(html)
     aligned_days = align_day_blocks(soup)  # raises MenuParseError on structural change
 
     day_div = next((div for d, div in aligned_days if d == target_date), None)

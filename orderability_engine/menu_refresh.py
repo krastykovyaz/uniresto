@@ -76,9 +76,10 @@ def refresh_all_once(service: OrderabilityService, restaurants: list[RestaurantC
     TTL-driven warming. Only ONE live fetch per distinct Restopolis week
     actually spanned per restaurant (matching get_week_html's own one-
     fetch-per-week shape): the first date seen in a given week forces a
-    fetch, and check_orderability's own in-process week-HTML cache
-    (populated by that forced fetch) means every other date in the same
-    week is served from it, not fetched again. One bad restaurant/date
+    fetch, and every other date in the same week is RE-PARSED (reparse=True)
+    out of the week HTML that fetch just stored -- not fetched again, and not
+    answered from its old cached status either, which would keep a date's
+    first-ever result (weeks old) until the day was over. One bad restaurant/date
     (a Restopolis hiccup, a parse error) is logged and skipped, never
     allowed to stop the rest of the sweep."""
     today = service.today()
@@ -90,7 +91,7 @@ def refresh_all_once(service: OrderabilityService, restaurants: list[RestaurantC
                 weeks_ahead = weeks_ahead_for(target_date, today)
                 force = weeks_ahead not in refreshed_weeks
                 refreshed_weeks.add(weeks_ahead)
-                service.check_orderability(restaurant, target_date, refresh=force)
+                service.check_orderability(restaurant, target_date, refresh=force, reparse=not force)
             except PastDateError:
                 continue  # yesterday, when it falls in a week before the current one -- unreachable, not a failure
             except Exception:  # noqa: BLE001 -- a refresh sweep must never crash the background thread

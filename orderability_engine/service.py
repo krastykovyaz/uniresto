@@ -218,7 +218,12 @@ class OrderabilityService:
         target_date: date,
         refresh: bool = False,
         now: datetime | None = None,
+        reparse: bool = False,
     ) -> OrderabilityResult:
+        """`reparse=True` (the refresh sweep, for every date of a week after the one that did the live fetch)
+        skips the "already cached" answer and reads the date's status again out of the week HTML that fetch just
+        stored -- no network call. Without it a date was parsed once, when it first entered the window, and then
+        kept that answer until the day was over."""
         now = now or self._now()
         logger.info("[CHECK]\n%s\n%s", restaurant.code, target_date)
 
@@ -236,7 +241,7 @@ class OrderabilityService:
         # its own (see this module's docstring and cache.py's). Only
         # orderability_engine/menu_refresh.py's scheduled sweep passes
         # refresh=True, which skips this and always does a real fetch.
-        cached = None if refresh else self.cache.get_raw_with_checked_at(restaurant.code, target_date)
+        cached = None if (refresh or reparse) else self.cache.get_raw_with_checked_at(restaurant.code, target_date)
         if cached is not None:
             status, checked_at = cached
             logger.info("[CACHE] hit for %s %s (checked_at=%s)", restaurant.code, target_date, checked_at)
