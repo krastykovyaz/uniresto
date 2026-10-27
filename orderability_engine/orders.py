@@ -41,6 +41,7 @@ from pathlib import Path
 from orderability_engine.identity import canonical_identity
 from orderability_engine.menu_service import requires_early_order
 from orderability_engine.pricing import compute_formula_total
+from orderability_engine.sqlite_util import connect
 
 # Per line: one unique dish can be ordered at most twice, so a cart can
 # hold many different dishes (2 mains, 2 salads, 2 desserts ...) but never
@@ -351,7 +352,7 @@ class OrderStore:
         # live that Flask's dev server can dispatch requests concurrently,
         # so a lock (not just check_same_thread=False) is required.
         self.db_path = str(db_path)
-        self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
+        self._conn = connect(db_path)
         self._lock = threading.RLock()
         self._conn.executescript(SCHEMA)
         self._migrate()
@@ -617,8 +618,9 @@ class OrderStore:
         a just-confirmed order is never overwritten, and an order closed by the
         other worker is not reported (and pushed) a second time.
 
-        An order a courier already delivered before the admin priced it (or
-        the customer confirmed) is real food in someone's hands: the admin
+        An order a courier already picked up (or delivered) before the admin priced it (or
+        the customer confirmed) is real food in someone's hands -- closing it at 13:30 would
+        refuse the customer's confirmation and the courier's thanks: the admin
         may still price it later that day or the next, so it is not closed at
         13:30 with the rest. It only closes once its day is on or before
         `delivered_up_to_date` (the caller passes a date a week back), so it
@@ -628,7 +630,8 @@ class OrderStore:
             # delivered_up_to_date None: "" sorts before every ISO date, so no delivered row matches.
             due = (
                 "status IN ('pending', 'reviewing', 'awaiting_confirmation') AND ("
-                "(delivered_at IS NULL AND order_date <= ?) OR (delivered_at IS NOT NULL AND order_date <= ?))"
+                "(delivered_at IS NULL AND picked_up_at IS NULL AND order_date <= ?) "
+                "OR ((delivered_at IS NOT NULL OR picked_up_at IS NOT NULL) AND order_date <= ?))"
             )
             dates = (up_to_date, delivered_up_to_date or "")
             ids = [r[0] for r in conn.execute(f"SELECT id FROM orders WHERE {due}", dates).fetchall()]
@@ -715,9 +718,11 @@ class OrderStore:
         never overwrite the winner's."""
         now = datetime.now(timezone.utc).isoformat()
         with self._lock, self._transaction() as conn:
+            # The status/delivered guards repeat what app.py checked on its own earlier read: the other worker may
+            # have cancelled or expired the order in between, and a cancelled order must not end up claimed.
             cur = conn.execute(
                 "UPDATE orders SET claimed_at = ?, courier_email = ?, courier_lang = ?, courier_notify_email = ? "
-                "WHERE id = ? AND claimed_at IS NULL",
+                "WHERE id = ? AND claimed_at IS NULL AND delivered_at IS NULL AND status NOT IN ('cancelled', 'expired')",
                 (now, courier_email, courier_lang, courier_notify_email, order_id),
             )
             return cur.rowcount > 0
@@ -802,6 +807,17 @@ class OrderStore:
             )
             return cur.rowcount > 0
 
+    def release_accepted_emailed(self, order_id: int) -> None:
+        """Takes back mark_accepted_emailed() when the send then FAILED, so the flag means "the customer was
+        emailed", not "we meant to": the next claim of this order tries again instead of staying silent."""
+        with self._lock, self._transaction() as conn:
+            conn.execute("UPDATE orders SET accepted_emailed_at = NULL WHERE id = ?", (order_id,))
+
+    def release_on_way_emailed(self, order_id: int) -> None:
+        """Same as release_accepted_emailed(), for the "on its way" email."""
+        with self._lock, self._transaction() as conn:
+            conn.execute("UPDATE orders SET on_way_emailed_at = NULL WHERE id = ?", (order_id,))
+
     def mark_delivered(self, order_id: int) -> bool:
         """Part 73: a courier-reported fact ("I physically handed this
         over"), independent of `status`'s own admin-workflow state
@@ -810,7 +826,13 @@ class OrderStore:
         the timestamp, never an error."""
         now = datetime.now(timezone.utc).isoformat()
         with self._lock, self._transaction() as conn:
-            cur = conn.execute("UPDATE orders SET delivered_at = ? WHERE id = ?", (now, order_id))
+            # An unclaimed order may be marked (the customer confirms food that arrived without anyone taking it
+            # in the app), but a cancelled/expired one -- possibly just closed by the other worker, after the
+            # caller's own read -- must not be revived into a paid delivery.
+            cur = conn.execute(
+                "UPDATE orders SET delivered_at = ? WHERE id = ? AND status NOT IN ('cancelled', 'expired')",
+                (now, order_id),
+            )
             return cur.rowcount > 0
 
     def mark_not_delivered(self, order_id: int) -> bool:

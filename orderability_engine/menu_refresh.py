@@ -21,17 +21,19 @@ that drift matters and how it's avoided this time).
 
 Runs as a background thread, same shape as daily_report.py's -- started
 once per gunicorn WORKER PROCESS. With 2 workers and no --preload, two
-threads independently wake up at the same 6 times every day; both doing
-the same live fetches is wasteful but not wrong (whichever finishes last
-just overwrites the same cache rows with the same fresh data), and
-unlike daily_report.py's Telegram send there is no user-visible harm
-from doing it twice, so this deliberately does NOT add SQLite-claim
-dedup for that.
+threads wake up at the same 6 times every day, and both at every reload
+(a deploy): twice the requests to Restopolis, which is polite to nobody,
+and two ~400 KB-per-row writers fighting over the same cache file. So a
+sweep is run under a cross-process file lock (run_sweep_if_due): whichever
+worker gets it sweeps; the other sees the lock taken, or sees that a sweep
+finished after the moment IT was due to run, and skips.
 """
 
 from __future__ import annotations
 
+import fcntl
 import logging
+import os
 import threading
 import time
 from datetime import datetime, time as dt_time, timedelta, timezone
@@ -98,6 +100,43 @@ def refresh_all_once(service: OrderabilityService, restaurants: list[RestaurantC
                 logger.warning("[MENU-REFRESH] failed to refresh %s %s", restaurant.code, target_date, exc_info=True)
 
 
+def _sweep_lock_path(service: OrderabilityService) -> str | None:
+    path = getattr(service.cache, "db_path", None)
+    return None if not path or path == ":memory:" else f"{path}.sweep"
+
+
+def run_sweep_if_due(service: OrderabilityService, restaurants: list[RestaurantConfig], due_at: datetime) -> bool:
+    """Runs refresh_all_once() unless another worker process already did the sweep that was due at `due_at`
+    (True if this call swept). `due_at` is the instant this worker's sweep was meant to happen -- the scheduled
+    time, or for the startup sweep the moment the worker started. The lock file also holds when a sweep last
+    finished: a sweep that ended after `due_at` covers it (for a startup sweep that is the whole point of
+    sweeping at all -- a deploy still gets exactly one fresh sweep), while one that ended before it does not."""
+    lock_path = _sweep_lock_path(service)
+    if lock_path is None:  # in-memory cache (tests, dev): nobody to share a sweep with
+        refresh_all_once(service, restaurants)
+        return True
+    fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+    with os.fdopen(fd, "r+") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            logger.info("[MENU-REFRESH] another worker is sweeping right now, skipping this one")
+            return False
+        try:
+            finished = float(lock.read().strip() or 0)
+        except ValueError:
+            finished = 0.0
+        if finished >= due_at.timestamp():
+            logger.info("[MENU-REFRESH] a sweep already finished after %s, skipping this one", due_at.isoformat())
+            return False
+        refresh_all_once(service, restaurants)
+        lock.seek(0)
+        lock.truncate()
+        lock.write(repr(time.time()))
+        lock.flush()
+        return True
+
+
 def _seconds_until(now: datetime, target: datetime) -> float:
     """Real elapsed seconds from `now` to `target`. Plain `target - now`
     is WRONG when both share the same tzinfo: Python then subtracts wall
@@ -129,13 +168,15 @@ def start_menu_refresh_scheduler(
     fresh process start already sees real data, not "unknown" for
     everyone until the next scheduled time), then sleeps until each of
     REFRESH_TIMES in turn, forever. A daemon thread: never blocks the
-    process from exiting, needs no coordination with other gunicorn
-    worker processes -- they all share the same SQLite-backed cache
-    file, so one worker's sweep is what the others' requests read too."""
+    process from exiting. The gunicorn workers share the same SQLite-backed
+    cache file, so one worker's sweep is what the others' requests read too;
+    run_sweep_if_due() makes sure each sweep is done by only one of them."""
+
+    started_at = datetime.now(TZINFO)
 
     def loop() -> None:
         try:
-            refresh_all_once(service, restaurants)
+            run_sweep_if_due(service, restaurants, started_at)
         except Exception:  # noqa: BLE001 -- the startup sweep must never stop the thread from scheduling later ones
             logger.warning("[MENU-REFRESH] startup sweep failed", exc_info=True)
 
@@ -153,7 +194,7 @@ def start_menu_refresh_scheduler(
             time.sleep(max(0.0, _seconds_until(datetime.now(TZINFO), next_run)))
             last_run = next_run
             try:
-                refresh_all_once(service, restaurants)
+                run_sweep_if_due(service, restaurants, next_run)
             except Exception:  # noqa: BLE001 -- one bad sweep must never kill the thread for every sweep after
                 logger.warning("[MENU-REFRESH] scheduled sweep failed", exc_info=True)
 

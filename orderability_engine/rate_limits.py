@@ -21,11 +21,11 @@ trusts only that last hop, so a client-sent X-Forwarded-For can't spoof it.
 
 from __future__ import annotations
 
-import sqlite3
 import threading
 import time
 from pathlib import Path
 from typing import Callable
+from orderability_engine.sqlite_util import connect
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS rate_limits (
@@ -43,7 +43,7 @@ _RETENTION_SECONDS = 2 * 24 * 3600
 
 class RateLimitStore:
     def __init__(self, db_path: str | Path = "orders.db", clock: Callable[[], float] = time.time):
-        self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
+        self._conn = connect(db_path)
         self._lock = threading.RLock()
         self._clock = clock
         self._conn.executescript(SCHEMA)

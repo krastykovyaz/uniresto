@@ -749,7 +749,7 @@ def test_mark_handed_over_refuses_a_closed_order(store, close):
     if close == "cancel":
         store.admin_cancel_order(order_id)
     elif close == "expire":
-        store.expire_open_orders("2099-01-01")
+        store.expire_open_orders("2099-01-01", "2099-01-01")  # a picked-up order closes only once its grace is over
     else:
         store.mark_delivered(order_id)
     assert store.mark_handed_over(order_id) is False
@@ -803,3 +803,49 @@ def test_two_services_listing_the_same_dish_keep_the_chosen_one():
     twin = [{**MENU_ITEMS[2], "id": 60}, *MENU_ITEMS]
     assert resolve_selection(twin, [{"id": 60, "quantity": 1, "category": "Dessert", "name": "Paris-Brest"}])[0]["id"] == 60
     assert resolve_selection(twin, [{"id": 6, "quantity": 1, "category": "Dessert", "name": "Paris-Brest"}])[0]["id"] == 6
+
+
+def test_a_picked_up_order_is_not_closed_at_the_days_close_but_after_the_grace_date(store):
+    # The food is in a courier's hands: closing it at 13:30 would refuse the customer's confirmation and
+    # the courier's Luni, and push "nobody could deliver" for food that is on its way.
+    order_id = _basic_order_id(store)
+    store.mark_claimed(order_id)
+    store.mark_picked_up(order_id)
+    order_date = store.get_order(order_id)["order_date"]
+
+    assert store.expire_open_orders(order_date) == []
+    assert store.get_order(order_id)["status"] != "expired"
+    assert [o["id"] for o in store.expire_open_orders(order_date, order_date)] == [order_id]
+
+
+def test_a_claimed_but_not_picked_up_order_still_closes_at_the_days_close(store):
+    order_id = _basic_order_id(store)
+    store.mark_claimed(order_id)
+    order_date = store.get_order(order_id)["order_date"]
+
+    assert [o["id"] for o in store.expire_open_orders(order_date)] == [order_id]
+
+
+@pytest.mark.parametrize("close", ["cancel", "expire"])
+def test_a_closed_order_cannot_be_marked_delivered(store, close):
+    # Race: the other worker closes the order after this one read it; the UPDATE must not revive it.
+    order_id = _basic_order_id(store)
+    if close == "cancel":
+        store.admin_cancel_order(order_id)
+    else:
+        store.expire_open_orders("2099-01-01")
+
+    assert store.mark_delivered(order_id) is False
+    assert store.get_order(order_id)["delivered_at"] is None
+
+
+@pytest.mark.parametrize("close", ["cancel", "expire"])
+def test_a_closed_order_cannot_be_claimed(store, close):
+    order_id = _basic_order_id(store)
+    if close == "cancel":
+        store.admin_cancel_order(order_id)
+    else:
+        store.expire_open_orders("2099-01-01")
+
+    assert store.mark_claimed(order_id, courier_email="c@uni.lu") is False
+    assert store.get_order(order_id)["claimed_at"] is None

@@ -20,7 +20,6 @@ docstring for the original bug this same pattern fixed).
 from __future__ import annotations
 
 import logging
-import sqlite3
 import threading
 import time
 from datetime import date, datetime, time as dt_time, timedelta, timezone
@@ -30,6 +29,7 @@ from orderability_engine.models import TZINFO
 from orderability_engine.orders import OrderStore
 from orderability_engine.page_views import PageViewStore
 from orderability_engine.telegram_notify import is_configured, send_daily_report
+from orderability_engine.sqlite_util import connect
 
 logger = logging.getLogger("uniresto.daily_report")
 
@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS daily_reports_sent (
 
 class DailyReportStore:
     def __init__(self, db_path: str | Path = "orders.db"):
-        self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
+        self._conn = connect(db_path)
         self._lock = threading.RLock()
         self._conn.executescript(SCHEMA)
         self._conn.commit()

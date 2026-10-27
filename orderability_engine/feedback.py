@@ -11,10 +11,10 @@ comment field.
 
 from __future__ import annotations
 
-import sqlite3
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
+from orderability_engine.sqlite_util import connect
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS feedback (
@@ -30,7 +30,7 @@ class FeedbackStore:
     def __init__(self, db_path: str | Path = "orders.db"):
         # Same file as OrderStore/ComingSoonClickStore by default -- one
         # small extra table, not a separate file to keep track of.
-        self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
+        self._conn = connect(db_path)
         self._lock = threading.RLock()
         self._conn.executescript(SCHEMA)
         self._conn.commit()

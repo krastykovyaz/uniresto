@@ -607,7 +607,9 @@ function isEmailKnownVerified(email) {
   // An address with no token here (verified before tokens existed, or on
   // another device) has to be proven again -- the server won't act on it.
   if (!loadIdentityToken(email)) return false;
-  return email === state.registeredEmail || loadVerifiedOrderEmails().includes(email);
+  // One mailbox whatever the capitalisation (the token is keyed on the lower-cased address).
+  const same = (other) => typeof other === "string" && other.trim().toLowerCase() === email.trim().toLowerCase();
+  return same(state.registeredEmail) || loadVerifiedOrderEmails().some(same);
 }
 
 function isFavorite(slug, category, name) {

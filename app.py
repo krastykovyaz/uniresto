@@ -625,6 +625,11 @@ def create_app(
         # resend cooldown alone still let one client mail thousands of
         # different addresses. Loose enough for a shared campus NAT.
         "send_code": (20, 3600),
+        # The 60 s per-address cooldown and the per-client cap above still let several clients mail ONE address
+        # once a minute for ever (sender reputation, Resend quota), or the whole service be used as a mail
+        # cannon. These two are not per client: a cap per address per day, and one for all addresses per hour.
+        "send_code_address": (8, 86400),
+        "send_code_all": (300, 3600),
         "rewards_read": (300, 3600),  # Profile re-reads the balance on every visit
         "rewards_claim": (30, 3600),
         "push": (60, 3600),           # subscribe / change switches / unsubscribe
@@ -636,17 +641,25 @@ def create_app(
         "og_render": (30, 3600),
     }
 
-    def within_rate_limit(bucket: str, suffix: str = "") -> tuple[bool, int]:
+    def within_rate_limit(bucket: str, suffix: str = "", per_client: bool = True) -> tuple[bool, int]:
         limit, window = RATE_LIMITS[bucket]
-        key = f"{bucket}{':' + suffix if suffix else ''}:{request.remote_addr}"
+        key = f"{bucket}{':' + suffix if suffix else ''}{':' + str(request.remote_addr) if per_client else ''}"
         return app.config["RATE_LIMIT_STORE"].hit(key, limit, window)
 
-    def rate_limited_response(bucket: str, suffix: str = ""):
+    def rate_limited_response(bucket: str, suffix: str = "", per_client: bool = True):
         """None if this request may proceed, else the 429 to return."""
-        allowed, retry_after = within_rate_limit(bucket, suffix)
+        allowed, retry_after = within_rate_limit(bucket, suffix, per_client)
         if allowed:
             return None
         return jsonify({"error": "rate_limited", "retry_after_seconds": retry_after}), 429
+
+    def send_code_cap_response(email: str):
+        """None if a verification mail may go to `email` now, else the 429. Counted per address (whoever asks) and
+        for all addresses together -- called once the 60 s cooldown has passed, i.e. when a mail is really about
+        to be sent."""
+        return rate_limited_response("send_code_address", email.strip().lower(), per_client=False) or rate_limited_response(
+            "send_code_all", per_client=False
+        )
 
     def _verified_courier_email_or_error():
         """Part 88: every courier-facing action (claim/pickup/release/
@@ -754,8 +767,8 @@ def create_app(
         last_expired_day = now.date() if is_delivery_expired(now.date(), now) else now.date() - timedelta(days=1)
         last_delivered_day = last_expired_day - timedelta(days=DELIVERED_UNPRICED_GRACE_DAYS)
         for order in store().expire_open_orders(last_expired_day.isoformat(), last_delivered_day.isoformat()):
-            if order.get("delivered_at"):
-                continue
+            if order.get("delivered_at") or order.get("picked_up_at"):
+                continue  # the food was in someone's hands: "expired" would be untrue
             push_to(
                 order_people(order),
                 "order",
@@ -870,7 +883,9 @@ def create_app(
     def api_restaurant_status(slug):
         restaurant = get_restaurant_or_404(slug)
         target_date = parse_date_arg(request.args.get("date"))
-        refresh = request.args.get("refresh", "").lower() in ("1", "true", "yes")
+        # A live Restopolis fetch (which also overwrites the cache for everyone) is the scheduler's job; only an
+        # admin may force one -- on a public route a loop of ?refresh=1 would hammer Restopolis from our IP.
+        refresh = request.args.get("refresh", "").lower() in ("1", "true", "yes") and _is_admin_authorized()
         result = svc().check_orderability(restaurant, target_date, refresh=refresh)
         return jsonify(result.to_api_dict())
 
@@ -886,6 +901,20 @@ def create_app(
         see the exact same live data for this (restaurant, date)."""
         daily_menus = get_customer_menu(svc(), restaurant, d)
         return flatten_menu_items(daily_menus), daily_menus
+
+    def _flat_menu_or_409(restaurant, d):
+        """(flat_items, None), or (None, the 409 to return) when the menu cannot be read: a date in a week that is
+        gone (PastDateError), nothing cached yet on a fresh process (RestopolisError) or a page that no longer
+        parses (MenuParseError). A menu route must never answer with a 500 for any of them."""
+        try:
+            flat_items, _daily_menus = _load_flat_menu(restaurant, d)
+        except PastDateError as exc:
+            # Belt and braces: check_orderability already refuses past weeks.
+            return None, (jsonify({"error": "date_not_available", "status": "past_date", "reason": str(exc)}), 409)
+        except (RestopolisError, MenuParseError) as exc:
+            logging.getLogger("uniresto").warning("menu unavailable for %s %s: %s", restaurant.code, d, exc)
+            return None, (jsonify({"error": "date_not_available", "status": "unknown", "reason": "The menu could not be loaded right now."}), 409)
+        return flat_items, None
 
     def _early_cutoff_violations(flat_items, selection, early_cutoff_available):
         """Names of selected items that require the earlier 08:00 cutoff
@@ -910,14 +939,9 @@ def create_app(
         if result.status != "available":
             return jsonify({"error": "date_not_available", "status": result.status, "reason": result.reason}), 409
 
-        try:
-            flat_items, _daily_menus = _load_flat_menu(restaurant, d)
-        except PastDateError as exc:
-            # Belt and braces: check_orderability already refuses past weeks, but a menu must never answer with a 500.
-            return jsonify({"error": "date_not_available", "status": "past_date", "reason": str(exc)}), 409
-        except (RestopolisError, MenuParseError) as exc:
-            logging.getLogger("uniresto").warning("menu unavailable for %s %s: %s", restaurant.code, d, exc)
-            return jsonify({"error": "date_not_available", "status": "unknown", "reason": "The menu could not be loaded right now."}), 409
+        flat_items, unavailable = _flat_menu_or_409(restaurant, d)
+        if unavailable is not None:
+            return unavailable
         service_time = f"{result.service_start}-{result.service_end}" if result.service_start else None
         return jsonify(
             {
@@ -1143,7 +1167,7 @@ def create_app(
             abort(400, description="Body must include 'restaurant' (slug) and 'date' (YYYY-MM-DD)")
         restaurant = get_restaurant_or_404(slug)
         d = parse_date_arg(date_str)
-        refresh = bool(body.get("refresh", False))
+        refresh = bool(body.get("refresh", False)) and _is_admin_authorized()  # see api_restaurant_status
         result = svc().check_orderability(restaurant, d, refresh=refresh)
         return jsonify(result.to_api_dict())
 
@@ -1164,7 +1188,9 @@ def create_app(
         restaurant = get_restaurant_or_404(slug)
         d = parse_date_arg(date_str)
 
-        flat_items, _ = _load_flat_menu(restaurant, d)
+        flat_items, unavailable = _flat_menu_or_409(restaurant, d)
+        if unavailable is not None:
+            return unavailable
         result = svc().check_orderability(restaurant, d)
         try:
             validate_selection_shape(selection)
@@ -1284,7 +1310,9 @@ def create_app(
         if not result.our_delivery.available:
             return jsonify({"error": "date_not_available", "status": "closed", "reason": "Our ordering deadline for this date has passed."}), 409
 
-        flat_items, _ = _load_flat_menu(restaurant, d)
+        flat_items, unavailable = _flat_menu_or_409(restaurant, d)
+        if unavailable is not None:
+            return unavailable
         try:
             validate_selection_shape(selection)
             selection = resolve_selection(flat_items, selection)  # dishes are matched by category+name, never by a stale id
@@ -1444,6 +1472,8 @@ def create_app(
         remaining = email_verification().seconds_until_resend_allowed(email)
         if remaining > 0:
             return jsonify({"sent": False, "error": "rate_limited", "retry_after_seconds": remaining}), 429
+        if (capped := send_code_cap_response(email)) is not None:
+            return capped
 
         code = generate_verification_code()
         sent, error = send_verification_code(email, code)
@@ -1497,6 +1527,8 @@ def create_app(
         remaining = checkout_verification().seconds_until_resend_allowed(email)
         if remaining > 0:
             return jsonify({"sent": False, "error": "rate_limited", "retry_after_seconds": remaining}), 429
+        if (capped := send_code_cap_response(email)) is not None:
+            return capped
 
         code = generate_verification_code()
         sent, error = send_verification_code(email, code)
@@ -1547,6 +1579,8 @@ def create_app(
         remaining = delivery_verification().seconds_until_resend_allowed(email)
         if remaining > 0:
             return jsonify({"sent": False, "error": "rate_limited", "retry_after_seconds": remaining}), 429
+        if (capped := send_code_cap_response(email)) is not None:
+            return capped
 
         code = generate_verification_code()
         sent, error = send_verification_code(email, code)
@@ -1744,7 +1778,8 @@ def create_app(
                 tag=f"order-{order_id}",
             )
             if order.get("customer_email") and store().mark_accepted_emailed(order_id):
-                send_order_accepted(order["customer_email"], order)
+                if not send_order_accepted(order["customer_email"], order)[0]:
+                    store().release_accepted_emailed(order_id)  # not sent: a later claim may try again
         return jsonify({"claimed": True, "already_claimed": not newly_claimed})
 
     @app.post("/api/orders/<int:order_id>/picked-up")
@@ -1777,7 +1812,8 @@ def create_app(
             return jsonify({"error": "not_pickupable"}), 409
         push_to(order_people(order), "courier", "Your order is on its way", f"A courier picked up your {order['restaurant_name']} order.", tag=f"order-{order_id}")
         if order.get("customer_email") and store().mark_on_way_emailed(order_id):
-            send_order_out_for_delivery(order["customer_email"], order)
+            if not send_order_out_for_delivery(order["customer_email"], order)[0]:
+                store().release_on_way_emailed(order_id)  # not sent: the flag must not claim it was
         return jsonify({"picked_up": True})
 
     @app.post("/api/orders/<int:order_id>/unclaim")
@@ -1852,7 +1888,11 @@ def create_app(
             return _not_your_order()
         if order["status"] in ("cancelled", "expired"):
             return jsonify({"error": "not_deliverable", "status": order["status"]}), 409
-        if store().mark_delivered(order_id) and not order.get("delivered_at"):
+        if not store().mark_delivered(order_id):
+            # Not taken by a courier yet, or called off / closed since the read above (the other worker).
+            fresh = store().get_order(order_id) or order
+            return jsonify({"error": "not_deliverable", "status": fresh["status"]}), 409
+        if not order.get("delivered_at"):
             # The customer confirmed it arrived: thank the courier who brought it.
             push_to([order.get("courier_email")], "courier", "Delivery confirmed", f"The customer got their {order['restaurant_name']} order. Thank you!", tag=f"order-{order_id}")
         _award_delivery_luni(order)
@@ -2058,7 +2098,9 @@ def create_app(
         min_weight = optional_number("min_weight")
         max_calories = optional_number("max_calories")
 
-        flat_items, _ = _load_flat_menu(restaurant, d)
+        flat_items, unavailable = _flat_menu_or_409(restaurant, d)
+        if unavailable is not None:
+            return unavailable
         outcome = find_smart_lunch(
             flat_items,
             {

@@ -225,3 +225,68 @@ def test_seconds_until_spans_the_october_fall_back_correctly():
     now = datetime.datetime(2026, 10, 24, 20, 30, tzinfo=TZINFO)
     target = datetime.datetime(2026, 10, 25, 20, 0, tzinfo=TZINFO)
     assert _seconds_until(now, target) == 24.5 * 3600
+
+
+# ---------------------------------------------------------------------------
+# run_sweep_if_due: one sweep per trigger across the gunicorn workers
+# ---------------------------------------------------------------------------
+
+import fcntl  # noqa: E402
+import os  # noqa: E402
+
+from orderability_engine.menu_refresh import run_sweep_if_due  # noqa: E402
+
+
+def _at(minutes_from_now: float) -> datetime.datetime:
+    return datetime.datetime.now(TZINFO) + datetime.timedelta(minutes=minutes_from_now)
+
+
+def test_the_second_worker_skips_a_sweep_that_finished_after_it_was_due(
+    tmp_path, altius_html, altius_closed_week_html, altius_config, fixture_today
+):
+    service, client = make_service(tmp_path, altius_html, altius_closed_week_html, altius_config, fixture_today)
+    due = _at(-1)  # both workers were due a minute ago
+
+    assert run_sweep_if_due(service, [altius_config], due) is True
+    fetches = len(client.calls)
+    assert fetches > 0
+
+    assert run_sweep_if_due(service, [altius_config], due) is False  # the other worker's turn: already covered
+    assert len(client.calls) == fetches
+
+
+def test_a_sweep_that_finished_before_the_due_time_does_not_cover_it(
+    tmp_path, altius_html, altius_closed_week_html, altius_config, fixture_today
+):
+    # A deploy right after a scheduled sweep must still get its own fresh sweep.
+    service, client = make_service(tmp_path, altius_html, altius_closed_week_html, altius_config, fixture_today)
+    run_sweep_if_due(service, [altius_config], _at(-5))
+    fetches = len(client.calls)
+
+    assert run_sweep_if_due(service, [altius_config], _at(+1)) is True  # due later than the last finish
+    assert len(client.calls) == 2 * fetches
+
+
+def test_a_worker_skips_while_another_is_in_the_middle_of_sweeping(
+    tmp_path, altius_html, altius_closed_week_html, altius_config, fixture_today
+):
+    service, client = make_service(tmp_path, altius_html, altius_closed_week_html, altius_config, fixture_today)
+    holder = os.open(f"{service.cache.db_path}.sweep", os.O_RDWR | os.O_CREAT, 0o600)
+    fcntl.flock(holder, fcntl.LOCK_EX)  # the other worker, mid-sweep
+    try:
+        assert run_sweep_if_due(service, [altius_config], _at(-1)) is False
+    finally:
+        os.close(holder)
+
+    assert client.calls == []
+
+
+def test_an_in_memory_cache_just_sweeps(altius_html, altius_closed_week_html, altius_config, fixture_today):
+    client = FakeRestopolisClient(week_html_by_offset={0: altius_html, 1: altius_closed_week_html}, max_weeks_ahead=6)
+    service = OrderabilityService(
+        client=client, cache=OrderabilityCache(":memory:", ttl_seconds=900),
+        restaurants={altius_config.code: altius_config}, today=fixture_today,
+    )
+
+    assert run_sweep_if_due(service, [altius_config], _at(-1)) is True
+    assert client.calls

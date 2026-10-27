@@ -5104,3 +5104,123 @@ def test_a_stale_available_for_a_past_week_is_not_served_from_the_cache(client):
 
 def test_the_status_of_a_past_week_does_not_depend_on_the_cache_at_all(client):
     assert client.get("/api/restaurants/altius/status?date=2026-09-01").get_json()["status"] == "past_date"
+
+
+# ---------------------------------------------------------------------------
+# Hardening round: public refresh, per-address mail caps, menu-load failures
+# ---------------------------------------------------------------------------
+
+from restopolis.client import RestopolisError  # noqa: E402
+
+
+def _recording_check_orderability():
+    """Patches check_orderability so it still really runs, while recording what each call was asked."""
+    real = OrderabilityService.check_orderability
+    return patch.object(OrderabilityService, "check_orderability", autospec=True, side_effect=real)
+
+
+def test_a_public_status_request_cannot_force_a_live_restopolis_fetch(client):
+    with _recording_check_orderability() as check:
+        client.get("/api/restaurants/altius/status?date=2026-09-24&refresh=1")
+    assert check.call_args.kwargs["refresh"] is False
+
+
+def test_an_admin_can_still_force_a_refresh(client, monkeypatch):
+    monkeypatch.setenv("ADMIN_TOKEN", "correct-token")
+    with _recording_check_orderability() as check:
+        client.get("/api/restaurants/altius/status?date=2026-09-24&refresh=1&token=correct-token")
+    assert check.call_args.kwargs["refresh"] is True
+
+
+def test_a_public_orderability_check_cannot_force_a_refresh_either(client):
+    with _recording_check_orderability() as check:
+        client.post("/api/orderability/check", json={"restaurant": "altius", "date": "2026-09-24", "refresh": True})
+    assert check.call_args.kwargs["refresh"] is False
+
+
+def test_one_address_gets_at_most_eight_codes_a_day_whoever_asks(client):
+    client.application.config["EMAIL_VERIFICATION_STORE"]._resend_cooldown = 0  # isolate the daily cap
+    with patch("app.send_verification_code", return_value=(True, None)):
+        codes = [client.post("/api/email/send-code", json={"email": "Student@uni.lu" if i % 2 else "student@uni.lu"}) for i in range(9)]
+        other = client.post("/api/email/send-code", json={"email": "someone.else@uni.lu"})
+
+    assert [r.status_code for r in codes] == [200] * 8 + [429]
+    assert codes[-1].get_json()["error"] == "rate_limited"
+    assert other.status_code == 200  # the cap is per address
+
+
+def test_the_checkout_and_delivery_code_routes_share_the_per_address_cap(client):
+    client.application.config["CHECKOUT_VERIFICATION_STORE"]._resend_cooldown = 0
+    with patch("app.send_verification_code", return_value=(True, None)):
+        statuses = [client.post("/api/orders/email/send-code", json={"email": "who@example.com"}).status_code for _ in range(9)]
+
+    assert statuses == [200] * 8 + [429]
+
+
+def _menu_cannot_be_read():
+    return patch("app.get_customer_menu", side_effect=RestopolisError("No menu data cached yet"))
+
+
+def test_quote_answers_409_not_500_when_the_menu_cannot_be_read(client):
+    with _menu_cannot_be_read():
+        resp = client.post("/api/orders/quote", json={"restaurant": "altius", "date": "2026-09-24", "items": []})
+
+    assert resp.status_code == 409
+    assert resp.get_json()["error"] == "date_not_available"
+
+
+def test_create_order_answers_409_not_500_when_the_menu_cannot_be_read(client):
+    with _menu_cannot_be_read():
+        resp = _post_order(client, _order_payload([{"id": SALAD_BAR_ID, "quantity": 1}]))
+
+    assert resp.status_code == 409
+    assert resp.get_json()["error"] == "date_not_available"
+
+
+def test_smart_lunch_answers_409_not_500_when_the_menu_cannot_be_read(client):
+    with _menu_cannot_be_read():
+        resp = client.post("/api/smart-lunch", json={"restaurant": "altius", "date": "2026-09-24"})
+
+    assert resp.status_code == 409
+
+
+def test_quote_for_a_week_that_is_gone_is_a_409(client):
+    resp = client.post("/api/orders/quote", json={"restaurant": "altius", "date": "2026-09-14", "items": []})
+
+    assert resp.status_code == 409
+
+
+def test_a_failed_accepted_email_does_not_mark_the_customer_as_emailed(client):
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    with patch("app.send_order_claimed_notification", return_value=(True, None)), patch(
+        "app.send_delivery_notification", return_value=(True, None)
+    ), patch("app.send_order_accepted", return_value=(False, "Resend is down")):
+        _claim(client, order_id)
+
+    store = client.application.config["ORDER_STORE"]
+    assert store._conn.execute("SELECT accepted_emailed_at FROM orders WHERE id = ?", (order_id,)).fetchone() == (None,)
+
+
+def test_the_accepted_email_is_sent_again_on_the_next_claim_after_a_failed_one(client):
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    quiet = (patch("app.send_order_claimed_notification", return_value=(True, None)), patch("app.send_delivery_notification", return_value=(True, None)))
+    with quiet[0], quiet[1], patch("app.send_order_accepted", return_value=(False, "Resend is down")):
+        _claim(client, order_id)
+        _unclaim(client, order_id)
+    with quiet[0], quiet[1], patch("app.send_order_accepted", return_value=(True, None)) as mock_email:
+        _claim(client, order_id)
+
+    mock_email.assert_called_once()
+
+
+def test_a_failed_on_its_way_email_does_not_mark_the_customer_as_emailed(client):
+    order_id = _create_basic_order(client, customer_email="student@uni.lu")
+    with patch("app.send_order_claimed_notification", return_value=(True, None)), patch(
+        "app.send_delivery_notification", return_value=(True, None)
+    ), patch("app.send_order_accepted", return_value=(True, None)):
+        _claim(client, order_id)
+    with patch("app.send_order_out_for_delivery", return_value=(False, "Resend is down")):
+        assert _pickup(client, order_id).status_code == 200
+
+    store = client.application.config["ORDER_STORE"]
+    assert store._conn.execute("SELECT on_way_emailed_at FROM orders WHERE id = ?", (order_id,)).fetchone() == (None,)

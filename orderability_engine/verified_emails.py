@@ -29,10 +29,10 @@ from __future__ import annotations
 import hashlib
 import hmac
 import secrets
-import sqlite3
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
+from orderability_engine.sqlite_util import connect
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS verified_emails (
@@ -54,11 +54,17 @@ CREATE TABLE IF NOT EXISTS signing_keys (
 _TOKEN_KEY_NAME = "identity-token-v1"
 
 
+def _canonical(email: str) -> str:
+    """One mailbox, one identity: "John.Doe@x" and "john.doe@x" are the same address (the identity token, the
+    rewards and the daily limits already treat them so; this store used to compare the raw text)."""
+    return email.strip().lower()
+
+
 class VerifiedEmailStore:
     def __init__(self, db_path: str | Path = "orders.db"):
         # Same file as OrderStore by default -- one small extra table in
         # the same SQLite database, not a separate file to keep track of.
-        self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
+        self._conn = connect(db_path)
         self._lock = threading.RLock()
         self._conn.executescript(SCHEMA)
         self._conn.commit()
@@ -77,10 +83,13 @@ class VerifiedEmailStore:
         proven via a second flow later) is a no-op, not an error, and
         keeps the ORIGINAL verified_at rather than overwriting it."""
         now = datetime.now(timezone.utc).isoformat()
+        email = _canonical(email)
         with self._lock:
+            # lower() on the stored side too: rows written before addresses were normalised may still be mixed case
             self._conn.execute(
-                "INSERT INTO verified_emails (email, verified_at) VALUES (?, ?) ON CONFLICT(email) DO NOTHING",
-                (email, now),
+                "INSERT INTO verified_emails (email, verified_at) SELECT ?, ? "
+                "WHERE NOT EXISTS (SELECT 1 FROM verified_emails WHERE lower(email) = ?)",
+                (email, now, email),
             )
             self._conn.commit()
 
@@ -115,5 +124,5 @@ class VerifiedEmailStore:
 
     def is_verified(self, email: str) -> bool:
         with self._lock:
-            row = self._conn.execute("SELECT 1 FROM verified_emails WHERE email = ?", (email,)).fetchone()
+            row = self._conn.execute("SELECT 1 FROM verified_emails WHERE lower(email) = ?", (_canonical(email),)).fetchone()
         return row is not None

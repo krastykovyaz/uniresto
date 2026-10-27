@@ -89,3 +89,13 @@ def test_seconds_until_resend_allowed_is_zero_once_cooldown_already_elapsed():
     store = EmailVerificationStore(resend_cooldown_seconds=-1)  # already elapsed
     store.issue("student@uni.lu", "123456")
     assert store.seconds_until_resend_allowed("student@uni.lu") == 0
+
+
+def test_a_code_is_checked_whatever_the_capitalisation_of_the_address():
+    from orderability_engine.email_verification import EmailVerificationStore
+
+    store = EmailVerificationStore()
+    store.issue("Student@Uni.lu", "123456")
+
+    assert store.seconds_until_resend_allowed("student@uni.lu") > 0
+    assert store.verify(" STUDENT@uni.lu ", "123456") == (True, None)

@@ -28,10 +28,10 @@ points need to pass a real file path for this fix to take effect.
 
 from __future__ import annotations
 
-import sqlite3
 import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from orderability_engine.sqlite_util import connect
 
 CODE_TTL_SECONDS = 10 * 60  # 10 minutes
 RESEND_COOLDOWN_SECONDS = 60  # minimum gap between two sends to the same address
@@ -58,7 +58,7 @@ class EmailVerificationStore:
         self._code_ttl = code_ttl_seconds
         self._resend_cooldown = resend_cooldown_seconds
         self._lock = threading.RLock()
-        self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
+        self._conn = connect(db_path)
         self._conn.executescript(SCHEMA)
         self._conn.commit()
 
@@ -76,6 +76,7 @@ class EmailVerificationStore:
         how many whole seconds the caller must still wait -- a light
         rate limit so this endpoint can't be trivially used to spam an
         arbitrary address with repeated codes."""
+        email = email.strip().lower()
         with self._lock:
             row = self._conn.execute("SELECT sent_at FROM email_verification_codes WHERE email = ?", (email,)).fetchone()
         if row is None:
@@ -92,6 +93,7 @@ class EmailVerificationStore:
         method only tracks state, matching mailer.py's own separation
         (generate_verification_code() there is pure, this store is the
         only thing that remembers what was issued)."""
+        email = email.strip().lower()
         now = datetime.now(timezone.utc)
         expires_at = now + timedelta(seconds=self._code_ttl)
         with self._lock:
@@ -114,7 +116,9 @@ class EmailVerificationStore:
         "incorrect_code", or None on success. A successful verify
         consumes the entry (one-time use); so does hitting the attempt
         limit or an expiry, both of which also clear it so a stale entry
-        never lingers to be retried against."""
+        never lingers to be retried against. The address is compared case-insensitively
+        (a code asked for as "A@x" is answered as "a@x")."""
+        email = email.strip().lower()
         with self._lock:
             row = self._conn.execute(
                 "SELECT code, expires_at, attempts FROM email_verification_codes WHERE email = ?", (email,)

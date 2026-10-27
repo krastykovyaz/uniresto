@@ -20,7 +20,6 @@ this every minute live in app.py, which owns those channels.
 from __future__ import annotations
 
 import logging
-import sqlite3
 import threading
 import time
 from datetime import datetime, timedelta
@@ -28,6 +27,7 @@ from pathlib import Path
 
 from orderability_engine.delivery_rules import DELIVERY_EXPIRY_TIME
 from orderability_engine.models import TZINFO
+from orderability_engine.sqlite_util import connect
 
 logger = logging.getLogger("uniresto.reminders")
 
@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS order_reminders_sent (
 
 class OrderReminderStore:
     def __init__(self, db_path: str | Path = "orders.db"):
-        self._conn = sqlite3.connect(str(db_path), check_same_thread=False, timeout=10)
+        self._conn = connect(db_path)
         self._lock = threading.RLock()
         self._conn.executescript(SCHEMA)
         self._conn.commit()

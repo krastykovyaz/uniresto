@@ -36,6 +36,7 @@ import sqlite3
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
+from orderability_engine.sqlite_util import connect
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS page_views (
@@ -80,7 +81,7 @@ class PageViewStore:
     def __init__(self, db_path: str | Path = "orders.db"):
         # Same file as OrderStore by default -- one small extra table, not
         # a separate file to keep track of.
-        self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
+        self._conn = connect(db_path)
         self._lock = threading.RLock()
         self._conn.executescript(SCHEMA)
         self._migrate()

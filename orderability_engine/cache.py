@@ -38,6 +38,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from orderability_engine.models import RestopolisDayStatus
+from orderability_engine.sqlite_util import connect
 
 logger = logging.getLogger("orderability.cache")
 
@@ -92,7 +93,8 @@ class OrderabilityCache:
         # alone only relaxes the "created in another thread" check; it
         # does not make one connection safe for concurrent use, so every
         # public method below takes self._lock before touching self._conn.
-        self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
+        self.db_path = str(db_path)
+        self._conn = connect(db_path)
         self._lock = threading.RLock()
         self._conn.executescript(SCHEMA)
         self._conn.commit()
