@@ -2174,7 +2174,7 @@ async function backfillLastOrder() {
     const order = await api(`/api/orders/${Math.max(...ids)}`);
     if (order && Array.isArray(order.items) && order.items.length > 0 && order.status !== "cancelled") {
       rememberLastOrder(order);
-      if (state.screen === "role") render();
+      if (state.screen === "restaurants") render();
     }
   } catch {
     /* no card this time; the next visit tries again */
@@ -2204,11 +2204,8 @@ function renderRole() {
   app.append(el(`<h1 class="large-title" style="padding-top:28px">${escapeHtml(tr("roleQuestion"))}</h1>`));
   const discount = discountBanner();
   if (discount) app.append(discount);
-  // Someone who has ordered before gets their last order one tap away; someone who hasn't gets a reason to try.
-  const again = reorderAgainCard();
-  if (again) app.append(again);
-  else if (loadOrderHistoryIds().length === 0) app.append(tryReasonCard());
-  else backfillLastOrder(); // ordered before this feature existed: find out what, then show the card
+  // Someone who hasn't ordered yet gets a reason to try. ("Order the same again" lives on the restaurants page.)
+  if (loadOrderHistoryIds().length === 0) app.append(tryReasonCard());
 
   maybeShowTip("home-eat");
   const grid = el(`<div class="restaurant-grid"></div>`);
@@ -3376,12 +3373,14 @@ function renderRestaurants() {
   }));
   body.append(restaurantGridContent());
   app.append(body);
-  // The same one-tap "Order the same again" card as on Home, in the free space under the restaurants -- outside
+  // The one-tap "Order the same again" card, in the free space under the restaurants -- outside
   // `body`, so switching the campus tab above does not redraw it.
   const again = reorderAgainCard();
   if (again) {
     again.classList.add("reorder-card-below");
     app.append(again);
+  } else if (loadOrderHistoryIds().length > 0) {
+    backfillLastOrder(); // ordered before this feature existed: find out what, then show the card
   }
 }
 

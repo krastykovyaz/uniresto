@@ -17,16 +17,21 @@ test("a spot from the other campus is never offered", () => {
   assert.match(app, /buildingsForCurrentRestaurant\(\)\.some\(\(b\) => b\.label === spot\.building\)/);
 });
 
-test("the last order is remembered and offered on the home screen; older devices read it back once", () => {
+test("the last order is remembered and offered on the restaurants page, not on Home; older devices read it back once", () => {
   assert.match(app, /rememberLastOrder\(order\);/);
   assert.match(app, /function reorderAgainCard\(\)/);
   assert.match(app, /card\.addEventListener\("click", \(\) => reorderPastOrder\(last\)\)/);
   assert.match(app, /async function backfillLastOrder\(\)/);
+  // Home does not show it any more; the restaurants page does
+  const home = app.slice(app.indexOf("function renderRole()"), app.indexOf("maybeShowTip(\"home-eat\")"));
+  assert.doesNotMatch(home, /reorderAgainCard/);
+  const restaurants = app.slice(app.indexOf("function renderRestaurants()"));
+  assert.match(restaurants.slice(0, 2500), /reorderAgainCard\(\)/);
 });
 
 test("newcomers see why to try it: Luni, delivery to the building, and which buildings", () => {
   assert.match(app, /function tryReasonCard\(\)/);
-  assert.match(app, /else if \(loadOrderHistoryIds\(\)\.length === 0\) app\.append\(tryReasonCard\(\)\)/);
+  assert.match(app, /if \(loadOrderHistoryIds\(\)\.length === 0\) app\.append\(tryReasonCard\(\)\)/);
   for (const key of ["reorderAgainTitle", "reorderAgainCta", "tryReasonTitle", "tryReasonLuni", "tryReasonDelivery", "tryReasonBuildings"]) {
     assert.equal((i18n.match(new RegExp(`${key}:`, "g")) || []).length, 11, key);
   }
