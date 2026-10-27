@@ -70,6 +70,13 @@ FUNNEL_EVENTS = (
 )
 EVENTS = EVENTS + FUNNEL_EVENTS
 
+# The photo scan ("take a picture of the tray"), counted anonymously like the funnel -- never the photo, never what was
+# on it, only that it happened. "scan": an answered photo, label = what came back (found / similar / none).
+# "scan_failed": the recognizer could not answer. "scan_add": "Add to basket" tapped on a scan result,
+# label = found / similar. The two server-side ones are recorded in api_tray_scan(), the last from the client.
+SCAN_EVENTS = ("scan", "scan_failed", "scan_add")
+EVENTS = EVENTS + SCAN_EVENTS
+
 # A QR code is a physical object -- no way to ever edit what it encodes
 # once printed, so this stays short and forgiving rather than a strict
 # format. Long enough for a real label ("flyer-kirchberg-noticeboard"),

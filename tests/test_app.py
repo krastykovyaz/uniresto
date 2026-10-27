@@ -5224,3 +5224,183 @@ def test_a_failed_on_its_way_email_does_not_mark_the_customer_as_emailed(client)
 
     store = client.application.config["ORDER_STORE"]
     assert store._conn.execute("SELECT on_way_emailed_at FROM orders WHERE id = ?", (order_id,)).fetchone() == (None,)
+
+
+# ---------------------------------------------------------------------------
+# Photo of a tray -> the dishes of the day's menu on it
+# ---------------------------------------------------------------------------
+
+from orderability_engine.photo_sanitize import sanitize_dish_photo  # noqa: E402
+from orderability_engine.tray_scan import FixedTrayRecognizer, TrayScanError, prepare_image  # noqa: E402
+
+
+def _tray_photo(color=(180, 90, 30)) -> bytes:
+    out = io.BytesIO()
+    Image.new("RGB", (64, 48), color).save(out, format="JPEG")
+    return out.getvalue()
+
+
+def _scan(client, photo=None, **fields):
+    data = {"restaurant": "altius", "date": "2026-09-24", **fields}
+    if photo is not False:
+        data["photo"] = (io.BytesIO(photo if photo is not None else _tray_photo()), "tray.jpg")
+    return client.post("/api/tray-scan", data=data, content_type="multipart/form-data")
+
+
+def _recognizes(client, answers_by_photo):
+    """The app's recognizer replays `answers_by_photo` ({raw photo bytes: items}) for those exact photos."""
+    client.application.config["TRAY_RECOGNIZER"] = FixedTrayRecognizer(
+        {FixedTrayRecognizer.key(prepare_image(sanitize_dish_photo(raw))): items for raw, items in answers_by_photo.items()}
+    )
+
+
+def test_tray_scan_is_off_without_a_recognizer(client):
+    assert client.get("/api/tray-scan/available").get_json() == {"available": False}
+    resp = _scan(client)
+    assert resp.status_code == 503 and resp.get_json()["error"] == "tray_scan_unavailable"
+
+
+def test_tray_scan_reports_when_it_is_on(client):
+    _recognizes(client, {})
+    assert client.get("/api/tray-scan/available").get_json() == {"available": True}
+
+
+def test_a_scanned_tray_comes_back_with_the_menu_dishes_and_a_server_priced_quote(client):
+    photo = _tray_photo()
+    _recognizes(client, {photo: [{"id": BRETZEL_ID, "quantity": 2}, {"id": SALAD_BAR_ID, "quantity": 1}]})
+
+    body = _scan(client, photo).get_json()
+
+    assert body["items"] == [{"id": BRETZEL_ID, "quantity": 2}, {"id": SALAD_BAR_ID, "quantity": 1}]
+    assert body["quote"]["totals"]["total_quantity"] == 3
+    assert body["quote"]["totals"]["weight_by_unit"]["g"] == 160.0  # the same numbers /api/orders/quote gives
+
+
+def test_a_dish_that_is_not_on_the_menu_is_dropped(client):
+    photo = _tray_photo()
+    _recognizes(client, {photo: [{"id": 99999, "quantity": 1}, {"id": BRETZEL_ID, "quantity": 1}]})
+
+    assert [m["id"] for m in _scan(client, photo).get_json()["items"]] == [BRETZEL_ID]
+
+
+def test_a_tray_with_nothing_recognised_is_an_empty_answer_not_an_error(client):
+    _recognizes(client, {})
+    assert _scan(client).get_json() == {"items": [], "quote": None, "similar": [], "similar_quote": None}
+
+
+def _scan_counts(client):
+    store = client.application.config["PAGE_VIEW_STORE"]
+    rows = store._conn.execute(
+        "SELECT event, COALESCE(source, ''), COUNT(*) FROM page_views WHERE event LIKE 'scan%' GROUP BY 1, 2"
+    ).fetchall()
+    return {(event, label): n for event, label, n in rows}
+
+
+def test_each_scan_is_counted_with_what_came_back_and_never_the_photo(client):
+    photo = _tray_photo()
+    _recognizes(client, {photo: [{"id": BRETZEL_ID, "quantity": 1}]})
+    _scan(client, photo)
+    _scan(client, _tray_photo((1, 2, 3)))  # a photo the recognizer knows nothing about -> nothing found
+    assert _scan_counts(client) == {("scan", "found"): 1, ("scan", "none"): 1}
+
+
+def test_a_failed_scan_is_counted_as_failed(client):
+    class Broken:
+        def identify(self, jpeg, candidates):
+            raise TrayScanError("down")
+
+    client.application.config["TRAY_RECOGNIZER"] = Broken()
+    _scan(client)
+    assert _scan_counts(client) == {("scan_failed", ""): 1}
+
+
+def test_a_refused_scan_is_not_counted(client):
+    _scan(client)  # no recognizer -> 503
+    _recognizes(client, {})
+    _scan(client, False)  # no photo -> 400
+    assert _scan_counts(client) == {}
+
+
+def test_a_scan_still_answers_when_the_counter_breaks(client, monkeypatch):
+    photo = _tray_photo()
+    _recognizes(client, {photo: [{"id": BRETZEL_ID, "quantity": 1}]})
+    monkeypatch.setattr(client.application.config["PAGE_VIEW_STORE"], "record", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("db")))
+    assert _scan(client, photo).status_code == 200
+
+
+def test_add_to_basket_from_a_scan_is_counted_by_the_client(client):
+    assert _track(client, "scan_add", "similar").status_code == 200
+    assert _scan_counts(client) == {("scan_add", "similar"): 1}
+
+
+def test_a_recognizer_failure_is_a_502(client):
+    class Broken:
+        def identify(self, jpeg, candidates):
+            raise TrayScanError("down")
+
+    client.application.config["TRAY_RECOGNIZER"] = Broken()
+    resp = _scan(client)
+    assert resp.status_code == 502 and resp.get_json()["error"] == "tray_scan_failed"
+
+
+def test_tray_scan_rejects_a_missing_photo_and_a_non_image(client):
+    _recognizes(client, {})
+    assert _scan(client, False).status_code == 400
+    resp = _scan(client, b"this is not an image")
+    assert resp.status_code == 400 and resp.get_json()["error"] == "invalid_photo"
+
+
+def test_tray_scan_rejects_an_oversized_photo(client):
+    _recognizes(client, {})
+    assert _scan(client, b"\xff\xd8" + b"0" * (8 * 1024 * 1024 + 1)).status_code == 413
+
+
+def test_tray_scan_answers_409_when_the_menu_cannot_be_read(client):
+    _recognizes(client, {})
+    with patch("app.get_customer_menu", side_effect=RestopolisError("no menu")):
+        assert _scan(client).status_code == 409
+
+
+def test_the_photo_is_never_written_to_disk(client, tmp_path):
+    photo = _tray_photo()
+    _recognizes(client, {photo: [{"id": BRETZEL_ID, "quantity": 1}]})
+    before = sorted(p.name for p in tmp_path.rglob("*") if p.is_file() and p.suffix in (".jpg", ".jpeg", ".png", ".webp"))
+
+    _scan(client, photo)
+
+    assert sorted(p.name for p in tmp_path.rglob("*") if p.is_file() and p.suffix in (".jpg", ".jpeg", ".png", ".webp")) == before
+
+
+def test_tray_scan_is_rate_limited_per_client(client):
+    _recognizes(client, {})
+    statuses = [_scan(client).status_code for _ in range(11)]
+    assert statuses[:10] == [200] * 10 and statuses[10] == 429
+
+
+def test_a_photo_of_food_that_is_not_on_the_menu_gets_the_closest_menu_dishes(client):
+    photo = _tray_photo((20, 120, 200))
+    _recognizes(client, {photo: {"items": [], "similar": [{"id": BRETZEL_ID}, {"id": SALAD_BAR_ID}]}})
+
+    body = _scan(client, photo).get_json()
+
+    assert body["items"] == [] and body["quote"] is None
+    assert [m["id"] for m in body["similar"]] == [BRETZEL_ID, SALAD_BAR_ID]
+    assert body["similar_quote"]["totals"]["total_quantity"] == 2  # priced by the same rules as a basket
+
+
+def test_seen_dishes_and_similar_ones_come_back_priced_separately(client):
+    photo = _tray_photo((200, 20, 120))
+    _recognizes(client, {photo: {"items": [{"id": BRETZEL_ID, "quantity": 2}], "similar": [{"id": SALAD_BAR_ID}]}})
+
+    body = _scan(client, photo).get_json()
+
+    assert body["quote"]["totals"]["total_quantity"] == 2
+    assert body["similar_quote"]["totals"]["total_quantity"] == 1
+    assert [m["id"] for m in body["similar"]] == [SALAD_BAR_ID]
+
+
+def test_a_similar_dish_that_was_also_seen_is_listed_once(client):
+    photo = _tray_photo((90, 90, 200))
+    _recognizes(client, {photo: {"items": [{"id": BRETZEL_ID, "quantity": 1}], "similar": [{"id": BRETZEL_ID}, {"id": 99999}]}})
+
+    assert _scan(client, photo).get_json()["similar"] == []

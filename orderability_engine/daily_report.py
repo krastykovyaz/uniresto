@@ -106,6 +106,9 @@ def compute_report_counts(page_views: PageViewStore, order_store: OrderStore, re
         "menu": page_views.count_between("menu", start, end),
         "orders": order_store.count_created_between(start, end),
         "delivery": page_views.count_between("delivery", start, end),
+        "scans": page_views.count_between("scan", start, end),
+        "scan_add": page_views.count_between("scan_add", start, end),
+        "scan_failed": page_views.count_between("scan_failed", start, end),
     }
 
 

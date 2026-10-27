@@ -65,7 +65,19 @@ def test_compute_report_counts_reads_real_numbers(tmp_path):
     order_store.create_order("altius", "Altius", today, [{"category": "c", "name": "n", "quantity": 1}])
 
     counts = compute_report_counts(page_views, order_store, today)
-    assert counts == {"home": 2, "home_by_source": [("(direct)", 2)], "menu": 1, "orders": 1, "delivery": 1}
+    assert counts == {"home": 2, "home_by_source": [("(direct)", 2)], "menu": 1, "orders": 1, "delivery": 1, "scans": 0, "scan_add": 0, "scan_failed": 0}
+
+
+def test_compute_report_counts_includes_the_photo_scans(tmp_path):
+    from datetime import datetime
+    from orderability_engine.models import TZINFO
+
+    page_views = PageViewStore(tmp_path / "pv.db")
+    order_store = OrderStore(tmp_path / "o.db")
+    for event in ("scan", "scan", "scan_add", "scan_failed"):
+        page_views.record(event)
+    counts = compute_report_counts(page_views, order_store, datetime.now(TZINFO).date())
+    assert (counts["scans"], counts["scan_add"], counts["scan_failed"]) == (2, 1, 1)
 
 
 def test_compute_report_counts_excludes_other_days(tmp_path):
@@ -78,7 +90,7 @@ def test_compute_report_counts_excludes_other_days(tmp_path):
     order_store.create_order("altius", "Altius", today, [{"category": "c", "name": "n", "quantity": 1}])
 
     counts = compute_report_counts(page_views, order_store, yesterday)
-    assert counts == {"home": 0, "home_by_source": [], "menu": 0, "orders": 0, "delivery": 0}
+    assert counts == {"home": 0, "home_by_source": [], "menu": 0, "orders": 0, "delivery": 0, "scans": 0, "scan_add": 0, "scan_failed": 0}
 
 
 def test_compute_report_counts_breaks_home_down_by_source(tmp_path):

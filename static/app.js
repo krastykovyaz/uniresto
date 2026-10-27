@@ -1069,6 +1069,7 @@ const ICON_PATHS = {
   phone: '<path d="M6.6 10.8c1.4 2.8 3.8 5.2 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.3 21 3 13.7 3 4.9c0-.6.4-1 1-1h3.4c.6 0 1 .4 1 1 0 1.2.2 2.4.6 3.6.1.4 0 .8-.2 1L6.6 10.8z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" fill="none"/>',
   delivery: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" fill="none"/><path d="M4.5 7.5L12 12l7.5-4.5M12 12v9" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none"/>',
   message: '<path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9l-4 4v-4H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" fill="none"/>',
+  camera: '<path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="none"/><circle cx="12" cy="13.2" r="3.4" stroke="currentColor" stroke-width="1.8" fill="none"/>',
   share: '<path d="M12 15V4M8 8l4-4 4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M5 13v6a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
 };
 
@@ -2256,6 +2257,7 @@ function renderRole() {
     grid.append(card);
   }
   app.append(grid);
+  mountTrayScanHomeCard(grid);
 }
 
 // Groups orders under their canteen name, each group collapsible on its
@@ -3374,6 +3376,13 @@ function renderRestaurants() {
   }));
   body.append(restaurantGridContent());
   app.append(body);
+  // The same one-tap "Order the same again" card as on Home, in the free space under the restaurants -- outside
+  // `body`, so switching the campus tab above does not redraw it.
+  const again = reorderAgainCard();
+  if (again) {
+    again.classList.add("reorder-card-below");
+    app.append(again);
+  }
 }
 
 // Not real Restopolis restaurants -- no menu, no orderability, never
@@ -4914,6 +4923,7 @@ function renderMenu() {
   const deadline = fmtDeadline(state.dateInfo && state.dateInfo.our_delivery && state.dateInfo.our_delivery.deadline);
   if (deadline) headerBlock.append(el(`<p class="deadline-line">${escapeHtml(tr("orderDeadline"))}: ${deadline}</p>`));
   app.append(headerBlock);
+  mountTrayScanButton(headerBlock);
 
   app.append(searchBar());
   app.append(filterBar());
@@ -4976,6 +4986,256 @@ function renderMenu() {
 
   renderSummaryBar();
   if (state.filterSheetOpen) app.append(filterSheet());
+}
+
+// ------------------------------------------------------------ Tray scan
+// A photo of a plate or tray -> the dishes of the day's menu on it, with their facts and the summed price (the server
+// prices them exactly like a basket, POST /api/tray-scan). Only offered when the server has a recognizer configured.
+// A guess about a picture, and worded as one. Two doors: the button on a restaurant's menu (restaurant and day are
+// known) and the card on Home (the sheet asks which restaurant; the day is today).
+
+let trayScanAvailability = null; // a promise of true/false, asked once per page load
+
+function trayScanAvailable() {
+  if (!trayScanAvailability) {
+    trayScanAvailability = fetch("/api/tray-scan/available")
+      .then((r) => (r.ok ? r.json() : { available: false }))
+      .catch(() => ({ available: false }))
+      .then((body) => Boolean(body && body.available));
+  }
+  return trayScanAvailability;
+}
+
+function mountTrayScanButton(host) {
+  trayScanAvailable().then((available) => {
+    if (!available || !host.isConnected || host.querySelector(".scan-tray-button")) return;
+    const btn = el(`<button type="button" class="scan-tray-button">${icon("camera", 18)}<span>${escapeHtml(tr("trayScanButton"))}</span></button>`);
+    btn.addEventListener("click", () => openTraySheet({ slug: state.slug, restaurantName: state.restaurantName, date: state.targetDate }));
+    host.append(btn);
+  });
+}
+
+// Home: a card under "I want to eat" / "I want to delivery", spanning both columns.
+function mountTrayScanHomeCard(grid) {
+  trayScanAvailable().then((available) => {
+    if (!available || !grid.isConnected || grid.querySelector(".scan-card")) return;
+    const card = el(`
+      <button class="restaurant-card scan-card" aria-label="${escapeHtml(tr("trayScanButton"))}">
+        <div class="restaurant-card-main">
+          <div class="icon-avatar is-other">${icon("camera", 20)}</div>
+          <div>
+            <h2>${escapeHtml(tr("trayScanButton"))}</h2>
+            <p class="kind">${escapeHtml(tr("trayScanCardSubtitle"))}</p>
+          </div>
+        </div>
+      </button>
+    `);
+    card.addEventListener("click", () => openTraySheet({ home: true }));
+    grid.append(card);
+  });
+}
+
+const TRAY_RESTAURANT_KEY = "uniresto.trayRestaurant.v1";
+function loadTrayRestaurant() {
+  try {
+    return localStorage.getItem(TRAY_RESTAURANT_KEY);
+  } catch {
+    return null;
+  }
+}
+function saveTrayRestaurant(slug) {
+  try {
+    localStorage.setItem(TRAY_RESTAURANT_KEY, slug);
+  } catch {
+    /* only a convenience */
+  }
+}
+
+// ctx: { slug, restaurantName, date } when the restaurant and day are known (the menu button), or { home: true }:
+// the sheet asks which restaurant and uses today's menu.
+function openTraySheet(ctx) {
+  const overlay = el(`<div class="sheet-overlay"></div>`);
+  const sheet = el(`
+    <div class="lang-sheet tray-sheet" role="dialog" aria-modal="true" aria-label="${escapeHtml(tr("trayScanButton"))}">
+      <div class="sheet-grabber" aria-hidden="true"></div>
+      <div class="lang-sheet-header">
+        <p class="screen-title">${escapeHtml(tr("trayScanButton"))}</p>
+        <button type="button" class="filter-close" aria-label="${escapeHtml(tr("back"))}">${icon("close", 20)}</button>
+      </div>
+      <div class="tray-body"></div>
+    </div>
+  `);
+  const body = sheet.querySelector(".tray-body");
+  // In the DOM (not detached): some mobile browsers refuse to open the picker for an input that is not on the page.
+  const input = el(`<input type="file" accept="image/*" hidden>`);
+  sheet.append(input);
+  let previewUrl = null;
+  const target = { slug: ctx.slug || null, restaurantName: ctx.restaurantName || null, date: ctx.date || localDateString() };
+  if (ctx.home) {
+    const open = (state.restaurants || []).filter((r) => r.slug);
+    const remembered = open.find((r) => r.slug === loadTrayRestaurant()) || open[0];
+    if (remembered) Object.assign(target, { slug: remembered.slug, restaurantName: remembered.name });
+  }
+
+  function close() {
+    document.removeEventListener("keydown", onKey, true);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    overlay.remove();
+  }
+  function onKey(e) {
+    if (e.key === "Escape") {
+      e.stopPropagation();
+      close();
+    }
+  }
+  sheet.querySelector(".filter-close").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close();
+  });
+  document.addEventListener("keydown", onKey, true);
+
+  function restaurantChips() {
+    const wrap = el(`<div class="tray-where"><p class="tray-where-label">${escapeHtml(tr("trayScanWhere"))}</p><div class="tray-chips" role="group"></div></div>`);
+    const chips = wrap.querySelector(".tray-chips");
+    for (const r of state.restaurants || []) {
+      const chip = el(`<button type="button" class="tray-chip" aria-pressed="${r.slug === target.slug}">${escapeHtml(shortName(r.name))}</button>`);
+      chip.addEventListener("click", () => {
+        Object.assign(target, { slug: r.slug, restaurantName: r.name });
+        saveTrayRestaurant(r.slug);
+        for (const c of chips.children) c.setAttribute("aria-pressed", String(c === chip));
+      });
+      chips.append(chip);
+    }
+    return wrap;
+  }
+
+  function showPicker(message = null) {
+    body.innerHTML = "";
+    if (ctx.home) body.append(restaurantChips());
+    body.append(el(`<p class="tray-note">${escapeHtml(message || tr("trayScanIntro"))}</p>`));
+    const pick = el(`<button type="button" class="primary-button">${icon("camera", 18)} ${escapeHtml(tr("trayScanTake"))}</button>`);
+    pick.addEventListener("click", () => input.click());
+    body.append(pick, el(`<p class="tray-privacy">${escapeHtml(tr("trayScanPrivacy"))}</p>`));
+  }
+
+  async function scan(file) {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = URL.createObjectURL(file);
+    body.innerHTML = "";
+    body.append(el(`<img class="tray-preview" src="${previewUrl}" alt="">`), el(`<p class="tray-note" role="status">${escapeHtml(tr("trayScanBusy"))}</p>`));
+    const { slug, date } = target;
+    try {
+      const form = new FormData();
+      form.append("restaurant", slug);
+      form.append("date", date);
+      form.append("photo", file);
+      const res = await fetch("/api/tray-scan", { method: "POST", body: form });
+      const data = await res.json().catch(() => null);
+      if (res.status === 429) return showPicker(tr("tooManyRequests"));
+      if (res.status === 409) return showPicker(tr("trayScanNoMenu"));
+      if (!res.ok || !data) return showPicker(tr("trayScanFailed"));
+      // The dishes and their pictures come from the app's own menu data for that restaurant and day (cached).
+      const [menu, photos] = await Promise.all([getMenu(slug, date), getDishPhotos(slug)]);
+      showResults(data, new Map(menu.items.map((it) => [it.id, it])), photos);
+    } catch {
+      showPicker(tr("trayScanFailed"));
+    }
+  }
+
+  function dishRow(item, quantity, photos) {
+    const facts = [categoryLabel(item.category, state.lang), weightText(item), caloriesText(item)].filter(Boolean);
+    const table = nutritionTable(item);
+    // The dish's own approved photo when it has one, else the plate icon the cards use.
+    const photoPath = photos && photos[item.category] && photos[item.category][item.name];
+    const thumb = photoPath ? `<img class="tray-dish-photo" src="${escapeHtml(photoPath)}" alt="" loading="lazy">` : `<span class="tray-dish-photo tray-dish-photo-empty">${icon("plate", 22)}</span>`;
+    return el(`
+      <li class="tray-dish">
+        ${thumb}
+        <div class="tray-dish-text">
+          <p class="tray-dish-name">${escapeHtml(dishTitleWithSize(item.name, state.lang))}${quantity > 1 ? ` <span class="tray-qty">×${quantity}</span>` : ""}</p>
+          <p class="tray-dish-facts">${escapeHtml(facts.join(" · "))}</p>
+          ${table ? `<details class="tray-dish-more"><summary>${escapeHtml(tr("trayScanDetails"))}</summary>${table}</details>` : ""}
+        </div>
+      </li>`);
+  }
+
+  // One block: a heading, the dishes, their summed price (the server's quote) and the button that adds them.
+  function dishBlock(headingKey, found, quote, photos, buttonKey, primary) {
+    const block = el(`<section class="tray-block"></section>`);
+    block.append(el(`<p class="tray-found">${escapeHtml(tr(headingKey))}</p>`));
+    const list = el(`<ul class="tray-list"></ul>`);
+    for (const { item, quantity } of found) list.append(dishRow(item, quantity, photos));
+    block.append(list);
+    if (quote) block.append(buildTotalsBox(quote));
+    const add = el(`<button type="button" class="${primary ? "primary-button" : "secondary-button"}">${escapeHtml(tr(buttonKey))}</button>`);
+    add.addEventListener("click", async () => {
+      add.disabled = true;
+      trackFunnel("scan_add", primary ? "found" : "similar");
+      await addToBasket(found);
+      close();
+    });
+    block.append(add);
+    return block;
+  }
+
+  function showResults(data, byId, photos) {
+    const resolve = (list) => (list || []).map((m) => ({ item: byId.get(m.id), quantity: m.quantity || 1 })).filter((f) => f.item);
+    const found = resolve(data.items);
+    const similar = resolve(data.similar);
+    if (found.length === 0 && similar.length === 0) return showPicker(tr("trayScanNothing"));
+    body.innerHTML = "";
+    if (previewUrl) body.append(el(`<img class="tray-preview" src="${previewUrl}" alt="">`));
+    if (found.length > 0) body.append(dishBlock("trayScanFound", found, data.quote, photos, "trayScanAdd", true));
+    if (similar.length > 0) {
+      body.append(dishBlock(found.length > 0 ? "trayScanSimilar" : "trayScanSimilarOnly", similar, data.similar_quote, photos, "trayScanAddSimilar", found.length === 0));
+    }
+    body.append(el(`<p class="tray-privacy">${escapeHtml(tr("trayScanGuess"))}</p>`));
+    const again = el(`<button type="button" class="secondary-button">${escapeHtml(tr("trayScanRetake"))}</button>`);
+    again.addEventListener("click", () => showPicker());
+    body.append(again);
+  }
+
+  // Puts the scanned dishes in the basket of the restaurant and day they were scanned for. From Home (or any other
+  // restaurant/day than the one open) that means opening that menu first, exactly as picking the day would.
+  async function addToBasket(found) {
+    const sameMenu = state.screen === "menu" && state.slug === target.slug && state.targetDate === target.date && state.menu;
+    if (!sameMenu) {
+      try {
+        const dateInfo = await api(`/api/restaurants/${target.slug}/status?date=${target.date}`);
+        state.slug = target.slug;
+        state.restaurantName = target.restaurantName;
+        await selectDate(dateInfo, "restaurants");
+      } catch {
+        showToast(tr("trayScanFailed"));
+        return;
+      }
+      if (!state.menu) return;
+    }
+    const menuIds = new Set(state.menu.items.map((it) => it.id));
+    const maxQ = (state.menu && state.menu.max_quantity) || 2;
+    for (const { item, quantity } of found) {
+      if (!menuIds.has(item.id)) continue;
+      const existing = selectionFor(item.id);
+      if (existing) existing.quantity = clampQuantity(Math.max(existing.quantity, quantity), maxQ);
+      else state.selection.push({ menuItemId: item.id, quantity: clampQuantity(quantity, maxQ) });
+    }
+    trackFunnel("basket_add", visitSource, { once: true });
+    state.serverQuote = null;
+    saveCart();
+    if (sameMenu) refreshMenuScreen();
+    else render();
+    renderBottomNav();
+    showToast(tr("trayScanAdded"));
+  }
+
+  input.addEventListener("change", () => {
+    const file = input.files[0];
+    input.value = "";
+    if (file) scan(file);
+  });
+  showPicker();
+  overlay.append(sheet);
+  deviceScreen.append(overlay);
 }
 
 // ------------------------------------------------------------ Filters
@@ -6577,9 +6837,9 @@ const debouncedRefreshServerQuote = debounce(refreshServerQuote, 400);
 // above, shared with the confirmation screen), falling back to the
 // instant local preview (marked "is-unverified") while that request is
 // in flight or if it failed.
-function buildTotalsBox() {
-  if (state.serverQuote) {
-    const order = state.serverQuote;
+function buildTotalsBox(quote = state.serverQuote) {
+  if (quote) {
+    const order = quote;
     const totals = order.totals;
     const weightLines = Object.entries(totals.weight_by_unit || {})
       .filter(([, v]) => v > 0)

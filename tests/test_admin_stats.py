@@ -121,3 +121,16 @@ def test_the_message_has_the_familiar_shape(stores):
     assert "Sun 27 Sep" not in text and "Sat 26 Sep" not in text
     for line in ("Opened the app:", "Viewed a menu:", "Orders placed:", "Opened deliveries:"):
         assert text.count(line) == 3  # today, yesterday + the total
+
+
+def test_photo_scans_show_in_every_block_and_the_total(stores):
+    page_views, orders = stores
+    _view(page_views, "scan", 0, "found")
+    _view(page_views, "scan", 1, "none")
+    _view(page_views, "scan", 1, "similar")
+    _view(page_views, "scan_add", 1, "found")
+    _view(page_views, "scan_failed", 1)
+    blocks = build_stats_message(page_views, orders, NOW).split("\n\n")
+    assert "Photo scans: 1 (added to basket: 0, failed: 0)" in blocks[1]  # today
+    assert "Photo scans: 2 (added to basket: 1, failed: 1)" in blocks[2]  # yesterday
+    assert "Photo scans: 3 (added to basket: 1, failed: 1)" in blocks[-1]

@@ -69,6 +69,7 @@ from orderability_engine.page_views import FUNNEL_EVENTS, MAX_SOURCE_LENGTH, Pag
 from orderability_engine.pending_dish_photos import PendingDishPhotoStore
 from orderability_engine.push_notify import PushSubscriptionStore, notify_in_background, push_config, sanitize_prefs, valid_subscription
 from orderability_engine.photo_sanitize import sanitize_dish_photo
+from orderability_engine.tray_scan import TrayScanError, prepare_image, recognizer_from_env, validate_scan
 from orderability_engine.pricing import INCLUDED_SIDE_CATEGORIES, compute_formula_total, price_tables_payload
 from orderability_engine.rate_limits import RateLimitStore
 from orderability_engine.rewards import (
@@ -377,6 +378,7 @@ def create_app(
     push_store: PushSubscriptionStore | None = None,
     push_sender=None,
     mail_runner=None,
+    tray_recognizer=None,
     enable_menu_refresh_scheduler: bool = True,
     enable_daily_report_scheduler: bool = True,
     enable_reminder_scheduler: bool = True,
@@ -438,6 +440,8 @@ def create_app(
     app.config["VERIFIED_EMAIL_STORE"] = verified_email_store or VerifiedEmailStore("orders.db")
     # Crowd-sourced dish photos (see dish_photos.py's own docstring) --
     # same orders.db file as every other *_store above, same reasoning.
+    # Photo of a tray -> the dishes on it (orderability_engine/tray_scan.py). None = feature off (no API key set).
+    app.config["TRAY_RECOGNIZER"] = tray_recognizer or recognizer_from_env()
     app.config["DISH_PHOTO_STORE"] = dish_photo_store or DishPhotoStore("orders.db")
     # Where uploaded files actually land -- defaults to static/dish_photos
     # (served straight back out by Flask's own static handler) but
@@ -628,6 +632,9 @@ def create_app(
         # The 60 s per-address cooldown and the per-client cap above still let several clients mail ONE address
         # once a minute for ever (sender reputation, Resend quota), or the whole service be used as a mail
         # cannon. These two are not per client: a cap per address per day, and one for all addresses per hour.
+        # A tray photo costs a vision-model call: a modest cap per client, and one for the whole service.
+        "tray_scan": (10, 3600),
+        "tray_scan_all": (300, 86400),
         "send_code_address": (8, 86400),
         "send_code_all": (300, 3600),
         "rewards_read": (300, 3600),  # Profile re-reads the balance on every visit
@@ -1171,6 +1178,14 @@ def create_app(
         result = svc().check_orderability(restaurant, d, refresh=refresh)
         return jsonify(result.to_api_dict())
 
+
+    def record_scan(event: str, label: str | None = None) -> None:
+        """Photo-scan counters for the admin stats. Best-effort: a counter must never fail a scan."""
+        try:
+            page_views().record(event, source=label)
+        except Exception:  # noqa: BLE001
+            app.logger.warning("could not record %s", event)
+
     @app.post("/api/orders/quote")
     def api_quote_order():
         """Recalculates totals server-side from a client selection of
@@ -1211,6 +1226,62 @@ def create_app(
         except OrderValidationError as exc:
             return jsonify({"error": "invalid_selection", "message": str(exc)}), 400
         return jsonify(quote)
+
+    @app.get("/api/tray-scan/available")
+    def api_tray_scan_available():
+        return jsonify({"available": app.config["TRAY_RECOGNIZER"] is not None})
+
+    @app.post("/api/tray-scan")
+    def api_tray_scan():
+        """A photo of a plate or tray -> which dishes of that day's menu are on it, with the same server-side
+        pricing a basket gets. The photo is shrunk, shown to the recognizer and dropped: never stored or logged.
+        Multipart form: restaurant (slug), date (YYYY-MM-DD), photo. Answers
+        {"items": [{"id", "quantity"}], "quote": <as /api/orders/quote> | null, "similar": [{"id", "quantity"}],
+        "similar_quote": ...}: the menu dishes seen in the photo, and the closest menu dishes to whatever in it is
+        not on the menu. It is a guess about a picture: the dishes are only ever ones from this menu, but which of
+        them are in the photo can be wrong."""
+        recognizer = app.config["TRAY_RECOGNIZER"]
+        if recognizer is None:
+            return jsonify({"error": "tray_scan_unavailable"}), 503
+        if (limited := rate_limited_response("tray_scan")) is not None:
+            return limited
+        if (limited := rate_limited_response("tray_scan_all", per_client=False)) is not None:
+            return limited
+        slug, date_str = request.form.get("restaurant"), request.form.get("date")
+        photo = request.files.get("photo")
+        if not slug or not date_str or photo is None:
+            abort(400, description="Form must include 'restaurant', 'date' and a 'photo' file")
+        restaurant = get_restaurant_or_404(slug)
+        d = parse_date_arg(date_str)
+        data = photo.read(MAX_DISH_PHOTO_BYTES + 1)
+        if len(data) > MAX_DISH_PHOTO_BYTES:
+            return jsonify({"error": "photo_too_large"}), 413
+        jpeg = sanitize_dish_photo(data)  # also throws away EXIF/GPS
+        if jpeg is None:
+            return jsonify({"error": "invalid_photo"}), 400
+        flat_items, unavailable = _flat_menu_or_409(restaurant, d)
+        if unavailable is not None:
+            return unavailable
+        candidates = [{"id": it["id"], "name": it["name"], "category": it["category"]} for it in flat_items]
+        try:
+            raw = recognizer.identify(prepare_image(jpeg), candidates)
+        except TrayScanError:
+            record_scan("scan_failed")
+            return jsonify({"error": "tray_scan_failed"}), 502
+        matches, similar = validate_scan(raw, candidates, MAX_QUANTITY)
+        record_scan("scan", "found" if matches else "similar" if similar else "none")
+        by_id = {it["id"]: it for it in flat_items}
+
+        def quote_of(chosen):
+            if not chosen:
+                return None
+            selection = [{"id": m["id"], "quantity": m["quantity"], "category": by_id[m["id"]]["category"], "name": by_id[m["id"]]["name"]} for m in chosen]
+            try:
+                return recalculate_order(flat_items, resolve_selection(flat_items, selection))
+            except (OrderValidationError, MenuChangedError):
+                return None
+
+        return jsonify({"items": matches, "quote": quote_of(matches), "similar": similar, "similar_quote": quote_of(similar)})
 
     @app.post("/api/orders")
     def api_create_order():
@@ -2005,7 +2076,7 @@ def create_app(
     # background, so counting at api_menu() inflated one real view into
     # ~5. "delivery" stays server-side in api_delivery_orders(), which is
     # only ever called when that screen actually renders.
-    CLIENT_TRACKED_EVENTS = ("home", "menu", *FUNNEL_EVENTS)
+    CLIENT_TRACKED_EVENTS = ("home", "menu", "scan_add", *FUNNEL_EVENTS)
 
     # /api/visit/ is what static/app.js calls: ad/content blockers and DNS
     # filters drop any URL containing "track", which silently lost QR-code
