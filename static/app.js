@@ -421,6 +421,8 @@ function saveRegisteredEmail(email) {
 function clearRegisteredEmail() {
   try {
     localStorage.removeItem(EMAIL_STORAGE_KEY);
+    // The personal share code belongs to that address: the next person on this device must not share with it.
+    localStorage.removeItem("uniresto.shareRef.v1");
   } catch {
     /* ignore */
   }
@@ -2212,6 +2214,8 @@ function tryReasonCard() {
 // is what actually pays): an order delivered, a delivery done, an approved dish photo, and a tenth of a Luni for every
 // different person who opens a menu link you shared.
 const EARN_LUNI_OPEN_KEY = "uniresto.earnLuniOpen.v1";
+const EARN_BALANCE_MAX_AGE_MS = 5 * 60 * 1000;
+let lastBalanceFetch = { email: null, at: 0 };
 const EARN_LUNI_ROWS = [
   { key: "order", icon: "fork", labelKey: "earnLuniOrder", badge: "+1" },
   { key: "delivery", icon: "delivery", labelKey: "earnLuniDelivery", badge: "+1" },
@@ -2234,7 +2238,20 @@ function openSharePickerSheet() {
     </div>
   `);
   const list = sheet.querySelector(".lang-list");
-  const close = () => overlay.remove();
+  const returnFocus = document.activeElement;
+  let opening = false;
+  function onKey(e) {
+    if (e.key === "Escape") {
+      e.stopPropagation();
+      close();
+      returnFocus?.focus?.();
+    }
+  }
+  const close = () => {
+    document.removeEventListener("keydown", onKey, true);
+    overlay.remove();
+  };
+  document.addEventListener("keydown", onKey, true);
   for (const restaurant of state.restaurants) {
     const row = el(`
       <button type="button" class="lang-option">
@@ -2243,6 +2260,8 @@ function openSharePickerSheet() {
       </button>
     `);
     row.addEventListener("click", async () => {
+      if (opening) return; // a double tap must not stack two share sheets
+      opening = true;
       close();
       const ref = await shareRefCode();
       openShareSheet(null, shortName(restaurant.name), menuShareUrl(restaurant.slug, "next", ref), ref ? "shareEarnNote" : state.registeredEmail ? null : "shareEarnVerify");
@@ -2314,6 +2333,7 @@ function earnLuniCard() {
   head.addEventListener("click", () => {
     open = !open;
     setOpen(open);
+    if (open) refreshBalance();
     try {
       localStorage.setItem(EARN_LUNI_OPEN_KEY, open ? "1" : "0");
     } catch {
@@ -2322,17 +2342,29 @@ function earnLuniCard() {
   });
   const balance = card.querySelector(".earn-balance");
   const verify = card.querySelector(".earn-verify");
-  if (state.registeredEmail) {
-    balance.hidden = false;
-    balance.textContent = tr("earnLuniBalance", { n: state.rewardPoints });
-    // Same fetch Profile does; patched in place so Home is never redrawn for it.
+  // Same fetch Profile does, patched in place so Home is never redrawn for it. Home is drawn often, so the balance is
+  // only asked for while the block is open and at most every EARN_BALANCE_MAX_AGE_MS; the chip shows the last known
+  // number meanwhile. An answer for an address that is no longer the signed-in one is dropped.
+  function refreshBalance() {
+    const email = state.registeredEmail;
+    if (!email) return;
+    if (lastBalanceFetch.email === email && Date.now() - lastBalanceFetch.at < EARN_BALANCE_MAX_AGE_MS) return;
+    lastBalanceFetch = { email, at: Date.now() };
     claimPendingRewards()
-      .then(() => api(`/api/rewards?email=${encodeURIComponent(state.registeredEmail)}`))
+      .then(() => api(`/api/rewards?email=${encodeURIComponent(email)}`))
       .then((result) => {
+        if (state.registeredEmail !== email) return;
         state.rewardPoints = result.points;
         balance.textContent = tr("earnLuniBalance", { n: state.rewardPoints });
       })
-      .catch(() => {});
+      .catch(() => {
+        lastBalanceFetch = { email: null, at: 0 }; // try again next time
+      });
+  }
+  if (state.registeredEmail) {
+    balance.hidden = false;
+    balance.textContent = tr("earnLuniBalance", { n: state.rewardPoints });
+    if (open) refreshBalance();
   } else {
     verify.hidden = false;
     verify.addEventListener("click", () => goTo("profile"));
@@ -5036,7 +5068,9 @@ function renderMenu() {
   const menuHeader = header({ title: shortName(state.restaurantName), subtitle: fmtLong(state.targetDate), back: () => goTo(state.menuBack || "dates") });
   const shareMenuBtn = el(`<button type="button" class="back-button menu-share-button" aria-label="${escapeHtml(tr("shareDish", { name: shortName(state.restaurantName) }))}">${icon("share", 18)}</button>`);
   shareMenuBtn.addEventListener("click", async () => {
-    const ref = await shareRefCode();
+    if (shareMenuBtn.disabled) return; // asking for the share code can take a moment; one sheet per tap
+    shareMenuBtn.disabled = true;
+    const ref = await shareRefCode().finally(() => (shareMenuBtn.disabled = false));
     openShareSheet(
       null,
       `${shortName(state.restaurantName)} · ${fmtLong(state.targetDate)}`,
@@ -5203,6 +5237,7 @@ function saveTrayRestaurant(slug) {
 // the sheet asks which restaurant and uses today's menu.
 function openTraySheet(ctx) {
   let adding = false; // one "add to basket" at a time, whichever block's button was pressed
+  const returnFocus = document.activeElement; // given back when the sheet closes
   const overlay = el(`<div class="sheet-overlay"></div>`);
   const sheet = el(`
     <div class="lang-sheet tray-sheet" role="dialog" aria-modal="true" aria-label="${escapeHtml(tr("trayScanButton"))}">
@@ -5228,6 +5263,7 @@ function openTraySheet(ctx) {
 
   function close() {
     document.removeEventListener("keydown", onKey, true);
+    if (sheet.contains(document.activeElement)) returnFocus?.focus?.();
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     overlay.remove();
   }
@@ -5415,6 +5451,7 @@ function openTraySheet(ctx) {
   showPicker();
   overlay.append(sheet);
   deviceScreen.append(overlay);
+  sheet.querySelector(".filter-close")?.focus(); // a dialog takes the focus, as the other sheets do
 }
 
 // ------------------------------------------------------------ Filters
@@ -6181,9 +6218,12 @@ function visitorId() {
     localStorage.setItem(VISITOR_ID_KEY, id);
     return id;
   } catch {
-    return "anon-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    // Storage blocked: one id for this page's whole life, so reloading a link is not "another person" each time.
+    if (!fallbackVisitorId) fallbackVisitorId = "anon-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    return fallbackVisitorId;
   }
 }
+let fallbackVisitorId = null;
 
 // The signed-in person's share code (null when they have not verified their University email, or offline).
 const SHARE_REF_KEY = "uniresto.shareRef.v1";

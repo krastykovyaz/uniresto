@@ -209,6 +209,26 @@ def test_a_network_error_or_a_blocked_reply_moves_on_too():
     assert len(session.calls) == 3
 
 
+@pytest.mark.parametrize("payload", [
+    {"candidates": [None]},
+    {"candidates": "nope"},
+    {"candidates": [{"content": ["text"]}]},
+    {"candidates": [{"content": {"parts": "text"}}]},
+    {"candidates": [{"content": {"parts": [None, 3]}}]},
+    [],
+    "a string",
+])
+def test_an_answer_of_the_wrong_shape_moves_on_instead_of_crashing(payload):
+    session = _Sequence(_Response(payload), _gemini('{"items": [{"id": 2, "quantity": 1}]}'))
+    assert GeminiTrayRecognizer("k", ["a", "b"], session).identify(_jpeg(), CANDIDATES)["items"] == [{"id": 2, "quantity": 1}]
+
+
+def test_only_wrong_shapes_from_every_model_is_a_scan_error_not_a_crash():
+    session = _Sequence(_Response({"candidates": [None]}), _Response(["x"]))
+    with pytest.raises(TrayScanError):
+        GeminiTrayRecognizer("k", ["a", "b"], session).identify(_jpeg(), CANDIDATES)
+
+
 def test_a_rejected_key_stops_at_once():
     for status in (401, 403):
         session = _Sequence(_Response({}, status=status), _gemini('{"items": []}'))

@@ -5397,8 +5397,51 @@ def test_the_photo_is_never_written_to_disk(client, tmp_path):
 
 def test_tray_scan_is_rate_limited_per_client(client):
     _recognizes(client, {})
-    statuses = [_scan(client).status_code for _ in range(11)]
-    assert statuses[:10] == [200] * 10 and statuses[10] == 429
+    statuses = [_scan(client).status_code for _ in range(31)]
+    assert statuses[:30] == [200] * 30 and statuses[30] == 429
+
+
+def test_a_malformed_scan_spends_none_of_the_caps(client):
+    _recognizes(client, {})
+    for _ in range(40):
+        assert _scan(client, False).status_code == 400  # no photo
+        assert _scan(client, b"not an image").status_code == 400
+    assert _scan(client).status_code == 200
+
+
+def test_a_day_without_any_dish_never_reaches_the_recognizer(client, monkeypatch):
+    import app as app_module
+
+    calls = []
+
+    class Counting:
+        def identify(self, jpeg, candidates):
+            calls.append(1)
+            return []
+
+    client.application.config["TRAY_RECOGNIZER"] = Counting()
+    monkeypatch.setattr(app_module, "flatten_menu_items", lambda *a, **k: [])
+    resp = _scan(client)
+    assert resp.status_code == 409 and resp.get_json()["error"] == "date_not_available"
+    assert calls == []
+
+
+def test_a_body_far_over_the_limit_is_refused_before_it_is_parsed(client):
+    _recognizes(client, {})
+    huge = b"\xff\xd8" + b"0" * (12 * 1024 * 1024)
+    resp = _scan(client, huge)
+    assert resp.status_code == 413 and resp.get_json() == {"error": "photo_too_large"}
+    resp = client.post(
+        "/api/restaurants/altius/dish-photos",
+        data={"email": "student@uni.lu", "category": "Végétarien", "name": "Salad'bar", "photo": (io.BytesIO(huge), "big.png")},
+        content_type="multipart/form-data",
+    )
+    assert resp.status_code == 400 and resp.get_json()["error"] == "too_large"
+
+
+def test_the_body_cap_is_really_set(client):
+    # Flask ships MAX_CONTENT_LENGTH = None; a setdefault() would silently leave it unlimited.
+    assert client.application.config["MAX_CONTENT_LENGTH"] == 8 * 1024 * 1024 + 512 * 1024
 
 
 def test_a_photo_of_food_that_is_not_on_the_menu_gets_the_closest_menu_dishes(client):

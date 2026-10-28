@@ -67,3 +67,34 @@ test("verifying an email sends this browser's id, so links it opened earlier pay
 test("the replace-basket question exists in all 11 languages", () => {
   assert.equal((i18n.match(/\btrayScanReplaceBasket:/g) || []).length, 11);
 });
+
+test("signing out also forgets the personal share code", () => {
+  const fn = app.slice(app.indexOf("function clearRegisteredEmail()"), app.indexOf("function clearRegisteredEmail()") + 400);
+  assert.match(fn, /removeItem\("uniresto\.shareRef\.v1"\)/);
+  assert.match(app, /const SHARE_REF_KEY = "uniresto\.shareRef\.v1"/); // the same key the cache uses
+});
+
+test("Home asks for the balance only while the block is open, at most every few minutes, for the current address", () => {
+  const fn = app.slice(app.indexOf("function earnLuniCard()"), app.indexOf("function renderRole()"));
+  assert.match(fn, /if \(open\) refreshBalance\(\);/);
+  assert.match(fn, /Date\.now\(\) - lastBalanceFetch\.at < EARN_BALANCE_MAX_AGE_MS\) return/);
+  assert.match(fn, /if \(state\.registeredEmail !== email\) return;/);
+});
+
+test("with storage blocked the fallback browser id stays the same for the page's life", () => {
+  const fn = app.slice(app.indexOf("function visitorId()"), app.indexOf("const SHARE_REF_KEY"));
+  assert.match(fn, /if \(!fallbackVisitorId\) fallbackVisitorId = /);
+  assert.match(fn, /return fallbackVisitorId;/);
+});
+
+test("share buttons ignore a second tap while the first is still opening", () => {
+  assert.match(app, /if \(shareMenuBtn\.disabled\) return;/);
+  assert.match(app, /if \(opening\) return; \/\/ a double tap must not stack two share sheets/);
+});
+
+test("the photo sheet takes the focus and the menu picker closes on Escape", () => {
+  const tray = app.slice(app.indexOf("function openTraySheet(ctx)"), app.indexOf("function openTraySheet(ctx)") + 20000);
+  assert.match(tray, /sheet\.querySelector\("\.filter-close"\)\?\.focus\(\)/);
+  const picker = app.slice(app.indexOf("function openSharePickerSheet()"), app.indexOf("function earnLuniCard()"));
+  assert.match(picker, /e\.key === "Escape"/);
+});

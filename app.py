@@ -639,7 +639,7 @@ def create_app(
         # once a minute for ever (sender reputation, Resend quota), or the whole service be used as a mail
         # cannon. These two are not per client: a cap per address per day, and one for all addresses per hour.
         # A tray photo costs a vision-model call: a modest cap per client, and one for the whole service.
-        "tray_scan": (10, 3600),
+        "tray_scan": (30, 3600),      # per IP, and a whole campus can share one; the global cap below is the real limit
         "tray_scan_all": (300, 86400),
         "send_code_address": (8, 86400),
         "send_code_all": (300, 3600),
@@ -985,6 +985,19 @@ def create_app(
         b"GIF89a": ".gif",
     }
     MAX_DISH_PHOTO_BYTES = 8 * 1024 * 1024
+    # The whole request body: refused before Werkzeug parses (and spools to disk) a multipart upload, instead of
+    # after. Room on top of the largest photo for the other form fields.
+    # (Flask's own default is None, already present, so this is an assignment, not a setdefault.)
+    app.config["MAX_CONTENT_LENGTH"] = MAX_DISH_PHOTO_BYTES + 512 * 1024
+
+    @app.errorhandler(413)
+    def request_too_large(_exc):
+        """The same answer each photo route gives for a photo over the limit, when the body was refused even sooner:
+        the scan's 413 "photo_too_large", the dish-photo upload's (older) 400 "too_large"."""
+        if request.path.startswith("/api/tray-scan"):
+            return jsonify({"error": "photo_too_large"}), 413
+        return jsonify({"error": "too_large", "message": "Photo must be smaller than 8 MB"}), 400
+
     MAX_DISH_FIELD_LENGTH = 200
     PENDING_DISH_PHOTO_MAX_AGE = timedelta(days=30)
 
@@ -1326,10 +1339,6 @@ def create_app(
         recognizer = app.config["TRAY_RECOGNIZER"]
         if recognizer is None:
             return jsonify({"error": "tray_scan_unavailable"}), 503
-        if (limited := rate_limited_response("tray_scan")) is not None:
-            return limited
-        if (limited := rate_limited_response("tray_scan_all", per_client=False)) is not None:
-            return limited
         slug, date_str = request.form.get("restaurant"), request.form.get("date")
         photo = request.files.get("photo")
         if not slug or not date_str or photo is None:
@@ -1346,6 +1355,13 @@ def create_app(
         if unavailable is not None:
             return unavailable
         candidates = [{"id": it["id"], "name": it["name"], "category": it["category"]} for it in flat_items]
+        if not candidates:  # nothing to match against: no point asking the recognizer
+            return jsonify({"error": "date_not_available", "status": "no_menu"}), 409
+        # Only now is a scan spent: a malformed request or a day without a menu costs none of the caps.
+        if (limited := rate_limited_response("tray_scan")) is not None:
+            return limited
+        if (limited := rate_limited_response("tray_scan_all", per_client=False)) is not None:
+            return limited
         with scan_slot(app.config["TRAY_SCAN_LOCK"]) as got_slot:
             if not got_slot:
                 record_scan("scan_failed", "busy")

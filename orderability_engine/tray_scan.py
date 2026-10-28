@@ -176,7 +176,7 @@ class ClaudeTrayRecognizer:
             )
             response.raise_for_status()
             text = "".join(block.get("text", "") for block in response.json().get("content", []) if block.get("type") == "text")
-        except (requests.RequestException, ValueError) as exc:
+        except (requests.RequestException, ValueError, TypeError, AttributeError) as exc:  # odd shapes too, never a 500
             # The message of a RequestException can echo the URL but never carries the key (it travels in a header).
             logger.warning("tray scan request failed: %s", type(exc).__name__)
             raise TrayScanError("the recognizer could not be reached") from exc
@@ -263,19 +263,23 @@ class GeminiTrayRecognizer:
                 continue
             try:
                 return _items_from_reply(_gemini_text(response.json()))
-            except (TrayScanError, ValueError) as exc:
+            except (TrayScanError, ValueError, TypeError, AttributeError) as exc:
                 # An unreadable or blocked reply from this model: another model may do better.
                 last_problem = f"{model}: unreadable reply"
                 logger.warning("tray scan: %s gave an unreadable reply (%s), trying the next model", model, type(exc).__name__)
         raise TrayScanError(f"no Gemini model could answer ({last_problem})")
 
 
-def _gemini_text(payload: dict) -> str:
-    candidates = payload.get("candidates") or []
-    if not candidates:  # e.g. the prompt was blocked
+def _gemini_text(payload: object) -> str:
+    """The reply's text, or TrayScanError for anything not shaped like a Gemini answer (never an AttributeError)."""
+    candidates = payload.get("candidates") if isinstance(payload, dict) else None
+    if not isinstance(candidates, list) or not candidates or not isinstance(candidates[0], dict):  # e.g. a blocked prompt
         raise TrayScanError("the recognizer returned no answer")
-    parts = (candidates[0].get("content") or {}).get("parts") or []
-    return "".join(part.get("text", "") for part in parts)
+    content = candidates[0].get("content")
+    parts = content.get("parts") if isinstance(content, dict) else None
+    if not isinstance(parts, list):
+        raise TrayScanError("the recognizer's answer has no text")
+    return "".join(part["text"] for part in parts if isinstance(part, dict) and isinstance(part.get("text"), str))
 
 
 class FixedTrayRecognizer:
