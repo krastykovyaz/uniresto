@@ -134,3 +134,14 @@ def test_photo_scans_show_in_every_block_and_the_total(stores):
     assert "Photo scans: 1 (added to basket: 0, failed: 0)" in blocks[1]  # today
     assert "Photo scans: 2 (added to basket: 1, failed: 1)" in blocks[2]  # yesterday
     assert "Photo scans: 3 (added to basket: 1, failed: 1)" in blocks[-1]
+
+
+def test_opened_share_links_show_in_every_block_and_the_total(stores):
+    page_views, orders = stores
+    _view(page_views, "share_open", 0)
+    _view(page_views, "share_open", 1)
+    _view(page_views, "share_open", 1)
+    blocks = build_stats_message(page_views, orders, NOW).split("\n\n")
+    assert "Shared links opened: 1" in blocks[1]
+    assert "Shared links opened: 2" in blocks[2]
+    assert "Shared links opened: 3" in blocks[-1]

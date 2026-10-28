@@ -2199,6 +2199,113 @@ function tryReasonCard() {
   `);
 }
 
+// ------------------------------------------------------------- "Earn Luni" block on Home
+//
+// The four everyday ways to earn, each one tap from doing it. The amounts mirror REWARD_POINTS in rewards.py (the server
+// is what actually pays): an order delivered, a delivery done, an approved dish photo, and a tenth of a Luni for every
+// different person who opens a menu link you shared.
+const EARN_LUNI_ROWS = [
+  { key: "order", icon: "fork", labelKey: "earnLuniOrder", badge: "+1" },
+  { key: "delivery", icon: "delivery", labelKey: "earnLuniDelivery", badge: "+1" },
+  { key: "photo", icon: "camera", labelKey: "earnLuniPhoto", badge: "+1" },
+  { key: "share", icon: "share", labelKey: "earnLuniShare", noteKey: "earnLuniShareNote", badge: "+0.1" },
+];
+
+// A small sheet to pick which restaurant's menu to share, then the usual share sheet with the sharer's code in the link.
+// "date=next" is what a flyer uses too: the next day that can still be ordered.
+function openSharePickerSheet() {
+  const overlay = el(`<div class="sheet-overlay"></div>`);
+  const sheet = el(`
+    <div class="lang-sheet" role="dialog" aria-modal="true" aria-label="${escapeHtml(tr("earnLuniSharePickTitle"))}">
+      <div class="sheet-grabber" aria-hidden="true"></div>
+      <div class="lang-sheet-header">
+        <p class="screen-title">${escapeHtml(tr("earnLuniSharePickTitle"))}</p>
+        <button type="button" class="filter-close" aria-label="${escapeHtml(tr("back"))}">${icon("close", 20)}</button>
+      </div>
+      <div class="lang-list"></div>
+    </div>
+  `);
+  const list = sheet.querySelector(".lang-list");
+  const close = () => overlay.remove();
+  for (const restaurant of state.restaurants) {
+    const row = el(`
+      <button type="button" class="lang-option">
+        <span class="lang-badge">${icon("fork", 16)}</span>
+        <span class="lang-names"><span class="lang-native">${escapeHtml(shortName(restaurant.name))}</span></span>
+      </button>
+    `);
+    row.addEventListener("click", async () => {
+      close();
+      const ref = await shareRefCode();
+      openShareSheet(null, shortName(restaurant.name), menuShareUrl(restaurant.slug, "next", ref), ref ? "shareEarnNote" : state.registeredEmail ? null : "shareEarnVerify");
+    });
+    list.append(row);
+  }
+  sheet.querySelector(".filter-close").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) close();
+  });
+  overlay.append(sheet);
+  deviceScreen.append(overlay);
+  list.querySelector(".lang-option")?.focus();
+}
+
+function earnLuniCard() {
+  const card = el(`
+    <section class="earn-card" aria-label="${escapeHtml(tr("earnLuniTitle"))}">
+      <div class="earn-head">
+        <span class="earn-icon">${icon("sparkle", 18)}</span>
+        <strong>${escapeHtml(tr("earnLuniTitle"))}</strong>
+        <button type="button" class="earn-balance" hidden></button>
+      </div>
+      <button type="button" class="earn-verify" hidden>${escapeHtml(tr("earnLuniVerify"))}</button>
+      <ul class="earn-list"></ul>
+    </section>
+  `);
+  const actions = {
+    order: () => goTo("restaurants"),
+    delivery: () => goTo("delivery"),
+    photo: () => {
+      goTo("restaurants");
+      showToast(tr("earnLuniPhotoHint"), 5000);
+    },
+    share: () => openSharePickerSheet(),
+  };
+  const list = card.querySelector(".earn-list");
+  for (const row of EARN_LUNI_ROWS) {
+    const item = el(`
+      <li>
+        <button type="button" class="earn-row">
+          <span class="earn-row-icon">${icon(row.icon, 18)}</span>
+          <span class="earn-row-text"><span>${escapeHtml(tr(row.labelKey))}</span>${row.noteKey ? `<small>${escapeHtml(tr(row.noteKey))}</small>` : ""}</span>
+          <strong class="earn-badge">${escapeHtml(row.badge)}</strong>
+        </button>
+      </li>
+    `);
+    item.querySelector("button").addEventListener("click", actions[row.key]);
+    list.append(item);
+  }
+  const balance = card.querySelector(".earn-balance");
+  const verify = card.querySelector(".earn-verify");
+  if (state.registeredEmail) {
+    balance.hidden = false;
+    balance.textContent = tr("earnLuniBalance", { n: state.rewardPoints });
+    balance.addEventListener("click", () => goTo("profile"));
+    // Same fetch Profile does; patched in place so Home is never redrawn for it.
+    claimPendingRewards()
+      .then(() => api(`/api/rewards?email=${encodeURIComponent(state.registeredEmail)}`))
+      .then((result) => {
+        state.rewardPoints = result.points;
+        balance.textContent = tr("earnLuniBalance", { n: state.rewardPoints });
+      })
+      .catch(() => {});
+  } else {
+    verify.hidden = false;
+    verify.addEventListener("click", () => goTo("profile"));
+  }
+  return card;
+}
+
 function renderRole() {
   app.innerHTML = "";
   app.append(el(`<h1 class="large-title" style="padding-top:28px">${escapeHtml(tr("roleQuestion"))}</h1>`));
@@ -2255,6 +2362,7 @@ function renderRole() {
   }
   app.append(grid);
   mountTrayScanHomeCard(grid);
+  app.append(earnLuniCard());
 }
 
 // Groups orders under their canteen name, each group collapsible on its
@@ -4312,6 +4420,7 @@ function openRewardRulesSheet(trigger) {
         <li><span>${escapeHtml(tr("rewardRuleOrder"))}</span><strong>+1</strong></li>
         <li><span>${escapeHtml(tr("rewardRuleDelivery"))}</span><strong>+1</strong></li>
         <li><span>${escapeHtml(tr("rewardRulePhoto"))}</span><strong>+1</strong></li>
+        <li><span>${escapeHtml(tr("rewardRuleShare"))}</span><strong>+0.1</strong></li>
         <li><span>${escapeHtml(tr("rewardPenaltyNoConfirm"))}</span><strong>−1</strong></li>
         <li><span>${escapeHtml(tr("rewardPenaltyNoShow"))}</span><strong>−1</strong></li>
       </ul>
@@ -4892,9 +5001,15 @@ function renderMenu() {
   app.innerHTML = "";
   const menuHeader = header({ title: shortName(state.restaurantName), subtitle: fmtLong(state.targetDate), back: () => goTo(state.menuBack || "dates") });
   const shareMenuBtn = el(`<button type="button" class="back-button menu-share-button" aria-label="${escapeHtml(tr("shareDish", { name: shortName(state.restaurantName) }))}">${icon("share", 18)}</button>`);
-  shareMenuBtn.addEventListener("click", () =>
-    openShareSheet(null, `${shortName(state.restaurantName)} · ${fmtLong(state.targetDate)}`, menuShareUrl(state.slug, state.targetDate)),
-  );
+  shareMenuBtn.addEventListener("click", async () => {
+    const ref = await shareRefCode();
+    openShareSheet(
+      null,
+      `${shortName(state.restaurantName)} · ${fmtLong(state.targetDate)}`,
+      menuShareUrl(state.slug, state.targetDate, ref),
+      ref ? "shareEarnNote" : state.registeredEmail ? null : "shareEarnVerify",
+    );
+  });
   menuHeader.append(shareMenuBtn);
   app.append(menuHeader);
   maybeShowTip("menu-share");
@@ -5978,13 +6093,74 @@ function dishShareUrl(item) {
   return url.toString();
 }
 
-// One restaurant's menu for one day: /?lang=..&r=<slug>&date=YYYY-MM-DD.
-function menuShareUrl(slug, date) {
+// One restaurant's menu for one day: /?lang=..&r=<slug>&date=YYYY-MM-DD. A verified sharer's own `ref` code rides along
+// (never their address): each different person who opens the link pays the sharer a tenth of a Luni.
+function menuShareUrl(slug, date, ref = null) {
   const url = new URL("/", window.location.origin);
   url.searchParams.set("lang", state.lang);
   url.searchParams.set("r", slug);
   url.searchParams.set("date", date);
+  if (ref) url.searchParams.set("ref", ref);
   return url.toString();
+}
+
+// A random id for this browser, kept only to tell "a different person opened the link" from "the same one again" and
+// "the sharer on their own phone". Sent just with share-link calls; it is not an account and is never shown.
+const VISITOR_ID_KEY = "uniresto.visitor.v1";
+function visitorId() {
+  try {
+    let id = localStorage.getItem(VISITOR_ID_KEY);
+    if (id && /^[A-Za-z0-9_-]{16,64}$/.test(id)) return id;
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    id = btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    localStorage.setItem(VISITOR_ID_KEY, id);
+    return id;
+  } catch {
+    return "anon-" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+  }
+}
+
+// The signed-in person's share code (null when they have not verified their University email, or offline).
+const SHARE_REF_KEY = "uniresto.shareRef.v1";
+async function shareRefCode() {
+  const email = (state.registeredEmail || "").trim().toLowerCase();
+  if (!email || DEMO) return null;
+  try {
+    const cached = JSON.parse(localStorage.getItem(SHARE_REF_KEY) || "null");
+    if (cached && cached.email === email && cached.code) return cached.code;
+  } catch {
+    /* unreadable cache: ask the server */
+  }
+  try {
+    const result = await api("/api/share/ref", { method: "POST", body: JSON.stringify({ email: state.registeredEmail, visitor_id: visitorId() }) });
+    try {
+      localStorage.setItem(SHARE_REF_KEY, JSON.stringify({ email, code: result.code }));
+    } catch {
+      /* storage full or blocked: the code is simply asked for again next time */
+    }
+    return result.code;
+  } catch {
+    return null;
+  }
+}
+
+// Called once per load of a shared menu link (/?r=..&ref=..): tells the server somebody opened it. Crawlers that build link
+// previews never run this, and the server ignores the sharer's own opens and repeat opens by the same person.
+function reportSharedLinkOpen() {
+  if (DEMO) return;
+  try {
+    const url = new URL(window.location.href);
+    const ref = url.searchParams.get("ref");
+    if (!ref || !url.searchParams.get("r")) return;
+    url.searchParams.delete("ref");
+    window.history.replaceState(null, "", url);
+    api("/api/share/open", {
+      method: "POST",
+      body: JSON.stringify({ ref, visitor_id: visitorId(), ...(state.registeredEmail ? { email: state.registeredEmail } : {}) }),
+    }).catch(() => {});
+  } catch {
+    /* best effort: never blocks opening the menu */
+  }
 }
 
 // One open delivery: /?lang=..&order=<id> -- opens the Delivery list with that order pinned on top.
@@ -6023,7 +6199,7 @@ async function copyToClipboard(text) {
   }
 }
 
-function openShareSheet(item, title, urlOverride) {
+function openShareSheet(item, title, urlOverride, noteKey = null) {
   const url = urlOverride || dishShareUrl(item);
   const enc = encodeURIComponent;
   const overlay = el(`<div class="sheet-overlay"></div>`);
@@ -6034,6 +6210,7 @@ function openShareSheet(item, title, urlOverride) {
         <p class="screen-title">${escapeHtml(tr("shareDish", { name: title }))}</p>
         <button type="button" class="filter-close" aria-label="${escapeHtml(tr("back"))}">${icon("close", 20)}</button>
       </div>
+      ${noteKey ? `<p class="share-earn-note">${icon("sparkle", 14)} ${escapeHtml(tr(noteKey))}</p>` : ""}
       <div class="lang-list"></div>
     </div>
   `);
@@ -7659,6 +7836,7 @@ async function init() {
     return;
   }
 
+  reportSharedLinkOpen();
   if (await openSharedDish()) return;
   if (await openSharedMenu()) return;
   if (await openSharedOrder()) return;

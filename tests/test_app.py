@@ -11,7 +11,7 @@ from PIL import Image
 from app import create_app
 from orderability_engine.cache import OrderabilityCache
 from orderability_engine.coming_soon_clicks import ComingSoonClickStore
-from orderability_engine.daily_report import DailyReportStore
+from orderability_engine.daily_report import DailyReportStore, local_day_bounds
 from orderability_engine.delivery_subscribers import DeliverySubscriberStore
 from orderability_engine.dish_photos import DishPhotoStore
 from orderability_engine.pending_dish_photos import PendingDishPhotoStore
@@ -5404,3 +5404,80 @@ def test_a_similar_dish_that_was_also_seen_is_listed_once(client):
     _recognizes(client, {photo: {"items": [{"id": BRETZEL_ID, "quantity": 1}], "similar": [{"id": BRETZEL_ID}, {"id": 99999}]}})
 
     assert _scan(client, photo).get_json()["similar"] == []
+
+
+# ---------------------------------------------------------------------------
+# Shared menu links that earn Luni
+# ---------------------------------------------------------------------------
+
+SHARER_VISITOR = "sharer-visitor-0000001"
+
+
+def _opener(n: int) -> str:
+    return f"opener-visitor-{n:08d}"
+
+
+def _share_code(client, email="student@uni.lu", visitor=SHARER_VISITOR):
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified(email)
+    return client.post("/api/share/ref", json={"email": email, "visitor_id": visitor}).get_json()["code"]
+
+
+def _open_link(client, code, visitor, **extra):
+    return client.post("/api/share/open", json={"ref": code, "visitor_id": visitor, **extra})
+
+
+def test_a_share_code_needs_a_verified_university_email(client):
+    resp = client.post("/api/share/ref", json={"email": "stranger@uni.lu", "visitor_id": SHARER_VISITOR})
+    assert resp.status_code == 403 and resp.get_json()["error"] == "email_not_verified"
+    assert client.post("/api/share/ref", json={"email": "me@gmail.com"}).status_code == 400
+
+
+def test_the_share_code_is_the_same_every_time_and_is_not_the_address(client):
+    code = _share_code(client)
+    assert code == _share_code(client)
+    assert "student" not in code
+
+
+def test_each_new_person_who_opens_a_link_pays_the_sharer_a_tenth(client):
+    code = _share_code(client)
+    for n in (1, 2, 3):
+        assert _open_link(client, code, _opener(n)).get_json() == {"counted": True}
+    assert client.get("/api/rewards?email=student@uni.lu").get_json() == {"points": 0.3}
+
+
+def test_the_same_person_opening_again_pays_nothing(client):
+    code = _share_code(client)
+    assert _open_link(client, code, _opener(1)).get_json() == {"counted": True}
+    assert _open_link(client, code, _opener(1)).get_json() == {"counted": False}
+    assert client.get("/api/rewards?email=student@uni.lu").get_json() == {"points": 0.1}
+
+
+def test_opening_your_own_link_pays_nothing(client):
+    code = _share_code(client)
+    assert _open_link(client, code, SHARER_VISITOR).get_json() == {"counted": False}  # same browser
+    assert _open_link(client, code, _opener(1), email="Student@uni.lu").get_json() == {"counted": False}  # same person
+    assert client.get("/api/rewards?email=student@uni.lu").get_json() == {"points": 0}
+
+
+def test_an_unknown_or_malformed_code_pays_nothing_and_says_nothing(client):
+    _share_code(client)
+    assert _open_link(client, "not-a-real-code", _opener(1)).get_json() == {"counted": False}
+    assert _open_link(client, "x", _opener(1)).get_json() == {"counted": False}
+    assert client.post("/api/share/open", json={}).get_json() == {"counted": False}
+    assert _open_link(client, _share_code(client), "short").get_json() == {"counted": False}
+
+
+def test_a_sharer_earns_at_most_one_luni_a_day_from_links(client):
+    code = _share_code(client)
+    results = [_open_link(client, code, _opener(n)).get_json()["counted"] for n in range(14)]
+    assert results.count(True) == 10 and results[10:] == [False] * 4
+    assert client.get("/api/rewards?email=student@uni.lu").get_json() == {"points": 1}
+
+
+def test_a_counted_open_is_recorded_for_the_admin_stats(client):
+    code = _share_code(client)
+    _open_link(client, code, _opener(1))
+    _open_link(client, code, _opener(1))
+    store = client.application.config["PAGE_VIEW_STORE"]
+    start, end = local_day_bounds(datetime.datetime.now(TZINFO).date())
+    assert store.count_between("share_open", start, end) == 1

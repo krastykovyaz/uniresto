@@ -312,6 +312,8 @@ def send_daily_report(counts: dict, report_date) -> tuple[bool, str | None]:
     ]
     if "scans" in counts:
         lines.append(f"Photo scans: {counts['scans']} (added to basket: {counts.get('scan_add', 0)}, failed: {counts.get('scan_failed', 0)})")
+    if "share_open" in counts:
+        lines.append(f"Shared links opened: {counts['share_open']}")
     return _send_message("\n".join(lines), buttons=None, log_context=f"daily report {report_date}")
 
 

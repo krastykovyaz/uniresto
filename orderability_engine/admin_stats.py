@@ -49,6 +49,7 @@ def collect_stats(page_views: PageViewStore, order_store: OrderStore, today: dat
                 "scans": page_views.count_between("scan", start, end),
                 "scan_failed": page_views.count_between("scan_failed", start, end),
                 "scan_add": page_views.count_between("scan_add", start, end),
+                "share_open": page_views.count_between("share_open", start, end),
             }
         )
     return days
@@ -60,12 +61,13 @@ def _scan_line(scans: int, added: int, failed: int) -> str:
 
 def _block(
     title: str, home: int, by_source: dict, order: list[str], menu: int, orders: int, delivery: int,
-    scans: int = 0, scan_add: int = 0, scan_failed: int = 0,
+    scans: int = 0, scan_add: int = 0, scan_failed: int = 0, share_open: int = 0,
 ) -> list[str]:
     lines = [title, f"Opened the app: {home}"]
     lines += [f"  {label}: {by_source.get(label, 0)}" for label in order]
     lines += [f"Viewed a menu: {menu}", f"Orders placed: {orders}", f"Opened deliveries: {delivery}"]
     lines.append(_scan_line(scans, scan_add, scan_failed))
+    lines.append(f"Shared links opened: {share_open}")
     return lines
 
 
@@ -83,7 +85,7 @@ def build_stats_message(page_views: PageViewStore, order_store: OrderStore, now:
 
     lines = [f"UniResto stats -- {now.strftime('%a %d %b, %H:%M')}", ""]
     for d in days:
-        lines += _block(_day_label(d["day"], today), d["home"], d["by_source"], order, d["menu"], d["orders"], d["delivery"], d["scans"], d["scan_add"], d["scan_failed"])
+        lines += _block(_day_label(d["day"], today), d["home"], d["by_source"], order, d["menu"], d["orders"], d["delivery"], d["scans"], d["scan_add"], d["scan_failed"], d["share_open"])
         lines.append("")
     lines += _block(
         f"Total, last {len(days)} days",
@@ -96,5 +98,6 @@ def build_stats_message(page_views: PageViewStore, order_store: OrderStore, now:
         sum(d["scans"] for d in days),
         sum(d["scan_add"] for d in days),
         sum(d["scan_failed"] for d in days),
+        sum(d["share_open"] for d in days),
     )
     return "\n".join(lines)

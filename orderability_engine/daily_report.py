@@ -109,6 +109,7 @@ def compute_report_counts(page_views: PageViewStore, order_store: OrderStore, re
         "scans": page_views.count_between("scan", start, end),
         "scan_add": page_views.count_between("scan_add", start, end),
         "scan_failed": page_views.count_between("scan_failed", start, end),
+        "share_open": page_views.count_between("share_open", start, end),
     }
 
 

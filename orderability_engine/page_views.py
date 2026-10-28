@@ -77,6 +77,10 @@ EVENTS = EVENTS + FUNNEL_EVENTS
 SCAN_EVENTS = ("scan", "scan_failed", "scan_add")
 EVENTS = EVENTS + SCAN_EVENTS
 
+# "share_open": a shared menu link opened by someone new, which paid its sharer a tenth of a Luni (api_share_open()).
+SHARE_EVENTS = ("share_open",)
+EVENTS = EVENTS + SHARE_EVENTS
+
 # A QR code is a physical object -- no way to ever edit what it encodes
 # once printed, so this stays short and forgiving rather than a strict
 # format. Long enough for a real label ("flyer-kirchberg-noticeboard"),

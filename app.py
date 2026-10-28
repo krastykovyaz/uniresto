@@ -27,7 +27,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 from orderability_engine.cache import OrderabilityCache
 from orderability_engine.coming_soon_clicks import ComingSoonClickStore
-from orderability_engine.daily_report import DailyReportStore, start_daily_report_scheduler
+from orderability_engine.daily_report import DailyReportStore, local_day_bounds, start_daily_report_scheduler
 from orderability_engine.delivery_subscribers import DeliverySubscriberStore
 from orderability_engine.dish_card import render_dish_card
 from orderability_engine.dish_name_labels import dish_name_label
@@ -83,6 +83,9 @@ from orderability_engine.rewards import (
     ORDER_PLACED,
     PHONE_NUMBER_ADDED,
     REWARD_POINTS,
+    SHARE_OPEN_DAILY_CAP,
+    SHARE_OPEN_POINTS,
+    SHARE_OPENED,
     UNIVERSITY_EMAIL_VERIFIED,
     RewardStore,
 )
@@ -639,6 +642,8 @@ def create_app(
         "send_code_all": (300, 3600),
         "rewards_read": (300, 3600),  # Profile re-reads the balance on every visit
         "rewards_claim": (30, 3600),
+        "share_ref": (30, 3600),      # one code per person; the client caches it
+        "share_open": (60, 3600),     # one beacon per opened link
         "push": (60, 3600),           # subscribe / change switches / unsubscribe
         # Belval "which restaurant first" votes: a person taps once, so this
         # is generous even for a shared campus NAT, yet stops a script
@@ -1164,6 +1169,57 @@ def create_app(
                 "points": rewards().get_points(email),
             }
         )
+
+    # Shared menu links that earn Luni. A verified person gets a personal code (never their address) to put in the
+    # links they share; every different person who then opens one pays the sharer a tenth of a Luni, up to
+    # SHARE_OPEN_DAILY_CAP a day. Opening is reported by the client's JS, so link-preview crawlers (which never run it) pay nothing.
+    _VISITOR_ID_RE = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
+    _SHARE_CODE_RE = re.compile(r"^[A-Za-z0-9_-]{6,40}$")
+
+    @app.post("/api/share/ref")
+    def api_share_ref():
+        if (limited := rate_limited_response("share_ref")) is not None:
+            return limited
+        body = request.get_json(force=True, silent=True) or {}
+        email = (body.get("email") or "").strip() if isinstance(body.get("email"), str) else ""
+        visitor_id = body.get("visitor_id") if isinstance(body.get("visitor_id"), str) else None
+        if not email or not _is_allowed_customer_email(email):
+            abort(400, description=f"'email' must be a valid address ending in {' or '.join(ALLOWED_EMAIL_DOMAINS)}")
+        if visitor_id is not None and not _VISITOR_ID_RE.match(visitor_id):
+            abort(400, description="'visitor_id' is not valid")
+        if not _is_proven(email):
+            return jsonify({"error": "email_not_verified", "message": "Your University email must be verified first"}), 403
+        return jsonify({"code": rewards().share_code(email, visitor_id)})
+
+    @app.post("/api/share/open")
+    def api_share_open():
+        """"Somebody opened a link with ?ref=": pays the sharer once per different opener. Always answers 200 with
+        {"counted": bool} and never says why not, so it can't be used to probe codes or caps."""
+        if (limited := rate_limited_response("share_open")) is not None:
+            return limited
+        body = request.get_json(force=True, silent=True) or {}
+        code = body.get("ref") if isinstance(body.get("ref"), str) else ""
+        opener = body.get("visitor_id") if isinstance(body.get("visitor_id"), str) else ""
+        own_email = body.get("email") if isinstance(body.get("email"), str) else ""
+        if not _SHARE_CODE_RE.match(code) or not _VISITOR_ID_RE.match(opener):
+            return jsonify({"counted": False})
+        owner = rewards().share_owner(code)
+        if owner is None:
+            return jsonify({"counted": False})
+        sharer_email, sharer_visitor = owner
+        if opener == sharer_visitor or (own_email and canonical_identity(own_email) == canonical_identity(sharer_email)):
+            return jsonify({"counted": False})  # your own link, opened on your own device
+        today_start, _ = local_day_bounds(datetime.now(TZINFO).date())
+        counted = rewards().award_once_capped(
+            sharer_email, f"{SHARE_OPENED}:{opener}", SHARE_OPEN_POINTS,
+            prefix=f"{SHARE_OPENED}:", cap=SHARE_OPEN_DAILY_CAP, since=today_start,
+        )
+        if counted:
+            try:
+                page_views().record("share_open")
+            except Exception:  # noqa: BLE001 -- a counter must never fail the request
+                app.logger.warning("could not record share_open")
+        return jsonify({"counted": counted})
 
     @app.post("/api/orderability/check")
     def api_orderability_check():

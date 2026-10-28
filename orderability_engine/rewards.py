@@ -38,6 +38,12 @@ PHONE_NUMBER_ADDED = "phone_number_added"
 ORDER_PLACED = "order_placed"
 DELIVERY_COMPLETED = "delivery_completed"
 DISH_PHOTO_APPROVED = "dish_photo_approved"
+# A shared menu link that somebody else opened: a tenth of a Luni to the sharer for each different person, at most
+# SHARE_OPEN_DAILY_CAP Luni a day. The action key folds the opener's anonymous id in, so one person opening the
+# link (or any other link of the same sharer) again pays nothing.
+SHARE_OPENED = "share_opened"
+SHARE_OPEN_POINTS = 0.1
+SHARE_OPEN_DAILY_CAP = 1.0
 # Penalties (negative points), applied once per order by app.py's
 # _apply_expired_order_penalties(): a customer who left a claimed order
 # unconfirmed, and a courier who held a confirmed order and never picked
@@ -70,6 +76,13 @@ CREATE TABLE IF NOT EXISTS reward_awards (
     awarded_at TEXT NOT NULL,
     PRIMARY KEY (email, action)
 );
+-- One personal share code per verified person (never the address itself: the code travels in links).
+CREATE TABLE IF NOT EXISTS share_refs (
+    code TEXT PRIMARY KEY,
+    email TEXT NOT NULL UNIQUE,
+    visitor_id TEXT,
+    created_at TEXT NOT NULL
+);
 -- A contact detail (a phone number, a communication email) that already
 -- paid out, and to whom. One row per (action, normalised value): the same
 -- number or address can never earn Luni twice, whichever identity presents it.
@@ -82,6 +95,30 @@ CREATE TABLE IF NOT EXISTS reward_claim_values (
 );
 """
 
+# Luni can be a tenth (a shared link that got opened). Balances and awards keep whole Luni in `points` and the
+# leftover tenths (0..9) in `tenths`, so the whole-Luni numbers written before this existed stay exactly as they were.
+_MIGRATIONS = (
+    ("rewards", "tenths", "ALTER TABLE rewards ADD COLUMN tenths INTEGER NOT NULL DEFAULT 0"),
+    ("reward_awards", "tenths", "ALTER TABLE reward_awards ADD COLUMN tenths INTEGER NOT NULL DEFAULT 0"),
+)
+
+
+def _tenths(points: float) -> int:
+    """Luni as a whole number of tenths (0.1 -> 1), immune to float noise."""
+    return int(round(points * 10))
+
+
+def _split(tenths: int) -> tuple[int, int]:
+    """Tenths -> (whole, leftover) with the leftover carrying the sign of the amount, e.g. -10 -> (-1, 0)."""
+    whole = int(tenths / 10)
+    return whole, tenths - whole * 10
+
+
+def _luni(whole: int, tenths: int) -> int | float:
+    """A balance as the number clients show: an int while it is whole, one decimal otherwise."""
+    return whole if tenths == 0 else round(whole + tenths / 10, 1)
+
+
 # claim_value() outcomes
 CLAIM_AWARDED = "awarded"
 CLAIM_ALREADY_AWARDED = "already_awarded"
@@ -93,6 +130,13 @@ class RewardStore:
         self.db_path = str(db_path)
         with self._connect() as conn:
             conn.executescript(SCHEMA)
+            for table, column, statement in _MIGRATIONS:
+                if column not in {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}:
+                    try:
+                        conn.execute(statement)
+                    except sqlite3.OperationalError as exc:  # another worker got there first
+                        if "duplicate column name" not in str(exc):
+                            raise
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -107,22 +151,24 @@ class RewardStore:
         finally:
             conn.close()
 
-    def get_points(self, email: str) -> int:
+    def get_points(self, email: str) -> int | float:
         email = canonical_identity(email)
         with self._connect() as conn:
-            row = conn.execute("SELECT points FROM rewards WHERE email = ?", (email,)).fetchone()
-        return row[0] if row else 0
+            row = conn.execute("SELECT points, tenths FROM rewards WHERE email = ?", (email,)).fetchone()
+        return _luni(*row) if row else 0
 
     @staticmethod
-    def _add_points(conn: sqlite3.Connection, email: str, delta: int) -> int:
+    def _add_points(conn: sqlite3.Connection, email: str, delta: float) -> int | float:
         """A balance never drops below 0 -- a penalty on an empty balance
         costs nothing more than it can take."""
         now = datetime.now(timezone.utc).isoformat()
         conn.execute("INSERT OR IGNORE INTO rewards (email, points, updated_at) VALUES (?, 0, ?)", (email, now))
-        conn.execute("UPDATE rewards SET points = MAX(0, points + ?), updated_at = ? WHERE email = ?", (delta, now, email))
-        return conn.execute("SELECT points FROM rewards WHERE email = ?", (email,)).fetchone()[0]
+        points, tenths = conn.execute("SELECT points, tenths FROM rewards WHERE email = ?", (email,)).fetchone()
+        total = max(0, points * 10 + tenths + _tenths(delta))
+        conn.execute("UPDATE rewards SET points = ?, tenths = ?, updated_at = ? WHERE email = ?", (total // 10, total % 10, now, email))
+        return _luni(total // 10, total % 10)
 
-    def add_points(self, email: str, delta: int) -> int:
+    def add_points(self, email: str, delta: float) -> int | float:
         """Adds `delta` (may be negative) to email's balance, creating
         the row at 0 first if this is their first-ever change. Returns
         the new total. Test/maintenance helper -- app.py should never
@@ -130,7 +176,7 @@ class RewardStore:
         with self._connect() as conn:
             return self._add_points(conn, canonical_identity(email), delta)
 
-    def award_once(self, email: str, action: str, points: int) -> bool:
+    def award_once(self, email: str, action: str, points: float) -> bool:
         """Credits `points` to `email` for `action`, but only the FIRST
         time this exact (email, action) pair is ever seen -- a second
         call with the same pair is a silent no-op (returns False), so
@@ -145,14 +191,61 @@ class RewardStore:
         back -- as the one person they are."""
         email = canonical_identity(email)
         with self._connect() as conn:
+            whole, leftover = _split(_tenths(points))
             cur = conn.execute(
-                "INSERT OR IGNORE INTO reward_awards (email, action, points, awarded_at) VALUES (?, ?, ?, ?)",
-                (email, action, points, datetime.now(timezone.utc).isoformat()),
+                "INSERT OR IGNORE INTO reward_awards (email, action, points, tenths, awarded_at) VALUES (?, ?, ?, ?, ?)",
+                (email, action, whole, leftover, datetime.now(timezone.utc).isoformat()),
             )
             if cur.rowcount == 0:
                 return False
             self._add_points(conn, email, points)
             return True
+
+    def award_once_capped(self, email: str, action: str, points: float, *, prefix: str, cap: float, since: datetime) -> bool:
+        """award_once(), but refused once this person has already earned `cap` Luni from actions starting with
+        `prefix` since `since` (e.g. today's midnight). The check and the payment share one transaction."""
+        email = canonical_identity(email)
+        with self._connect() as conn:
+            earned = conn.execute(
+                "SELECT COALESCE(SUM(points * 10 + tenths), 0) FROM reward_awards WHERE email = ? AND action LIKE ? AND awarded_at >= ?",
+                (email, prefix.replace("%", "") + "%", since.astimezone(timezone.utc).isoformat()),
+            ).fetchone()[0]
+            if earned + _tenths(points) > _tenths(cap):
+                return False
+            whole, leftover = _split(_tenths(points))
+            cur = conn.execute(
+                "INSERT OR IGNORE INTO reward_awards (email, action, points, tenths, awarded_at) VALUES (?, ?, ?, ?, ?)",
+                (email, action, whole, leftover, datetime.now(timezone.utc).isoformat()),
+            )
+            if cur.rowcount == 0:
+                return False
+            self._add_points(conn, email, points)
+            return True
+
+    def share_code(self, email: str, visitor_id: str | None = None) -> str:
+        """The person's personal share code, made on first use and the same afterwards. It stands in for the address
+        inside shared links; `visitor_id` is their browser's anonymous id, kept so opening their own link there pays nothing."""
+        import secrets
+
+        email = canonical_identity(email)
+        with self._connect() as conn:
+            row = conn.execute("SELECT code FROM share_refs WHERE email = ?", (email,)).fetchone()
+            if row:
+                if visitor_id:
+                    conn.execute("UPDATE share_refs SET visitor_id = ? WHERE email = ?", (visitor_id, email))
+                return row[0]
+            code = secrets.token_urlsafe(8)
+            conn.execute(
+                "INSERT INTO share_refs (code, email, visitor_id, created_at) VALUES (?, ?, ?, ?)",
+                (code, email, visitor_id, datetime.now(timezone.utc).isoformat()),
+            )
+            return code
+
+    def share_owner(self, code: str) -> tuple[str, str | None] | None:
+        """(email, visitor_id) behind a share code, or None for a code nobody was given."""
+        with self._connect() as conn:
+            row = conn.execute("SELECT email, visitor_id FROM share_refs WHERE code = ?", (code,)).fetchone()
+        return (row[0], row[1]) if row else None
 
     def claim_value(self, email: str, action: str, value_key: str, points: int) -> str:
         """award_once() for an action tied to a contact detail (a phone

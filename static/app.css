@@ -2358,3 +2358,21 @@ svg { display: block; }
 .tray-sheet .tray-chip[aria-pressed="true"] { background: var(--color-primary-bg); color: var(--color-primary-dark); border-color: var(--color-primary); font-weight: 700; }
 .tray-sheet .tray-block { margin-bottom: var(--space-3); }
 .tray-sheet .tray-block .primary-button, .tray-sheet .tray-block .secondary-button { margin-top: var(--space-3); }
+
+/* "Earn Luni" block on Home, and the note on the share sheet */
+.earn-card { margin: var(--space-3) var(--space-4) var(--space-4); padding: 12px 14px 6px; background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); }
+.earn-head { display: flex; align-items: center; gap: 8px; }
+.earn-head strong { flex: 1; font-size: 1rem; color: var(--color-primary-dark); }
+.earn-icon { display: flex; width: 28px; height: 28px; align-items: center; justify-content: center; border-radius: 999px; background: var(--color-primary-bg); color: var(--color-primary); }
+.earn-balance { padding: 4px 10px; border: 0; border-radius: 999px; background: var(--color-primary); color: var(--color-primary-contrast); font: inherit; font-size: 0.8rem; font-weight: 700; cursor: pointer; }
+.earn-verify { display: block; width: 100%; margin: 8px 0 0; padding: 8px 10px; text-align: start; border: 1px dashed var(--color-primary); border-radius: var(--radius-md, 10px); background: transparent; color: var(--color-text); font: inherit; font-size: 0.85rem; cursor: pointer; }
+.earn-list { list-style: none; margin: 6px 0 0; padding: 0; }
+.earn-list li + li { border-top: 1px solid var(--color-border); }
+.earn-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 0; border: 0; background: transparent; color: var(--color-text); font: inherit; text-align: start; cursor: pointer; }
+.earn-row-icon { flex: none; display: flex; width: 32px; height: 32px; align-items: center; justify-content: center; border-radius: 999px; background: var(--color-primary-bg); color: var(--color-primary); }
+.earn-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; font-size: 0.92rem; }
+.earn-row-text small { font-size: 0.75rem; color: var(--color-text-muted); }
+.earn-badge { flex: none; padding: 3px 9px; border-radius: 999px; background: var(--color-primary-bg); color: var(--color-primary-dark); font-size: 0.8rem; }
+.share-earn-note { display: flex; align-items: flex-start; gap: 6px; margin: 0 var(--space-4) var(--space-2); padding: 8px 10px; border-radius: var(--radius-md, 10px); background: var(--color-primary-bg); color: var(--color-text); font-size: 0.82rem; line-height: 1.35; }
+.share-earn-note svg { flex: none; margin-top: 2px; color: var(--color-primary); }
+.earn-verify[hidden], .earn-balance[hidden] { display: none; }
