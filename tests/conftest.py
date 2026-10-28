@@ -26,6 +26,12 @@ SECRET_ENV_KEYS = (
     # Pricing: a real .env may say PRICE_TIER=mean; tests are about the real adult
     # price unless one sets it itself with monkeypatch.setenv.
     "PRICE_TIER",
+    # The photo scan: with a real key in .env, every "no recognizer" test would
+    # get a live recognizer instead and try to reach Google or Anthropic.
+    "GEMINI_API_KEY",
+    "GEMINI_MODELS",
+    "ANTHROPIC_API_KEY",
+    "TRAY_SCAN_MODEL",
 )
 for _key in SECRET_ENV_KEYS:
     os.environ[_key] = ""

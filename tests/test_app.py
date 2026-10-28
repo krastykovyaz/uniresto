@@ -5333,6 +5333,30 @@ def test_add_to_basket_from_a_scan_is_counted_by_the_client(client):
     assert _scan_counts(client) == {("scan_add", "similar"): 1}
 
 
+def test_a_second_scan_while_one_is_running_is_told_busy_and_never_reaches_the_recognizer(client):
+    from orderability_engine.tray_scan import scan_slot
+
+    calls = []
+
+    class Counting:
+        def identify(self, jpeg, candidates):
+            calls.append(1)
+            return []
+
+    client.application.config["TRAY_RECOGNIZER"] = Counting()
+    with scan_slot(client.application.config["TRAY_SCAN_LOCK"]):  # another worker's scan in progress
+        resp = _scan(client)
+    assert resp.status_code == 503 and resp.get_json()["error"] == "tray_scan_busy"
+    assert calls == []
+    assert _scan(client).status_code == 200  # free again once that scan ended
+    assert calls == [1]
+
+
+def test_the_scan_lock_file_sits_next_to_the_orders_database(client):
+    lock = client.application.config["TRAY_SCAN_LOCK"]
+    assert lock == f"{client.application.config['ORDER_STORE'].db_path}.scan"
+
+
 def test_a_recognizer_failure_is_a_502(client):
     class Broken:
         def identify(self, jpeg, candidates):

@@ -11,8 +11,12 @@ from orderability_engine.tray_scan import (
     DEFAULT_GEMINI_MODELS,
     FixedTrayRecognizer,
     GeminiTrayRecognizer,
+    GEMINI_MIN_ATTEMPT_SECONDS,
+    GEMINI_PER_MODEL_TIMEOUT_SECONDS,
+    GEMINI_TOTAL_BUDGET_SECONDS,
     TrayScanError,
     prepare_image,
+    scan_slot,
     recognizer_from_env,
     validate_matches,
     validate_scan,
@@ -220,12 +224,67 @@ def test_when_every_model_fails_it_is_one_error():
 
 
 def test_the_loop_gives_up_when_the_time_budget_is_spent():
-    ticks = iter([0, 0, 30, 30, 30])  # the second model would start after the 28 s budget
+    ticks = iter([0, 0, 30, 30, 30])  # the second model would start after the whole budget
     session = _Sequence(_Response({}, status=429), _gemini('{"items": []}'))
 
     with pytest.raises(TrayScanError):
         GeminiTrayRecognizer("k", ["a", "b"], session, clock=lambda: next(ticks)).identify(_jpeg(), CANDIDATES)
     assert len(session.calls) == 1
+
+
+def test_no_model_is_started_with_too_little_time_left():
+    # first model fails after 17 s: 3 s are left, less than one attempt needs
+    elapsed = GEMINI_TOTAL_BUDGET_SECONDS - GEMINI_MIN_ATTEMPT_SECONDS + 1
+    ticks = iter([0, 0, elapsed])
+    session = _Sequence(_Response({}, status=503), _gemini('{"items": []}'))
+
+    with pytest.raises(TrayScanError, match="time budget"):
+        GeminiTrayRecognizer("k", ["a", "b"], session, clock=lambda: next(ticks)).identify(_jpeg(), CANDIDATES)
+    assert len(session.calls) == 1
+
+
+def test_each_model_waits_at_most_its_share_and_never_past_the_budget():
+    # first model: the full per-model wait; second model, started 14 s in: only the 6 s still left
+    ticks = iter([0, 0, 14])
+    session = _Sequence(_Response({}, status=503), _gemini('{"items": []}'))
+
+    GeminiTrayRecognizer("k", ["a", "b"], session, clock=lambda: next(ticks)).identify(_jpeg(), CANDIDATES)
+    (_, first), (_, second) = session.calls
+    assert first["timeout"][1] == GEMINI_PER_MODEL_TIMEOUT_SECONDS
+    assert second["timeout"][1] == GEMINI_TOTAL_BUDGET_SECONDS - 14
+    assert first["timeout"][0] <= 3  # connecting is never what eats the budget
+
+
+def test_the_whole_loop_fits_well_inside_the_gunicorn_worker_timeout():
+    import runpy
+    from pathlib import Path
+
+    conf = runpy.run_path(str(Path(__file__).resolve().parent.parent / "gunicorn.conf.py"))
+    assert conf["timeout"] >= 2 * GEMINI_TOTAL_BUDGET_SECONDS
+
+
+def test_only_one_scan_runs_at_a_time_across_processes(tmp_path):
+    lock = str(tmp_path / "orders.db.scan")
+    with scan_slot(lock) as first:
+        assert first is True
+        with scan_slot(lock) as second:  # a separate open file: what another worker process would see
+            assert second is False
+    with scan_slot(lock) as again:
+        assert again is True  # released when the first scan ended
+
+
+def test_the_slot_is_released_even_when_the_scan_fails(tmp_path):
+    lock = str(tmp_path / "orders.db.scan")
+    with pytest.raises(RuntimeError):
+        with scan_slot(lock):
+            raise RuntimeError("recognizer blew up")
+    with scan_slot(lock) as got:
+        assert got is True
+
+
+def test_no_lock_file_means_no_limit():
+    with scan_slot(None) as got:
+        assert got is True
 
 
 def test_the_key_is_sent_in_a_header_never_in_the_url_or_the_body():

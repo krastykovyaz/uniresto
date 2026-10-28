@@ -69,7 +69,7 @@ from orderability_engine.page_views import FUNNEL_EVENTS, MAX_SOURCE_LENGTH, Pag
 from orderability_engine.pending_dish_photos import PendingDishPhotoStore
 from orderability_engine.push_notify import PushSubscriptionStore, notify_in_background, push_config, sanitize_prefs, valid_subscription
 from orderability_engine.photo_sanitize import sanitize_dish_photo
-from orderability_engine.tray_scan import TrayScanError, prepare_image, recognizer_from_env, validate_scan
+from orderability_engine.tray_scan import TrayScanError, prepare_image, recognizer_from_env, scan_slot, validate_scan
 from orderability_engine.pricing import INCLUDED_SIDE_CATEGORIES, compute_formula_total, price_tables_payload
 from orderability_engine.rate_limits import RateLimitStore
 from orderability_engine.rewards import (
@@ -402,6 +402,9 @@ def create_app(
     )
     app.config["ORDER_STORE"] = order_store or OrderStore("orders.db")
     app.config["REMINDER_STORE"] = OrderReminderStore(app.config["ORDER_STORE"].db_path)  # same file as the orders
+    # One photo scan at a time across both workers (see tray_scan.scan_slot); the lock file sits next to orders.db.
+    _orders_db = str(app.config["ORDER_STORE"].db_path)
+    app.config["TRAY_SCAN_LOCK"] = None if _orders_db == ":memory:" else f"{_orders_db}.scan"
     # Web push (Profile > Notifications): the devices people subscribed, and the
     # function that pushes to them. Tests pass their own sender to record calls.
     app.config["PUSH_STORE"] = push_store or PushSubscriptionStore("orders.db")
@@ -1319,11 +1322,15 @@ def create_app(
         if unavailable is not None:
             return unavailable
         candidates = [{"id": it["id"], "name": it["name"], "category": it["category"]} for it in flat_items]
-        try:
-            raw = recognizer.identify(prepare_image(jpeg), candidates)
-        except TrayScanError:
-            record_scan("scan_failed")
-            return jsonify({"error": "tray_scan_failed"}), 502
+        with scan_slot(app.config["TRAY_SCAN_LOCK"]) as got_slot:
+            if not got_slot:
+                record_scan("scan_failed", "busy")
+                return jsonify({"error": "tray_scan_busy"}), 503
+            try:
+                raw = recognizer.identify(prepare_image(jpeg), candidates)
+            except TrayScanError:
+                record_scan("scan_failed")
+                return jsonify({"error": "tray_scan_failed"}), 502
         matches, similar = validate_scan(raw, candidates, MAX_QUANTITY)
         record_scan("scan", "found" if matches else "similar" if similar else "none")
         by_id = {it["id"]: it for it in flat_items}

@@ -22,12 +22,14 @@ Nothing here is a measurement: it is a guess about a picture, and the app says s
 from __future__ import annotations
 
 import base64
+import fcntl
 import hashlib
 import io
 import json
 import logging
 import os
 import time
+from contextlib import contextmanager
 from typing import Protocol
 
 import requests
@@ -38,7 +40,7 @@ logger = logging.getLogger("uniresto.tray_scan")
 API_URL = "https://api.anthropic.com/v1/messages"
 API_VERSION = "2023-06-01"
 DEFAULT_MODEL = "claude-sonnet-5-5"
-REQUEST_TIMEOUT_SECONDS = 25
+REQUEST_TIMEOUT_SECONDS = 20  # same reason as GEMINI_TOTAL_BUDGET_SECONDS below
 MAX_SIDE = 1024  # plenty to tell dishes apart, and keeps the request small and cheap
 MAX_DISHES = 8  # more than a tray can hold; anything beyond is noise
 MAX_SIMILAR = 4
@@ -53,6 +55,30 @@ class TrayRecognizer(Protocol):
         """`candidates`: [{"id", "name", "category"}] -- the day's menu. Returns {"items": [{"id", "quantity"}],
         "similar": [{"id"}]}: the dishes seen in the photo, and the closest ones for what is not on the menu (a bare
         list means just "items"). Ids not in `candidates` are ignored by the caller."""
+
+
+@contextmanager
+def scan_slot(lock_path: str | None):
+    """The one scan slot shared by every worker process: yields True to the request that got it and False while
+    another scan is running anywhere. A scan can hold a sync worker for up to GEMINI_TOTAL_BUDGET_SECONDS, and the
+    site has only two workers, so letting two scans run at once could leave no worker for orders and menus.
+    `lock_path` None (an in-memory test database) means no limit."""
+    if lock_path is None:
+        yield True
+        return
+    fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            yield False
+            return
+        try:
+            yield True
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
 
 
 def prepare_image(jpeg: bytes) -> bytes:
@@ -173,8 +199,14 @@ GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:ge
 # Tried in this order; the first to answer wins. Overridable with GEMINI_MODELS (comma separated) because Google
 # retires and renames models: a name that no longer exists just falls through to the next one.
 DEFAULT_GEMINI_MODELS = ("gemini-3.6-flash", "gemini-3.1-flash-lite", "gemini-2.5-flash", "gemini-3.5-flash")
-GEMINI_PER_MODEL_TIMEOUT_SECONDS = 15
-GEMINI_TOTAL_BUDGET_SECONDS = 28  # the request holds a web worker; never let the loop outlast it by much
+# A scan holds one of the site's two sync workers for as long as it runs, so the whole loop has a hard budget: each
+# model gets at most GEMINI_PER_MODEL_TIMEOUT_SECONDS and never more than what is left of the budget, and no model
+# is started with less than GEMINI_MIN_ATTEMPT_SECONDS left (it could not answer in time anyway). Real answers take
+# 1-9 s. gunicorn.conf.py's worker timeout stays well above the budget, so a slow scan is never killed mid-request.
+GEMINI_CONNECT_TIMEOUT_SECONDS = 3
+GEMINI_PER_MODEL_TIMEOUT_SECONDS = 10
+GEMINI_TOTAL_BUDGET_SECONDS = 20
+GEMINI_MIN_ATTEMPT_SECONDS = 4
 
 
 class GeminiTrayRecognizer:
@@ -207,14 +239,16 @@ class GeminiTrayRecognizer:
         started = self._clock()
         last_problem = "no model answered"
         for model in self._models:
-            if self._clock() - started >= GEMINI_TOTAL_BUDGET_SECONDS:
+            remaining = GEMINI_TOTAL_BUDGET_SECONDS - (self._clock() - started)
+            if remaining < GEMINI_MIN_ATTEMPT_SECONDS:
+                last_problem = f"time budget spent ({last_problem})"
                 break
             try:
                 response = self._http.post(
                     GEMINI_URL.format(model=model),
                     headers={"x-goog-api-key": self._api_key, "content-type": "application/json"},
                     json=body,
-                    timeout=GEMINI_PER_MODEL_TIMEOUT_SECONDS,
+                    timeout=(GEMINI_CONNECT_TIMEOUT_SECONDS, min(GEMINI_PER_MODEL_TIMEOUT_SECONDS, remaining)),
                 )
             except requests.RequestException as exc:
                 last_problem = f"{model}: {type(exc).__name__}"

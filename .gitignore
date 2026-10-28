@@ -16,3 +16,6 @@ og_cache/
 
 # Any other SQLite file (a stray empty one appeared in the project folder once)
 *.db
+
+# Cross-worker lock file of the photo scan (tray_scan.scan_slot)
+*.db.scan
