@@ -2204,6 +2204,7 @@ function tryReasonCard() {
 // The four everyday ways to earn, each one tap from doing it. The amounts mirror REWARD_POINTS in rewards.py (the server
 // is what actually pays): an order delivered, a delivery done, an approved dish photo, and a tenth of a Luni for every
 // different person who opens a menu link you shared.
+const EARN_LUNI_OPEN_KEY = "uniresto.earnLuniOpen.v1";
 const EARN_LUNI_ROWS = [
   { key: "order", icon: "fork", labelKey: "earnLuniOrder", badge: "+1" },
   { key: "delivery", icon: "delivery", labelKey: "earnLuniDelivery", badge: "+1" },
@@ -2253,13 +2254,16 @@ function openSharePickerSheet() {
 function earnLuniCard() {
   const card = el(`
     <section class="earn-card" aria-label="${escapeHtml(tr("earnLuniTitle"))}">
-      <div class="earn-head">
+      <button type="button" class="earn-head" aria-expanded="false">
         <span class="earn-icon">${icon("sparkle", 18)}</span>
         <strong>${escapeHtml(tr("earnLuniTitle"))}</strong>
-        <button type="button" class="earn-balance" hidden></button>
+        <span class="earn-balance" hidden></span>
+        <span class="earn-chevron" aria-hidden="true">${icon("chevron", 16)}</span>
+      </button>
+      <div class="earn-body" hidden>
+        <button type="button" class="earn-verify" hidden>${escapeHtml(tr("earnLuniVerify"))}</button>
+        <ul class="earn-list"></ul>
       </div>
-      <button type="button" class="earn-verify" hidden>${escapeHtml(tr("earnLuniVerify"))}</button>
-      <ul class="earn-list"></ul>
     </section>
   `);
   const actions = {
@@ -2285,12 +2289,35 @@ function earnLuniCard() {
     item.querySelector("button").addEventListener("click", actions[row.key]);
     list.append(item);
   }
+  // Folded to just the title by default; a tap on it opens the list, and the choice is remembered on this device.
+  const head = card.querySelector(".earn-head");
+  const body = card.querySelector(".earn-body");
+  const setOpen = (open) => {
+    head.setAttribute("aria-expanded", String(open));
+    body.hidden = !open;
+    card.classList.toggle("is-open", open);
+  };
+  let open = false;
+  try {
+    open = localStorage.getItem(EARN_LUNI_OPEN_KEY) === "1";
+  } catch {
+    /* storage blocked: stays folded */
+  }
+  setOpen(open);
+  head.addEventListener("click", () => {
+    open = !open;
+    setOpen(open);
+    try {
+      localStorage.setItem(EARN_LUNI_OPEN_KEY, open ? "1" : "0");
+    } catch {
+      /* per-device convenience only */
+    }
+  });
   const balance = card.querySelector(".earn-balance");
   const verify = card.querySelector(".earn-verify");
   if (state.registeredEmail) {
     balance.hidden = false;
     balance.textContent = tr("earnLuniBalance", { n: state.rewardPoints });
-    balance.addEventListener("click", () => goTo("profile"));
     // Same fetch Profile does; patched in place so Home is never redrawn for it.
     claimPendingRewards()
       .then(() => api(`/api/rewards?email=${encodeURIComponent(state.registeredEmail)}`))

@@ -49,3 +49,12 @@ test("the menu's share button and the Home picker both use the sharer's code and
 test("the how-to-earn sheet lists the shared-link reward", () => {
   assert.match(app, /rewardRuleShare"\)\)\}<\/span><strong>\+0\.1<\/strong>/);
 });
+
+test("the Earn Luni block is folded to its title until tapped, and remembers the choice on the device", () => {
+  const fn = app.slice(app.indexOf("function earnLuniCard()"), app.indexOf("function renderRole()"));
+  assert.match(fn, /class="earn-head" aria-expanded="false"/);
+  assert.match(fn, /<div class="earn-body" hidden>/);
+  assert.match(fn, /localStorage\.getItem\(EARN_LUNI_OPEN_KEY\) === "1"/);
+  assert.match(fn, /localStorage\.setItem\(EARN_LUNI_OPEN_KEY, open \? "1" : "0"\)/);
+  assert.match(app, /const EARN_LUNI_OPEN_KEY = "uniresto\.earnLuniOpen\.v1"/);
+});
