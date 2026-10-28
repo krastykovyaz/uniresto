@@ -5462,25 +5462,77 @@ def test_the_share_code_is_the_same_every_time_and_is_not_the_address(client):
     assert "student" not in code
 
 
-def test_each_new_person_who_opens_a_link_pays_the_sharer_a_tenth(client):
+def _verified_opener(client, n: int) -> str:
+    email = f"opener{n}@uni.lu"
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified(email)
+    return email
+
+
+def _verify_in_profile(client, email, visitor):
+    store = client.application.config["EMAIL_VERIFICATION_STORE"]
+    store.issue(email, "424242")
+    return client.post("/api/email/verify-code", json={"email": email, "code": "424242", "visitor_id": visitor})
+
+
+def test_each_verified_person_who_opens_a_link_pays_the_sharer_a_tenth(client):
     code = _share_code(client)
     for n in (1, 2, 3):
-        assert _open_link(client, code, _opener(n)).get_json() == {"counted": True}
+        assert _open_link(client, code, _opener(n), email=_verified_opener(client, n)).get_json() == {"counted": True}
     assert client.get("/api/rewards?email=student@uni.lu").get_json() == {"points": 0.3}
+
+
+def test_an_anonymous_open_pays_nothing_until_that_browser_verifies(client):
+    code = _share_code(client)
+    for n in range(12):  # private windows / a script: new browser ids cost nothing
+        assert _open_link(client, code, _opener(n)).get_json() == {"counted": False}
+    assert client.get("/api/rewards?email=student@uni.lu").get_json() == {"points": 0}
+    assert _verify_in_profile(client, "newcomer@uni.lu", _opener(3)).get_json()["verified"] is True
+    assert client.get("/api/rewards?email=student@uni.lu").get_json() == {"points": 0.1}
+
+
+def test_verifying_at_checkout_also_pays_the_pending_open(client):
+    code = _share_code(client)
+    _open_link(client, code, _opener(1))
+    store = client.application.config["CHECKOUT_VERIFICATION_STORE"]
+    store.issue("buyer@uni.lu", "313131")
+    client.post("/api/orders/email/verify-code", json={"email": "buyer@uni.lu", "code": "313131", "visitor_id": _opener(1)})
+    assert client.get("/api/rewards?email=student@uni.lu").get_json() == {"points": 0.1}
+
+
+def test_a_pending_open_pays_only_once_and_not_for_a_non_university_address(client):
+    code = _share_code(client)
+    _open_link(client, code, _opener(1))
+    store = client.application.config["CHECKOUT_VERIFICATION_STORE"]
+    store.issue("someone@gmail.com", "111111")
+    client.post("/api/orders/email/verify-code", json={"email": "someone@gmail.com", "code": "111111", "visitor_id": _opener(1)})
+    assert client.get("/api/rewards?email=student@uni.lu").get_json() == {"points": 0}
+    _verify_in_profile(client, "real@uni.lu", _opener(1))
+    _verify_in_profile(client, "real@uni.lu", _opener(1))
+    assert client.get("/api/rewards?email=student@uni.lu").get_json() == {"points": 0.1}
 
 
 def test_the_same_person_opening_again_pays_nothing(client):
     code = _share_code(client)
-    assert _open_link(client, code, _opener(1)).get_json() == {"counted": True}
-    assert _open_link(client, code, _opener(1)).get_json() == {"counted": False}
+    email = _verified_opener(client, 1)
+    assert _open_link(client, code, _opener(1), email=email).get_json() == {"counted": True}
+    assert _open_link(client, code, _opener(2), email=email).get_json() == {"counted": False}  # another device, same person
     assert client.get("/api/rewards?email=student@uni.lu").get_json() == {"points": 0.1}
+
+
+def test_claiming_a_verified_address_without_its_token_is_treated_as_anonymous(client):
+    code = _share_code(client)
+    victim = _verified_opener(client, 1)
+    attacker = _attacker(client)
+    assert attacker.post("/api/share/open", json={"ref": code, "visitor_id": _opener(9), "email": victim}).get_json() == {"counted": False}
+    assert client.get("/api/rewards?email=student@uni.lu").get_json() == {"points": 0}
 
 
 def test_opening_your_own_link_pays_nothing(client):
     code = _share_code(client)
     assert _open_link(client, code, SHARER_VISITOR).get_json() == {"counted": False}  # same browser
     assert _open_link(client, code, _opener(1), email="Student@uni.lu").get_json() == {"counted": False}  # same person
-    assert client.get("/api/rewards?email=student@uni.lu").get_json() == {"points": 0}
+    _verify_in_profile(client, "student@uni.lu", SHARER_VISITOR)  # re-verifying on the sharer's own browser
+    assert client.get("/api/rewards?email=student@uni.lu").get_json()["points"] == 3  # only the verification bonus
 
 
 def test_an_unknown_or_malformed_code_pays_nothing_and_says_nothing(client):
@@ -5493,15 +5545,16 @@ def test_an_unknown_or_malformed_code_pays_nothing_and_says_nothing(client):
 
 def test_a_sharer_earns_at_most_one_luni_a_day_from_links(client):
     code = _share_code(client)
-    results = [_open_link(client, code, _opener(n)).get_json()["counted"] for n in range(14)]
+    results = [_open_link(client, code, _opener(n), email=_verified_opener(client, n)).get_json()["counted"] for n in range(14)]
     assert results.count(True) == 10 and results[10:] == [False] * 4
     assert client.get("/api/rewards?email=student@uni.lu").get_json() == {"points": 1}
 
 
 def test_a_counted_open_is_recorded_for_the_admin_stats(client):
     code = _share_code(client)
-    _open_link(client, code, _opener(1))
-    _open_link(client, code, _opener(1))
+    email = _verified_opener(client, 1)
+    _open_link(client, code, _opener(1), email=email)
+    _open_link(client, code, _opener(1), email=email)
     store = client.application.config["PAGE_VIEW_STORE"]
     start, end = local_day_bounds(datetime.datetime.now(TZINFO).date())
     assert store.count_between("share_open", start, end) == 1

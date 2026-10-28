@@ -1174,10 +1174,41 @@ def create_app(
         )
 
     # Shared menu links that earn Luni. A verified person gets a personal code (never their address) to put in the
-    # links they share; every different person who then opens one pays the sharer a tenth of a Luni, up to
-    # SHARE_OPEN_DAILY_CAP a day. Opening is reported by the client's JS, so link-preview crawlers (which never run it) pay nothing.
+    # links they share; every different PERSON who then opens one pays the sharer a tenth of a Luni, up to
+    # SHARE_OPEN_DAILY_CAP a day. A person is a proven University email: an opener who is not verified yet is
+    # remembered and pays the sharer when they verify (see _pay_pending_share_opens). Opening is reported by the
+    # client's JS, so link-preview crawlers (which never run it) pay nothing.
     _VISITOR_ID_RE = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
     _SHARE_CODE_RE = re.compile(r"^[A-Za-z0-9_-]{6,40}$")
+
+    def _pay_sharer(code: str, opener_email: str) -> bool:
+        """Pays `code`'s owner a tenth of a Luni for `opener_email`, once per (sharer, opener), within the daily cap."""
+        owner = rewards().share_owner(code)
+        if owner is None or canonical_identity(opener_email) == canonical_identity(owner[0]):
+            return False
+        today_start, _ = local_day_bounds(datetime.now(TZINFO).date())
+        paid = rewards().award_once_capped(
+            owner[0], f"{SHARE_OPENED}:{canonical_identity(opener_email)}", SHARE_OPEN_POINTS,
+            prefix=f"{SHARE_OPENED}:", cap=SHARE_OPEN_DAILY_CAP, since=today_start,
+        )
+        if paid:
+            try:
+                page_views().record("share_open")
+            except Exception:  # noqa: BLE001 -- a counter must never fail the request
+                app.logger.warning("could not record share_open")
+        return paid
+
+    def _pay_pending_share_opens(email: str, body: dict) -> None:
+        """Called when a browser has just verified `email`: the links it opened before that now pay their sharers.
+        Only a University address is a person here; anything going wrong never fails the verification itself."""
+        visitor_id = body.get("visitor_id") if isinstance(body.get("visitor_id"), str) else ""
+        if not _VISITOR_ID_RE.match(visitor_id) or not _is_allowed_customer_email(email):
+            return
+        try:
+            for code in rewards().take_pending_share_opens(visitor_id):
+                _pay_sharer(code, email)
+        except Exception:  # noqa: BLE001
+            app.logger.warning("could not pay pending share opens")
 
     @app.post("/api/share/ref")
     def api_share_ref():
@@ -1212,17 +1243,10 @@ def create_app(
         sharer_email, sharer_visitor = owner
         if opener == sharer_visitor or (own_email and canonical_identity(own_email) == canonical_identity(sharer_email)):
             return jsonify({"counted": False})  # your own link, opened on your own device
-        today_start, _ = local_day_bounds(datetime.now(TZINFO).date())
-        counted = rewards().award_once_capped(
-            sharer_email, f"{SHARE_OPENED}:{opener}", SHARE_OPEN_POINTS,
-            prefix=f"{SHARE_OPENED}:", cap=SHARE_OPEN_DAILY_CAP, since=today_start,
-        )
-        if counted:
-            try:
-                page_views().record("share_open")
-            except Exception:  # noqa: BLE001 -- a counter must never fail the request
-                app.logger.warning("could not record share_open")
-        return jsonify({"counted": counted})
+        if own_email and _is_allowed_customer_email(own_email) and _is_proven(own_email):
+            return jsonify({"counted": _pay_sharer(code, own_email)})
+        rewards().remember_share_open(code, opener)  # pays once this browser verifies a University email
+        return jsonify({"counted": False})
 
     @app.post("/api/orderability/check")
     def api_orderability_check():
@@ -1637,6 +1661,7 @@ def create_app(
             # checkout/courier ones below that share the same
             # VerifiedEmailStore fact but aren't "registering" anything.
             _award_once(email, UNIVERSITY_EMAIL_VERIFIED, REWARD_POINTS[UNIVERSITY_EMAIL_VERIFIED])
+            _pay_pending_share_opens(email, body)
         return jsonify({"verified": verified, "reason": reason, **_token_payload(verified, email)})
 
     @app.post("/api/orders/email/send-code")
@@ -1684,6 +1709,7 @@ def create_app(
         verified, reason = checkout_verification().verify(email, code)
         if verified:
             verified_emails().mark_verified(email)
+            _pay_pending_share_opens(email, body)
         return jsonify({"verified": verified, "reason": reason, **_token_payload(verified, email)})
 
     # ---------------------------------------------------- Delivery (Part 52+)

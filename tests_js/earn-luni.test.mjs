@@ -58,3 +58,12 @@ test("the Earn Luni block is folded to its title until tapped, and remembers the
   assert.match(fn, /localStorage\.setItem\(EARN_LUNI_OPEN_KEY, open \? "1" : "0"\)/);
   assert.match(app, /const EARN_LUNI_OPEN_KEY = "uniresto\.earnLuniOpen\.v1"/);
 });
+
+test("verifying an email sends this browser's id, so links it opened earlier pay their sharers", () => {
+  assert.match(app, /"\/api\/email\/verify-code", \{ method: "POST", body: JSON\.stringify\(\{ email: pendingEmail, code, visitor_id: visitorId\(\) \}\)/);
+  assert.match(app, /"\/api\/orders\/email\/verify-code", \{ method: "POST", body: JSON\.stringify\(\{ email, code, visitor_id: visitorId\(\) \}\)/);
+});
+
+test("the replace-basket question exists in all 11 languages", () => {
+  assert.equal((i18n.match(/\btrayScanReplaceBasket:/g) || []).length, 11);
+});

@@ -39,11 +39,14 @@ ORDER_PLACED = "order_placed"
 DELIVERY_COMPLETED = "delivery_completed"
 DISH_PHOTO_APPROVED = "dish_photo_approved"
 # A shared menu link that somebody else opened: a tenth of a Luni to the sharer for each different person, at most
-# SHARE_OPEN_DAILY_CAP Luni a day. The action key folds the opener's anonymous id in, so one person opening the
-# link (or any other link of the same sharer) again pays nothing.
+# SHARE_OPEN_DAILY_CAP Luni a day. "Different person" means a proven University email, not a browser: an anonymous
+# browser id is free to make (private windows, scripts), so it would let anyone farm the cap. An opener who is not
+# verified yet is remembered for SHARE_PENDING_DAYS and pays the sharer once they verify. The action key folds the
+# opener's address in, so the same person never pays the same sharer twice.
 SHARE_OPENED = "share_opened"
 SHARE_OPEN_POINTS = 0.1
 SHARE_OPEN_DAILY_CAP = 1.0
+SHARE_PENDING_DAYS = 30
 # Penalties (negative points), applied once per order by app.py's
 # _apply_expired_order_penalties(): a customer who left a claimed order
 # unconfirmed, and a courier who held a confirmed order and never picked
@@ -82,6 +85,14 @@ CREATE TABLE IF NOT EXISTS share_refs (
     email TEXT NOT NULL UNIQUE,
     visitor_id TEXT,
     created_at TEXT NOT NULL
+);
+-- A browser that opened someone's shared link before its person verified a University email. Paid out (and
+-- deleted) when that browser verifies; forgotten after SHARE_PENDING_DAYS.
+CREATE TABLE IF NOT EXISTS share_pending (
+    visitor_id TEXT NOT NULL,
+    code TEXT NOT NULL,
+    opened_at TEXT NOT NULL,
+    PRIMARY KEY (visitor_id, code)
 );
 -- A contact detail (a phone number, a communication email) that already
 -- paid out, and to whom. One row per (action, normalised value): the same
@@ -206,6 +217,9 @@ class RewardStore:
         `prefix` since `since` (e.g. today's midnight). The check and the payment share one transaction."""
         email = canonical_identity(email)
         with self._connect() as conn:
+            # Without this the SELECT runs before the transaction starts (sqlite3 only opens one at the first write),
+            # and two workers could both read "0.9 earned" and both pay.
+            conn.execute("BEGIN IMMEDIATE")
             earned = conn.execute(
                 "SELECT COALESCE(SUM(points * 10 + tenths), 0) FROM reward_awards WHERE email = ? AND action LIKE ? AND awarded_at >= ?",
                 (email, prefix.replace("%", "") + "%", since.astimezone(timezone.utc).isoformat()),
@@ -229,6 +243,7 @@ class RewardStore:
 
         email = canonical_identity(email)
         with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")  # two first-ever calls at once must not both insert a code
             row = conn.execute("SELECT code FROM share_refs WHERE email = ?", (email,)).fetchone()
             if row:
                 if visitor_id:
@@ -240,6 +255,31 @@ class RewardStore:
                 (code, email, visitor_id, datetime.now(timezone.utc).isoformat()),
             )
             return code
+
+    def remember_share_open(self, code: str, visitor_id: str) -> None:
+        """An unverified browser opened `code`'s link: kept so the sharer is paid if that browser verifies later."""
+        from datetime import timedelta
+
+        now = datetime.now(timezone.utc)
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO share_pending (visitor_id, code, opened_at) VALUES (?, ?, ?)",
+                (visitor_id, code, now.isoformat()),
+            )
+            conn.execute("DELETE FROM share_pending WHERE opened_at < ?", ((now - timedelta(days=SHARE_PENDING_DAYS)).isoformat(),))
+
+    def take_pending_share_opens(self, visitor_id: str) -> list[str]:
+        """The share codes this browser opened in the last SHARE_PENDING_DAYS, removed as they are handed out."""
+        from datetime import timedelta
+
+        since = (datetime.now(timezone.utc) - timedelta(days=SHARE_PENDING_DAYS)).isoformat()
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            codes = [row[0] for row in conn.execute(
+                "SELECT code FROM share_pending WHERE visitor_id = ? AND opened_at >= ? ORDER BY opened_at", (visitor_id, since)
+            ).fetchall()]
+            conn.execute("DELETE FROM share_pending WHERE visitor_id = ?", (visitor_id,))
+        return codes
 
     def share_owner(self, code: str) -> tuple[str, str | None] | None:
         """(email, visitor_id) behind a share code, or None for a code nobody was given."""
@@ -259,6 +299,7 @@ class RewardStore:
         email = canonical_identity(email)
         now = datetime.now(timezone.utc).isoformat()
         with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")  # the "already awarded?" read and the payment stand or fall together
             if conn.execute("SELECT 1 FROM reward_awards WHERE email = ? AND action = ?", (email, action)).fetchone():
                 return CLAIM_ALREADY_AWARDED
             cur = conn.execute(

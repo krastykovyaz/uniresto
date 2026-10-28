@@ -206,3 +206,100 @@ def test_a_share_code_is_stable_per_person_and_hides_the_address(tmp_path):
     assert store.share_code("other@uni.lu") != code
     assert store.share_owner(code) == ("student@uni.lu", "visitor-aaaaaaaaaaaaaaaa")
     assert store.share_owner("nobody-has-this") is None
+
+
+def test_a_pending_open_is_handed_out_once(tmp_path):
+    store = RewardStore(tmp_path / "orders.db")
+    store.remember_share_open("code-a", "visitor-1111111111111")
+    store.remember_share_open("code-a", "visitor-1111111111111")  # opened twice: still one
+    store.remember_share_open("code-b", "visitor-1111111111111")
+    assert store.take_pending_share_opens("visitor-1111111111111") == ["code-a", "code-b"]
+    assert store.take_pending_share_opens("visitor-1111111111111") == []
+
+
+def test_old_pending_opens_are_forgotten(tmp_path):
+    import sqlite3
+
+    store = RewardStore(tmp_path / "orders.db")
+    with sqlite3.connect(tmp_path / "orders.db") as conn:
+        conn.execute("INSERT INTO share_pending VALUES ('visitor-old-00000000', 'code-a', '2020-01-01T00:00:00+00:00')")
+    assert store.take_pending_share_opens("visitor-old-00000000") == []
+    store.remember_share_open("code-b", "visitor-2222222222222")  # each new open also prunes the old ones
+    with sqlite3.connect(tmp_path / "orders.db") as conn:
+        assert conn.execute("SELECT COUNT(*) FROM share_pending").fetchone()[0] == 1
+
+
+def _hold_after(monkeypatch, sql_fragment, parties):
+    """Makes every connection pause right after running a query containing `sql_fragment` until `parties` callers
+    got there too (or 1.5 s passed): the worst interleaving of two workers, every time, instead of by luck."""
+    import sqlite3
+    import threading
+
+    barrier = threading.Barrier(parties)
+
+    class Pausing(sqlite3.Connection):
+        def execute(self, sql, *args):
+            cur = super().execute(sql, *args)
+            if sql_fragment in sql:
+                try:
+                    barrier.wait(timeout=1.5)
+                except threading.BrokenBarrierError:
+                    pass  # the other caller is (correctly) blocked waiting for the write lock
+            return cur
+
+    real_connect = sqlite3.connect
+    monkeypatch.setattr("orderability_engine.rewards.sqlite3.connect", lambda *a, **k: real_connect(*a, factory=Pausing, **k))
+
+
+def _run_together(target, n):
+    import threading
+
+    threads = [threading.Thread(target=target, args=(i,)) for i in range(n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+
+def test_the_daily_cap_holds_when_two_processes_pay_at_the_same_moment(tmp_path, monkeypatch):
+    """Two workers both at 0.9 earned: only one of them may pay the last tenth."""
+    from datetime import datetime, timedelta, timezone
+
+    db = tmp_path / "orders.db"
+    since = datetime.now(timezone.utc) - timedelta(hours=1)
+    for i in range(9):
+        RewardStore(db).award_once_capped("s@uni.lu", f"share_opened:p{i}", 0.1, prefix="share_opened:", cap=1.0, since=since)
+    _hold_after(monkeypatch, "SUM(points", 2)
+    results = []
+    _run_together(lambda n: results.append(
+        RewardStore(db).award_once_capped("s@uni.lu", f"share_opened:race{n}", 0.1, prefix="share_opened:", cap=1.0, since=since)), 2)
+    monkeypatch.undo()
+    assert sorted(results) == [False, True]
+    assert RewardStore(db).get_points("s@uni.lu") == 1
+
+
+def test_a_first_share_code_request_from_two_processes_at_once_gives_one_code(tmp_path, monkeypatch):
+    db = tmp_path / "orders.db"
+    RewardStore(db)
+    _hold_after(monkeypatch, "SELECT code FROM share_refs", 2)
+    codes, errors = [], []
+
+    def ask(_):
+        try:
+            codes.append(RewardStore(db).share_code("s@uni.lu"))
+        except Exception as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    _run_together(ask, 2)
+    assert errors == [] and len(codes) == 2 and len(set(codes)) == 1
+
+
+def test_a_contact_detail_is_paid_once_when_two_processes_claim_it_together(tmp_path, monkeypatch):
+    db = tmp_path / "orders.db"
+    RewardStore(db)
+    _hold_after(monkeypatch, "SELECT 1 FROM reward_awards", 2)
+    outcomes = []
+    _run_together(lambda n: outcomes.append(RewardStore(db).claim_value("s@uni.lu", "phone_number_added", "+352621000000", 1)), 2)
+    monkeypatch.undo()
+    assert sorted(outcomes) == sorted([CLAIM_AWARDED, CLAIM_ALREADY_AWARDED])
+    assert RewardStore(db).get_points("s@uni.lu") == 1

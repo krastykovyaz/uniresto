@@ -1298,7 +1298,8 @@ function openEmailSheet(trigger, onVerified, hintKey = "registeredEmailHint") {
     const confirmBtn = sheet.querySelector(".email-sheet-confirm");
     if (confirmBtn) confirmBtn.disabled = true;
     try {
-      const result = await api("/api/email/verify-code", { method: "POST", body: JSON.stringify({ email: pendingEmail, code }) });
+      // visitor_id: links this browser opened before verifying now pay their sharers (see /api/share/open)
+      const result = await api("/api/email/verify-code", { method: "POST", body: JSON.stringify({ email: pendingEmail, code, visitor_id: visitorId() }) });
       if (!result.verified) {
         const reasonKey =
           {
@@ -1796,7 +1797,7 @@ function openOrderEmailVerifySheet(trigger, email, onVerified) {
     const confirmBtn = sheet.querySelector(".order-email-verify-confirm");
     if (confirmBtn) confirmBtn.disabled = true;
     try {
-      const result = await api("/api/orders/email/verify-code", { method: "POST", body: JSON.stringify({ email, code }) });
+      const result = await api("/api/orders/email/verify-code", { method: "POST", body: JSON.stringify({ email, code, visitor_id: visitorId() }) });
       if (!result.verified) {
         const reasonKey =
           { incorrect_code: "invalidCode", code_expired: "codeExpired", too_many_attempts: "tooManyAttempts", no_code_requested: "codeExpired" }[
@@ -2165,16 +2166,22 @@ function reorderAgainCard() {
 // A device that ordered before "order the same again" existed knows only its order numbers: read the newest one back
 // once, remember it, and show the card in place.
 let backfillingLastOrder = false;
+// The newest order looked up once per order id: when its restaurant is no longer listed, the card can never show,
+// and asking again on every visit only redrew the screen with nothing new.
+const LAST_ORDER_BACKFILLED_KEY = "uniresto.lastOrderBackfilled.v1";
 async function backfillLastOrder() {
   if (backfillingLastOrder || DEMO) return;
   const ids = loadOrderHistoryIds();
   if (ids.length === 0) return;
+  const newest = Math.max(...ids);
+  if (readJson(LAST_ORDER_BACKFILLED_KEY) === newest) return;
   backfillingLastOrder = true;
   try {
-    const order = await api(`/api/orders/${Math.max(...ids)}`);
+    const order = await api(`/api/orders/${newest}`);
+    writeJson(LAST_ORDER_BACKFILLED_KEY, newest);
     if (order && Array.isArray(order.items) && order.items.length > 0 && order.status !== "cancelled") {
       rememberLastOrder(order);
-      if (state.screen === "restaurants") render();
+      if (state.screen === "restaurants" && reorderAgainCard()) render();
     }
   } catch {
     /* no card this time; the next visit tries again */
@@ -5195,6 +5202,7 @@ function saveTrayRestaurant(slug) {
 // ctx: { slug, restaurantName, date } when the restaurant and day are known (the menu button), or { home: true }:
 // the sheet asks which restaurant and uses today's menu.
 function openTraySheet(ctx) {
+  let adding = false; // one "add to basket" at a time, whichever block's button was pressed
   const overlay = el(`<div class="sheet-overlay"></div>`);
   const sheet = el(`
     <div class="lang-sheet tray-sheet" role="dialog" aria-modal="true" aria-label="${escapeHtml(tr("trayScanButton"))}">
@@ -5275,7 +5283,10 @@ function openTraySheet(ctx) {
       if (res.status === 429) return showPicker(tr("tooManyRequests"));
       if (res.status === 409) return showPicker(tr("trayScanNoMenu"));
       if (!res.ok || !data) return showPicker(tr("trayScanFailed"));
-      // The dishes and their pictures come from the app's own menu data for that restaurant and day (cached).
+      // The dishes and their pictures come from the app's own menu data for that restaurant and day. Fetched fresh:
+      // the server matched against the current menu, and a dish id is only its position in the menu as fetched, so
+      // a copy cached earlier in the session could map the answer onto different dishes.
+      menuCache.delete(menuCacheKey(slug, date));
       const [menu, photos] = await Promise.all([getMenu(slug, date), getDishPhotos(slug)]);
       showResults(data, new Map(menu.items.map((it) => [it.id, it])), photos);
     } catch {
@@ -5310,10 +5321,18 @@ function openTraySheet(ctx) {
     if (quote) block.append(buildTotalsBox(quote));
     const add = el(`<button type="button" class="${primary ? "primary-button" : "secondary-button"}">${escapeHtml(tr(buttonKey))}</button>`);
     add.addEventListener("click", async () => {
-      add.disabled = true;
+      if (adding) return; // the other block's button is already adding
+      adding = true;
+      const buttons = [...sheet.querySelectorAll(".tray-block button")];
+      for (const b of buttons) b.disabled = true;
       trackFunnel("scan_add", primary ? "found" : "similar");
-      await addToBasket(found);
-      close();
+      const added = await addToBasket(found);
+      adding = false;
+      if (added) {
+        close();
+        return;
+      }
+      for (const b of buttons) b.disabled = false; // nothing was added: keep the results so they can try again
     });
     block.append(add);
     return block;
@@ -5338,9 +5357,19 @@ function openTraySheet(ctx) {
 
   // Puts the scanned dishes in the basket of the restaurant and day they were scanned for. From Home (or any other
   // restaurant/day than the one open) that means opening that menu first, exactly as picking the day would.
+  // Returns true when the dishes went into the basket. Dishes are matched by (category, name), never by id: the
+  // menu open on screen may be an older fetch than the one the scan used, with other ids for the same dishes.
   async function addToBasket(found) {
     const sameMenu = state.screen === "menu" && state.slug === target.slug && state.targetDate === target.date && state.menu;
     if (!sameMenu) {
+      // Opening a menu starts an empty basket. Keep what is already in it when it is for this same menu, and never
+      // throw away a basket for another menu without asking.
+      const byId = menuById();
+      const kept = state.selection
+        .map((s) => (byId.get(s.menuItemId) ? { key: cartItemKey(byId.get(s.menuItemId)), quantity: s.quantity } : null))
+        .filter(Boolean);
+      const sameDay = state.slug === target.slug && state.targetDate === target.date;
+      if (kept.length > 0 && !sameDay && !window.confirm(tr("trayScanReplaceBasket"))) return false;
       try {
         const dateInfo = await api(`/api/restaurants/${target.slug}/status?date=${target.date}`);
         state.slug = target.slug;
@@ -5348,17 +5377,25 @@ function openTraySheet(ctx) {
         await selectDate(dateInfo, "restaurants");
       } catch {
         showToast(tr("trayScanFailed"));
-        return;
+        return false;
       }
-      if (!state.menu) return;
+      if (!state.menu) return false;
+      if (sameDay) {
+        const byKey = new Map(state.menu.items.map((it) => [cartItemKey(it), it]));
+        for (const { key, quantity } of kept) {
+          const it = byKey.get(key);
+          if (it && !selectionFor(it.id)) state.selection.push({ menuItemId: it.id, quantity });
+        }
+      }
     }
-    const menuIds = new Set(state.menu.items.map((it) => it.id));
+    const byKey = new Map(state.menu.items.map((it) => [cartItemKey(it), it]));
     const maxQ = (state.menu && state.menu.max_quantity) || 2;
     for (const { item, quantity } of found) {
-      if (!menuIds.has(item.id)) continue;
-      const existing = selectionFor(item.id);
+      const own = byKey.get(cartItemKey(item));
+      if (!own) continue;
+      const existing = selectionFor(own.id);
       if (existing) existing.quantity = clampQuantity(Math.max(existing.quantity, quantity), maxQ);
-      else state.selection.push({ menuItemId: item.id, quantity: clampQuantity(quantity, maxQ) });
+      else state.selection.push({ menuItemId: own.id, quantity: clampQuantity(quantity, maxQ) });
     }
     trackFunnel("basket_add", visitSource, { once: true });
     state.serverQuote = null;
@@ -5367,6 +5404,7 @@ function openTraySheet(ctx) {
     else render();
     renderBottomNav();
     showToast(tr("trayScanAdded"));
+    return true;
   }
 
   input.addEventListener("change", () => {
