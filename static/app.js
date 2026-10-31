@@ -2111,6 +2111,61 @@ function demoCall(order, step, rerender) {
 
 const DISCOUNT_BANNER_DISMISSED_KEY = "uniresto.discountBanner.dismissed.v1";
 
+// The opening-week banner for Food House (Campus Belval): shown on Home from the day the app lists the restaurant
+// (it appears by itself at midnight Luxembourg time, see opens_on in restaurants.yaml) until FOOD_HOUSE_BANNER_UNTIL.
+// Closing it is remembered on this device only.
+const FOOD_HOUSE_SLUG = "udl-cbv-fh";
+const FOOD_HOUSE_BANNER_UNTIL = "2026-11-08"; // last day shown, Luxembourg date
+const FOOD_HOUSE_BANNER_DISMISSED_KEY = "uniresto.foodHouseBanner.dismissed.v1";
+
+function luxembourgToday() {
+  try {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Luxembourg" }).format(new Date());
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
+}
+
+function foodHouseBannerVisible(restaurants, today) {
+  return Array.isArray(restaurants) && restaurants.some((r) => r.slug === FOOD_HOUSE_SLUG) && today <= FOOD_HOUSE_BANNER_UNTIL;
+}
+
+function foodHouseBanner() {
+  if (!foodHouseBannerVisible(state.restaurants, luxembourgToday())) return null;
+  try {
+    if (localStorage.getItem(FOOD_HOUSE_BANNER_DISMISSED_KEY)) return null;
+  } catch {
+    /* storage unavailable: just show it */
+  }
+  const confetti = ["🎉", "✨", "🎊", "✨", "🎉"].map((c, i) => `<i class="fh-confetti fh-c${i}" aria-hidden="true">${c}</i>`).join("");
+  const banner = el(`
+    <aside class="fh-banner" role="note">
+      ${confetti}
+      <button type="button" class="fh-banner-main">
+        <span class="fh-banner-icon" aria-hidden="true">🎉</span>
+        <span class="fh-banner-text">
+          <strong class="fh-banner-title">${escapeHtml(tr("foodHouseBannerTitle"))}</strong>
+          <span class="fh-banner-body">${escapeHtml(tr("foodHouseBannerBody"))}</span>
+        </span>
+      </button>
+      <button type="button" class="fh-banner-close" aria-label="${escapeHtml(tr("discountBannerClose"))}">×</button>
+    </aside>
+  `);
+  banner.querySelector(".fh-banner-main").addEventListener("click", () => {
+    state.restaurantsCampusFilter = "belval";
+    goTo("restaurants");
+  });
+  banner.querySelector(".fh-banner-close").addEventListener("click", () => {
+    try {
+      localStorage.setItem(FOOD_HOUSE_BANNER_DISMISSED_KEY, "1");
+    } catch {
+      /* not remembered, still closes now */
+    }
+    banner.remove();
+  });
+  return banner;
+}
+
 function discountBanner() {
   const offer = discountOffer();
   if (!offer) return null;
@@ -2375,6 +2430,8 @@ function earnLuniCard() {
 function renderRole() {
   app.innerHTML = "";
   app.append(el(`<h1 class="large-title" style="padding-top:28px">${escapeHtml(tr("roleQuestion"))}</h1>`));
+  const celebration = foodHouseBanner();
+  if (celebration) app.append(celebration);
   const discount = discountBanner();
   if (discount) app.append(discount);
   // Someone who hasn't ordered yet gets a reason to try. ("Order the same again" lives on the restaurants page.)

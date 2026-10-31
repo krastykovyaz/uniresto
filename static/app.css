@@ -2382,3 +2382,18 @@ svg { display: block; }
 .share-earn-note { display: flex; align-items: flex-start; gap: 6px; margin: 0 var(--space-4) var(--space-2); padding: 8px 10px; border-radius: var(--radius-md, 10px); background: var(--color-primary-bg); color: var(--color-text); font-size: 0.82rem; line-height: 1.35; }
 .share-earn-note svg { flex: none; margin-top: 2px; color: var(--color-primary); }
 .earn-verify[hidden], .earn-balance[hidden] { display: none; }
+
+/* Food House opening-week banner on Home */
+.fh-banner { position: relative; overflow: hidden; display: flex; align-items: center; margin: 0 var(--space-4) var(--space-3); border-radius: var(--radius-lg); background: linear-gradient(135deg, #f6a21e, #e8573a 55%, #b3306b); color: #fff; box-shadow: 0 6px 18px rgba(179, 48, 107, 0.28); }
+.fh-banner-main { flex: 1; display: flex; align-items: center; gap: var(--space-3); min-width: 0; padding: 14px 44px 14px 16px; border: 0; background: transparent; color: inherit; font: inherit; text-align: start; cursor: pointer; position: relative; z-index: 1; }
+.fh-banner-icon { font-size: 1.9rem; line-height: 1; flex: 0 0 auto; }
+.fh-banner-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.fh-banner-title { font-size: 1.05rem; font-weight: 800; }
+.fh-banner-body { font-size: 0.86rem; line-height: 1.35; opacity: 0.95; }
+.fh-banner-close { position: absolute; z-index: 2; top: 50%; transform: translateY(-50%); right: 10px; width: 28px; height: 28px; border: 0; border-radius: 50%; background: rgba(255, 255, 255, 0.25); color: inherit; font-size: 1.1rem; line-height: 1; cursor: pointer; }
+[dir="rtl"] .fh-banner-main { padding: 14px 16px 14px 44px; }
+[dir="rtl"] .fh-banner-close { right: auto; left: 10px; }
+.fh-confetti { position: absolute; top: -18px; font-style: normal; font-size: 0.95rem; opacity: 0; pointer-events: none; animation: fh-fall 3.2s ease-in 0.2s 2 both; }
+.fh-c0 { left: 8%; } .fh-c1 { left: 30%; animation-delay: 0.7s; } .fh-c2 { left: 52%; animation-delay: 0.4s; } .fh-c3 { left: 72%; animation-delay: 1s; } .fh-c4 { left: 90%; animation-delay: 0.1s; }
+@keyframes fh-fall { 0% { transform: translateY(0) rotate(0deg); opacity: 0; } 15% { opacity: 1; } 100% { transform: translateY(110px) rotate(200deg); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .fh-confetti { animation: none; display: none; } }
