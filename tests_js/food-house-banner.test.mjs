@@ -37,3 +37,9 @@ test("the banner text exists in all 11 languages", () => {
     }
   }
 });
+
+test("a registered courier gets the campus choice on the Delivery screen, and a failed save is undone", () => {
+  assert.match(app, /const campusRow = DEMO \? null : registeredCourierCampusRow\(\);\n\s+if \(campusRow\) app\.append\(campusRow\);/);
+  assert.match(app, /if \(!email \|\| !belvalListed\(\)\) return null;/);
+  assert.match(app, /Promise\.resolve\(onPick\(current\)\)\.catch\(\(\) => \{\n\s+current = previous;\n\s+paint\(\);/);
+});

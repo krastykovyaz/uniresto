@@ -4111,10 +4111,46 @@ def test_an_expired_order_pushes_its_owner(client):
 def test_new_orders_push_registered_couriers_with_the_building_only(client):
     client.application.config["DELIVERY_SUBSCRIBER_STORE"].add("courier@uni.lu", "en")
     log = client.application.config["PUSH_LOG"]
-    _create_basic_order(client, delivery_location="Building A — Room 1.01")
+    _create_basic_order(client, delivery_location="Building A (Central building) — Room 1.01")
     couriers = [(e, t, b) for e, k, t, b in log if k == "newDelivery"]
     assert len(couriers) == 1 and couriers[0][0] == "courier@uni.lu"
     assert "Building A" in couriers[0][2] and "1.01" not in couriers[0][2]
+
+
+def test_only_a_building_the_form_offers_is_ever_shown_publicly(client):
+    from app import _building_only
+
+    assert _building_only("Maison du Nombre — Office 2.10") == "Maison du Nombre"
+    assert _building_only("Maison du Nombre") == "Maison du Nombre"  # building chosen, no room typed
+    # free text the customer typed -- a name, a room, anything else -- stays private
+    assert _building_only("Alice Martin — desk 4") is None
+    assert _building_only("my office, third floor") is None
+    assert _building_only("") is None and _building_only(None) is None
+
+
+def test_the_server_building_list_matches_the_one_in_the_app():
+    import re
+    from pathlib import Path
+
+    from app import DELIVERY_BUILDING_LABELS
+
+    js = (Path(__file__).resolve().parent.parent / "static" / "app.js").read_text(encoding="utf-8")
+    block = re.search(r"const DELIVERY_BUILDINGS = \[([\s\S]*?)\n\];", js).group(1)
+    in_app = set(re.findall(r'label: "([^"]+)" \}', block))
+    assert in_app == set(DELIVERY_BUILDING_LABELS)
+
+
+def test_an_order_asks_for_the_couriers_of_its_restaurants_campus(client):
+    # Food House's campus comes from restaurants.yaml, and the order route passes the restaurant's own campus on, so a
+    # Belval order reaches Belval and "all" couriers (the store's filter is tested in test_delivery_subscribers.py).
+    from restopolis.config import load_restaurants
+
+    assert load_restaurants()["UDL-CBV-FH"].campus == "belval"
+    store = client.application.config["DELIVERY_SUBSCRIBER_STORE"]
+    with patch.object(store, "list_subscribers", wraps=store.list_subscribers) as spy:
+        assert _post_order(client, _order_payload([{"id": SALAD_BAR_ID, "quantity": 1}])).status_code == 201
+    spy.assert_called_once_with("kirchberg")
+
 
 
 def test_earning_luni_pushes_each_person_their_amount_once(client):
@@ -4852,7 +4888,7 @@ def test_a_broken_menu_day_link_keeps_the_generic_preview(client, query):
 
 
 def test_a_shared_delivery_previews_building_and_dishes_but_nothing_private(client):
-    order_id = _create_basic_order(client, customer_note="call 0612345678", delivery_location="Building A — Room 1.01")
+    order_id = _create_basic_order(client, customer_note="call 0612345678", delivery_location="Building A (Central building) — Room 1.01")
     html = client.get(f"/?order={order_id}").data.decode()
     title, description = _meta(html, "og:title"), _meta(html, "og:description")
     assert title.startswith("Delivery to Building A")

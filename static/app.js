@@ -2502,6 +2502,24 @@ function groupOrdersByCanteen(orders) {
   return groups;
 }
 
+// The campus choice for a courier who already registered an address on this device: shown on the Delivery screen once
+// a Belval restaurant exists. The server holds the choice, so the current one is asked for; a failed save is undone.
+function registeredCourierCampusRow() {
+  const email = loadDeliveryRegisteredEmail();
+  if (!email || !belvalListed()) return null;
+  const picker = deliveryCampusPicker("all", (campus) =>
+    api("/api/delivery/register/campus", { method: "POST", body: JSON.stringify({ email, campus }) }).catch((err) => {
+      showToast(tr("verificationFailed"));
+      throw err;
+    }),
+  );
+  api(`/api/delivery/register/campus?email=${encodeURIComponent(email)}`)
+    .then((r) => picker.set(r.campus))
+    .catch(() => {});
+  picker.el.classList.add("is-on-screen");
+  return picker.el;
+}
+
 const DELIVERY_CAMPUS_CHOICES = ["all", "kirchberg", "belval"];
 
 function belvalListed() {
@@ -2530,9 +2548,14 @@ function deliveryCampusPicker(initial, onPick) {
   wrap.querySelectorAll(".delivery-campus-btn").forEach((b) =>
     b.addEventListener("click", () => {
       if (b.dataset.campus === current) return;
+      const previous = current;
       current = b.dataset.campus;
       paint();
-      onPick(current);
+      // onPick may return a promise; if saving the choice fails the buttons go back to what is really stored.
+      Promise.resolve(onPick(current)).catch(() => {
+        current = previous;
+        paint();
+      });
     }),
   );
   paint();
@@ -2583,14 +2606,8 @@ function deliveryRegisterCard(onRegistered, sheet, closeSheet) {
   const registeredEmail = loadDeliveryRegisteredEmail();
   if (registeredEmail) {
     const box = el(`<div class="delivery-registered"><p class="info-banner">${escapeHtml(tr("deliveryRegisteredAs", { email: registeredEmail }))}</p></div>`);
-    if (belvalListed()) {
-      // Which campus's orders this courier is told about; the server holds the choice, so ask it for the current one.
-      const picker = deliveryCampusPicker("all", (campus) => {
-        api("/api/delivery/register/campus", { method: "POST", body: JSON.stringify({ email: registeredEmail, campus }) }).catch(() => showToast(tr("verificationFailed")));
-      });
-      box.append(picker.el);
-      api(`/api/delivery/register/campus?email=${encodeURIComponent(registeredEmail)}`).then((r) => picker.set(r.campus)).catch(() => {});
-    }
+    const row = registeredCourierCampusRow();
+    if (row) box.append(row);
     return box;
   }
   // Only once a Belval restaurant is listed does a courier have a campus to choose; "all" until then.
@@ -3329,6 +3346,8 @@ async function renderDelivery() {
     if (!stale()) paint();
   };
   app.append(campusFilterRow("deliveryCampusFilter", paint));
+  const campusRow = DEMO ? null : registeredCourierCampusRow();
+  if (campusRow) app.append(campusRow);
   paint();
   app.append(body);
   askForEmail();

@@ -268,14 +268,29 @@ def _as_utc(iso_timestamp: str) -> datetime:
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
+# The buildings the order form offers (DELIVERY_BUILDINGS' labels in static/app.js; a test keeps the two in step).
+DELIVERY_BUILDING_LABELS = frozenset(
+    {
+        "Building A (Central building)", "Building B (Central building)", "Building C (Central building)",
+        "Building D (Central building)", "Building G", "JFK Building (near Tram stop)", "Weicker Building",
+        "Lycée Technique du Centre (Kirchberg annex)", "Maison du Savoir", "Maison des Sciences Humaines",
+        "Maison de l'Innovation", "Maison du Nombre", "Maison des Matériaux", "Luxembourg Learning Centre", "Biotech 1",
+        "Biotech 2", "Maison des Arts et des Étudiants", "University of Luxembourg Incubator",
+        "Halles d'essais Ingénieurs", "UNI-VAL 1", "UNI-VAL 2",
+    }
+)
+
+
 def _building_only(delivery_location: str | None) -> str | None:
     """"Building G — 2211 room" -> "Building G": the checkout form always
     joins building and free text with " — " (see combinedDeliveryLocation
-    in static/app.js). Anything not in that shape is dropped entirely
-    rather than guessed at."""
-    if not delivery_location or " — " not in delivery_location:
+    in static/app.js). Only a building the form offers is ever returned:
+    anything else is free text the customer typed (a name, a room) and
+    stays private, so the caller shows a generic "campus" instead."""
+    if not delivery_location:
         return None
-    return delivery_location.split(" — ", 1)[0]
+    head = delivery_location.split(" — ", 1)[0].strip()
+    return head if head in DELIVERY_BUILDING_LABELS else None
 
 
 # Part 30's admin page (real-price entry) is more sensitive than
