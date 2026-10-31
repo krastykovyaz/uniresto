@@ -2502,6 +2502,54 @@ function groupOrdersByCanteen(orders) {
   return groups;
 }
 
+const DELIVERY_CAMPUS_CHOICES = ["all", "kirchberg", "belval"];
+
+function belvalListed() {
+  return Array.isArray(state.restaurants) && state.restaurants.some((r) => campusOfRestaurant(r) === "belval");
+}
+
+// "Get order alerts for: Both campuses / Kirchberg / Belval" -- three buttons, one active. `onPick(campus)` runs on a
+// change; `set()` updates the highlight without calling it (used when the server's stored choice arrives).
+function deliveryCampusPicker(initial, onPick) {
+  const labels = { all: tr("deliveryCampusAll"), kirchberg: tr("deliveryCampusKirchberg"), belval: tr("deliveryCampusBelval") };
+  const wrap = el(`
+    <div class="delivery-campus">
+      <p class="delivery-campus-title">${escapeHtml(tr("deliveryCampusTitle"))}</p>
+      <div class="delivery-campus-row" role="group" aria-label="${escapeHtml(tr("deliveryCampusTitle"))}">
+        ${DELIVERY_CAMPUS_CHOICES.map((c) => `<button type="button" class="delivery-campus-btn" data-campus="${c}">${escapeHtml(labels[c])}</button>`).join("")}
+      </div>
+    </div>
+  `);
+  let current = DELIVERY_CAMPUS_CHOICES.includes(initial) ? initial : "all";
+  const paint = () =>
+    wrap.querySelectorAll(".delivery-campus-btn").forEach((b) => {
+      const on = b.dataset.campus === current;
+      b.classList.toggle("is-active", on);
+      b.setAttribute("aria-pressed", String(on));
+    });
+  wrap.querySelectorAll(".delivery-campus-btn").forEach((b) =>
+    b.addEventListener("click", () => {
+      if (b.dataset.campus === current) return;
+      current = b.dataset.campus;
+      paint();
+      onPick(current);
+    }),
+  );
+  paint();
+  return {
+    el: wrap,
+    get value() {
+      return current;
+    },
+    set(campus) {
+      if (DELIVERY_CAMPUS_CHOICES.includes(campus)) {
+        current = campus;
+        paint();
+      }
+    },
+  };
+}
+
 const DELIVERY_REGISTERED_KEY = "uniresto.deliveryRegistered.v1";
 
 // Purely a per-device convenience (skip re-showing the registration form
@@ -2534,8 +2582,19 @@ function saveDeliveryRegisteredEmail(email) {
 function deliveryRegisterCard(onRegistered, sheet, closeSheet) {
   const registeredEmail = loadDeliveryRegisteredEmail();
   if (registeredEmail) {
-    return el(`<p class="info-banner">${escapeHtml(tr("deliveryRegisteredAs", { email: registeredEmail }))}</p>`);
+    const box = el(`<div class="delivery-registered"><p class="info-banner">${escapeHtml(tr("deliveryRegisteredAs", { email: registeredEmail }))}</p></div>`);
+    if (belvalListed()) {
+      // Which campus's orders this courier is told about; the server holds the choice, so ask it for the current one.
+      const picker = deliveryCampusPicker("all", (campus) => {
+        api("/api/delivery/register/campus", { method: "POST", body: JSON.stringify({ email: registeredEmail, campus }) }).catch(() => showToast(tr("verificationFailed")));
+      });
+      box.append(picker.el);
+      api(`/api/delivery/register/campus?email=${encodeURIComponent(registeredEmail)}`).then((r) => picker.set(r.campus)).catch(() => {});
+    }
+    return box;
   }
+  // Only once a Belval restaurant is listed does a courier have a campus to choose; "all" until then.
+  const campusPicker = belvalListed() ? deliveryCampusPicker("all", () => {}) : null;
 
   // Inline card by default. With `sheet` (the bottom sheet's own element) the
   // form is drawn straight into it, header included, exactly like
@@ -2574,7 +2633,10 @@ function deliveryRegisterCard(onRegistered, sheet, closeSheet) {
     const btn = card.querySelector(".delivery-register-use-uni");
     if (btn) btn.disabled = true;
     try {
-      await api("/api/delivery/register/quick", { method: "POST", body: JSON.stringify({ email: state.registeredEmail, lang: state.lang }) });
+      await api("/api/delivery/register/quick", {
+        method: "POST",
+        body: JSON.stringify({ email: state.registeredEmail, lang: state.lang, campus: campusPicker ? campusPicker.value : undefined }),
+      });
       finishRegistering(state.registeredEmail);
     } catch {
       showToast(tr("verificationFailed"));
@@ -2597,6 +2659,7 @@ function deliveryRegisterCard(onRegistered, sheet, closeSheet) {
             : ""
         }
       `;
+      if (campusPicker) card.querySelector(".delivery-register-hint").after(campusPicker.el);
       const input = card.querySelector(".delivery-register-input");
       card.querySelector(".delivery-register-send").addEventListener("click", () => requestCode(input.value.trim()));
       input.addEventListener("keydown", (e) => {
@@ -2668,7 +2731,7 @@ function deliveryRegisterCard(onRegistered, sheet, closeSheet) {
     try {
       const result = await api("/api/delivery/register/verify-code", {
         method: "POST",
-        body: JSON.stringify({ email: pendingEmail, code, lang: state.lang }),
+        body: JSON.stringify({ email: pendingEmail, code, lang: state.lang, campus: campusPicker ? campusPicker.value : undefined }),
       });
       if (!result.verified) {
         const reasonKey =

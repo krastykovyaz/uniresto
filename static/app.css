@@ -2397,3 +2397,11 @@ svg { display: block; }
 .fh-c0 { left: 8%; } .fh-c1 { left: 30%; animation-delay: 0.7s; } .fh-c2 { left: 52%; animation-delay: 0.4s; } .fh-c3 { left: 72%; animation-delay: 1s; } .fh-c4 { left: 90%; animation-delay: 0.1s; }
 @keyframes fh-fall { 0% { transform: translateY(0) rotate(0deg); opacity: 0; } 15% { opacity: 1; } 100% { transform: translateY(110px) rotate(200deg); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .fh-confetti { animation: none; display: none; } }
+
+/* Courier campus choice (Both campuses / Kirchberg / Belval) */
+.delivery-campus { margin: var(--space-3) 0; }
+.delivery-campus-title { margin: 0 0 6px; font-size: 0.85rem; color: var(--color-text-muted); }
+.delivery-campus-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.delivery-campus-btn { flex: 1 1 0; min-width: 0; padding: 9px 10px; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-surface); color: var(--color-text); font: inherit; font-size: 0.85rem; cursor: pointer; }
+.delivery-campus-btn.is-active { border-color: var(--color-primary); background: var(--color-primary-bg); color: var(--color-primary-dark); font-weight: 700; }
+.lang-sheet .delivery-campus { padding: 0 16px; }

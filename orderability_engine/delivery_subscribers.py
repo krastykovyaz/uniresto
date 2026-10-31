@@ -34,8 +34,13 @@ CREATE TABLE IF NOT EXISTS delivery_subscribers (
 # setting kept in sync afterwards, so re-registering (e.g. after
 # switching languages) is exactly how it gets updated; see add()'s
 # ON CONFLICT clause below.
+# campus: which campus's orders the courier is told about -- "all" (the default, so everyone who registered before
+# Campus Belval existed keeps hearing about every order), "kirchberg" or "belval".
+CAMPUSES = ("all", "kirchberg", "belval")
+
 _MIGRATIONS = [
     ("lang", "ALTER TABLE delivery_subscribers ADD COLUMN lang TEXT NOT NULL DEFAULT 'en'"),
+    ("campus", "ALTER TABLE delivery_subscribers ADD COLUMN campus TEXT NOT NULL DEFAULT 'all'"),
 ]
 
 
@@ -76,13 +81,15 @@ class DeliverySubscriberStore:
     def __exit__(self, *exc_info) -> None:
         self.close()
 
-    def add(self, email: str, lang: str = "en") -> None:
+    def add(self, email: str, lang: str = "en", campus: str | None = None) -> None:
         """Idempotent: registering the same address twice is a no-op (not
         an error -- a courier re-registering, e.g. new device or cleared
         localStorage, must never fail), EXCEPT for `lang`, which always
         gets updated to whatever was just given -- the whole point is
         this tracks the courier's current app language, not their
-        language at first-ever registration."""
+        language at first-ever registration. `campus` (one of CAMPUSES) is
+        changed only when given: re-registering without it keeps the
+        courier's earlier choice."""
         now = datetime.now(timezone.utc).isoformat()
         with self._lock:
             self._conn.execute(
@@ -92,7 +99,23 @@ class DeliverySubscriberStore:
                 """,
                 (email, lang, now),
             )
+            if campus in CAMPUSES:
+                self._conn.execute("UPDATE delivery_subscribers SET campus = ? WHERE email = ?", (campus, email))
             self._conn.commit()
+
+    def set_campus(self, email: str, campus: str) -> bool:
+        """Changes a registered courier's campus; False when the address isn't registered or the value is unknown."""
+        if campus not in CAMPUSES:
+            return False
+        with self._lock:
+            cur = self._conn.execute("UPDATE delivery_subscribers SET campus = ? WHERE email = ?", (campus, email))
+            self._conn.commit()
+        return cur.rowcount > 0
+
+    def get_campus(self, email: str) -> str | None:
+        with self._lock:
+            row = self._conn.execute("SELECT campus FROM delivery_subscribers WHERE email = ?", (email,)).fetchone()
+        return row[0] if row else None
 
     def remove(self, email: str) -> None:
         with self._lock:
@@ -104,12 +127,19 @@ class DeliverySubscriberStore:
             rows = self._conn.execute("SELECT email FROM delivery_subscribers ORDER BY id").fetchall()
         return [r[0] for r in rows]
 
-    def list_subscribers(self) -> list[tuple[str, str]]:
+    def list_subscribers(self, campus: str | None = None) -> list[tuple[str, str]]:
         """[(email, lang), ...] -- used to personalize the per-order
         delivery notification (Part 72) to each courier's own language,
-        unlike list_emails() above which is just the plain address list."""
+        unlike list_emails() above which is just the plain address list.
+        With `campus`, only the couriers who want that campus's orders
+        (their own choice is that campus, or "all")."""
         with self._lock:
-            rows = self._conn.execute("SELECT email, lang FROM delivery_subscribers ORDER BY id").fetchall()
+            if campus is None:
+                rows = self._conn.execute("SELECT email, lang FROM delivery_subscribers ORDER BY id").fetchall()
+            else:
+                rows = self._conn.execute(
+                    "SELECT email, lang FROM delivery_subscribers WHERE campus IN ('all', ?) ORDER BY id", (campus,)
+                ).fetchall()
         return [(r[0], r[1]) for r in rows]
 
     def is_registered(self, email: str) -> bool:

@@ -5601,3 +5601,55 @@ def test_a_counted_open_is_recorded_for_the_admin_stats(client):
     store = client.application.config["PAGE_VIEW_STORE"]
     start, end = local_day_bounds(datetime.datetime.now(TZINFO).date())
     assert store.count_between("share_open", start, end) == 1
+
+
+# ---------------------------------------------------------------------------
+# Couriers choose a campus: Kirchberg, Belval or both
+# ---------------------------------------------------------------------------
+
+
+def _register_courier(client, email, campus=None):
+    body = {"email": email, "code": "654321"}
+    if campus is not None:
+        body["campus"] = campus
+    with patch("app.generate_verification_code", return_value="654321"), patch("app.send_verification_code", return_value=(True, None)):
+        client.post("/api/delivery/register/send-code", json={"email": email})
+    assert client.post("/api/delivery/register/verify-code", json=body).get_json()["verified"] is True
+
+
+def test_a_courier_registers_with_a_campus_and_defaults_to_all(client):
+    _register_courier(client, "bv@uni.lu", "belval")
+    _register_courier(client, "any@uni.lu")
+    store = client.application.config["DELIVERY_SUBSCRIBER_STORE"]
+    assert (store.get_campus("bv@uni.lu"), store.get_campus("any@uni.lu")) == ("belval", "all")
+
+
+def test_quick_registration_takes_a_campus_too(client):
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("courier@uni.lu")
+    assert client.post("/api/delivery/register/quick", json={"email": "courier@uni.lu", "campus": "kirchberg"}).status_code == 200
+    assert client.application.config["DELIVERY_SUBSCRIBER_STORE"].get_campus("courier@uni.lu") == "kirchberg"
+
+
+def test_the_campus_can_be_read_and_changed_by_the_courier_only(client):
+    _register_courier(client, "courier@uni.lu")
+    assert client.get("/api/delivery/register/campus?email=courier@uni.lu").get_json() == {"campus": "all"}
+    assert client.post("/api/delivery/register/campus", json={"email": "courier@uni.lu", "campus": "belval"}).get_json() == {"campus": "belval"}
+    assert client.post("/api/delivery/register/campus", json={"email": "courier@uni.lu", "campus": "mars"}).status_code == 400
+    assert client.application.config["DELIVERY_SUBSCRIBER_STORE"].get_campus("courier@uni.lu") == "belval"
+    # someone who does not hold the address's token cannot read or change it, nor can an unregistered address
+    client.held_tokens_for = []
+    assert client.post("/api/delivery/register/campus", json={"email": "courier@uni.lu", "campus": "kirchberg"}).status_code == 403
+    assert client.get("/api/delivery/register/campus?email=courier@uni.lu").status_code == 403
+    assert client.application.config["DELIVERY_SUBSCRIBER_STORE"].get_campus("courier@uni.lu") == "belval"
+    client.held_tokens_for = None
+    client.application.config["VERIFIED_EMAIL_STORE"].mark_verified("stranger@uni.lu")
+    assert client.post("/api/delivery/register/campus", json={"email": "stranger@uni.lu", "campus": "belval"}).status_code == 403
+
+
+def test_a_kirchberg_order_does_not_notify_a_belval_only_courier(client):
+    for email, campus in (("all@uni.lu", None), ("kb@uni.lu", "kirchberg"), ("bv@uni.lu", "belval")):
+        _register_courier(client, email, campus)
+    with patch("app.send_delivery_notification", return_value=(True, None)) as mock_notify:
+        resp = _post_order(client, _order_payload([{"id": SALAD_BAR_ID, "quantity": 1}]))
+    assert resp.status_code == 201
+    assert sorted(call.args[0] for call in mock_notify.call_args_list) == ["all@uni.lu", "kb@uni.lu"]

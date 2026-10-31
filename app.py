@@ -28,7 +28,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from orderability_engine.cache import OrderabilityCache
 from orderability_engine.coming_soon_clicks import ComingSoonClickStore
 from orderability_engine.daily_report import DailyReportStore, local_day_bounds, start_daily_report_scheduler
-from orderability_engine.delivery_subscribers import DeliverySubscriberStore
+from orderability_engine.delivery_subscribers import CAMPUSES, DeliverySubscriberStore
 from orderability_engine.dish_card import render_dish_card
 from orderability_engine.dish_name_labels import dish_name_label
 from orderability_engine.dish_names import split_dish_size
@@ -1581,7 +1581,8 @@ def create_app(
         # unexpected exception must not skip the remaining couriers. The
         # loop runs off the request (MAIL_RUNNER): one Resend call per
         # courier, each up to 10 s, must never hold a gunicorn worker.
-        subscribers = delivery_subscribers().list_subscribers()
+        # Only the couriers who want this restaurant's campus (Kirchberg or Belval; "all" wants both).
+        subscribers = delivery_subscribers().list_subscribers(restaurant.campus)
         push_to(
             [courier_email for courier_email, _lang in subscribers],
             "newDelivery",
@@ -1779,7 +1780,7 @@ def create_app(
             abort(400, description="Body must include 'email' and 'code'")
         verified, reason = delivery_verification().verify(email, code)
         if verified:
-            delivery_subscribers().add(email, _normalize_lang_arg(body.get("lang")) or "en")
+            delivery_subscribers().add(email, _normalize_lang_arg(body.get("lang")) or "en", body.get("campus"))
             verified_emails().mark_verified(email)
         return jsonify({"verified": verified, "reason": reason, **_token_payload(verified, email)})
 
@@ -1807,8 +1808,23 @@ def create_app(
         # could subscribe any uni.lu address to every future order email.
         if not _is_proven(email):
             return jsonify({"error": "email_not_verified", "message": "Your University email must be verified first"}), 403
-        delivery_subscribers().add(email, _normalize_lang_arg(body.get("lang")) or "en")
+        delivery_subscribers().add(email, _normalize_lang_arg(body.get("lang")) or "en", body.get("campus"))
         return jsonify({"registered": True})
+
+    @app.route("/api/delivery/register/campus", methods=["GET", "POST"])
+    def api_delivery_register_campus():
+        """Which campus's orders a registered courier is told about: "all", "kirchberg" or "belval". Only the browser
+        that proved the address may read or change it, and a failure looks like any other unverified address."""
+        if (limited := rate_limited_response("rewards_read")) is not None:
+            return limited
+        body = request.get_json(force=True, silent=True) or {}
+        email = (body.get("email") or request.args.get("email") or "").strip()
+        if not email or not _is_proven(email) or not delivery_subscribers().is_registered(email):
+            return jsonify({"error": "email_not_verified", "message": "Register this address for delivery first"}), 403
+        if request.method == "POST":
+            if not delivery_subscribers().set_campus(email, body.get("campus")):
+                abort(400, description=f"'campus' must be one of {', '.join(CAMPUSES)}")
+        return jsonify({"campus": delivery_subscribers().get_campus(email)})
 
     @app.get("/api/courier/orders")
     def api_courier_orders():
