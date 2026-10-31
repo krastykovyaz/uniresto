@@ -14,6 +14,7 @@ test("the delivery form offers the campus buildings and the lycée annex", () =>
   assert.deepEqual(buildings.map((b) => b.code), [
     "building_a", "building_b", "building_c", "building_d", "building_g", "jfk_building", "weicker_building", "ltc_annex",
     "maison_du_savoir", "maison_sciences_humaines", "maison_innovation",
+    "maison_du_nombre", "maison_materiaux", "learning_centre", "biotech_1", "biotech_2", "maison_arts_etudiants", "incubator", "halles_essais", "uni_val_1", "uni_val_2",
   ]);
   assert.equal(buildings.find((b) => b.code === "ltc_annex").label, "Lycée Technique du Centre (Kirchberg annex)");
 });

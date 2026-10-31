@@ -7244,14 +7244,28 @@ const DELIVERY_BUILDINGS = [
   // The Lycée Technique du Centre's Annexe Kirchberg (6, rue Coudenhove-Kalergi), whose restaurant is on
   // the app too: pupils and staff there can have an order brought to their own building.
   { code: "ltc_annex", key: "deliveryBuildingLtc", suffixKey: "deliveryBuildingKirchbergAnnex", label: "Lycée Technique du Centre (Kirchberg annex)" },
-  // Campus Belval (Food House is there): proper nouns, the same in every language.
+  // Campus Belval (Food House is there): proper nouns, the same in every language. Names and addresses as on the
+  // University's own Belval campus page (uni.lu/en/about/campuses/belval-campus/).
   { code: "maison_du_savoir", key: "deliveryBuildingMaisonSavoir", suffixKey: null, label: "Maison du Savoir" },
   { code: "maison_sciences_humaines", key: "deliveryBuildingMaisonSH", suffixKey: null, label: "Maison des Sciences Humaines" },
   { code: "maison_innovation", key: "deliveryBuildingMaisonInnovation", suffixKey: null, label: "Maison de l'Innovation" },
+  { code: "maison_du_nombre", key: "deliveryBuildingMaisonNombre", suffixKey: null, label: "Maison du Nombre" },
+  { code: "maison_materiaux", key: "deliveryBuildingMaisonMateriaux", suffixKey: null, label: "Maison des Matériaux" },
+  { code: "learning_centre", key: "deliveryBuildingLearningCentre", suffixKey: null, label: "Luxembourg Learning Centre" },
+  { code: "biotech_1", key: "deliveryBuildingBiotech1", suffixKey: null, label: "Biotech 1" },
+  { code: "biotech_2", key: "deliveryBuildingBiotech2", suffixKey: null, label: "Biotech 2" },
+  { code: "maison_arts_etudiants", key: "deliveryBuildingMaisonArts", suffixKey: null, label: "Maison des Arts et des Étudiants" },
+  { code: "incubator", key: "deliveryBuildingIncubator", suffixKey: null, label: "University of Luxembourg Incubator" },
+  { code: "halles_essais", key: "deliveryBuildingHallesEssais", suffixKey: null, label: "Halles d'essais Ingénieurs" },
+  { code: "uni_val_1", key: "deliveryBuildingUniVal1", suffixKey: null, label: "UNI-VAL 1" },
+  { code: "uni_val_2", key: "deliveryBuildingUniVal2", suffixKey: null, label: "UNI-VAL 2" },
 ];
 // Which of the above are on Campus Belval; the rest are Kirchberg. An order form offers only the buildings of
 // the chosen restaurant's campus.
-const BELVAL_BUILDING_CODES = new Set(["maison_du_savoir", "maison_sciences_humaines", "maison_innovation"]);
+const BELVAL_BUILDING_CODES = new Set([
+  "maison_du_savoir", "maison_sciences_humaines", "maison_innovation",
+  "maison_du_nombre", "maison_materiaux", "learning_centre", "biotech_1", "biotech_2", "maison_arts_etudiants", "incubator", "halles_essais", "uni_val_1", "uni_val_2",
+]);
 
 function campusOfRestaurant(restaurant) {
   return (restaurant && restaurant.campus) || "kirchberg";

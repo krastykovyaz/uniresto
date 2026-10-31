@@ -15,6 +15,6 @@ test("the delivery list is split by the campus of each order's restaurant, own d
 });
 
 test("an order form offers only the buildings of the restaurant's campus", () => {
-  assert.match(app, /BELVAL_BUILDING_CODES = new Set\(\["maison_du_savoir", "maison_sciences_humaines", "maison_innovation"\]\)/);
+  assert.match(app, /BELVAL_BUILDING_CODES = new Set\(\[\n  "maison_du_savoir", "maison_sciences_humaines", "maison_innovation",\n  "maison_du_nombre", "maison_materiaux", "learning_centre", "biotech_1", "biotech_2", "maison_arts_etudiants", "incubator", "halles_essais", "uni_val_1", "uni_val_2",\n\]\)/);
   assert.match(app, /\$\{buildingsForCurrentRestaurant\(\)\.map/);
 });
