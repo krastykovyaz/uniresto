@@ -38,8 +38,28 @@ test("the banner text exists in all 11 languages", () => {
   }
 });
 
-test("a registered courier gets the campus choice on the Delivery screen, and a failed save is undone", () => {
-  assert.match(app, /const campusRow = DEMO \? null : registeredCourierCampusRow\(\);\n\s+if \(campusRow\) app\.append\(campusRow\);/);
+test("a registered courier gets the campus choice on the Delivery screen, following the tab, and a failed save is undone", () => {
+  assert.match(app, /const row = DEMO \? null : registeredCourierCampusRow\(state\.deliveryCampusFilter\);\n\s+if \(row\) campusSlot\.append\(row\);/);
+  assert.match(app, /campusFilterRow\("deliveryCampusFilter", \(\) => \{\n\s+paintCampusRow\(\);\n\s+paint\(\);/);
   assert.match(app, /if \(!email \|\| !belvalListed\(\)\) return null;/);
   assert.match(app, /Promise\.resolve\(onPick\(current\)\)\.catch\(\(\) => \{\n\s+current = previous;\n\s+paint\(\);/);
+});
+
+// Run the real picker from app.js against a tiny fake DOM, so which buttons appear is tested by executing the code.
+function pickerLabels(tabCampus, stored) {
+  const src = app.match(/const DELIVERY_CAMPUS_CHOICES = [^\n]+\n/)[0] + app.match(/function deliveryCampusPicker\([\s\S]*?\n\}\n/)[0];
+  let html = "";
+  const row = { querySelectorAll: () => [], set innerHTML(v) { html = v; } };
+  const wrap = { querySelector: (sel) => (sel === ".delivery-campus-row" ? row : null) };
+  const make = new Function("el", "escapeHtml", "tr", `${src}\nreturn deliveryCampusPicker;`)(() => wrap, (x) => x, (k) => k);
+  const picker = make("all", () => {}, tabCampus);
+  if (stored) picker.set(stored);
+  return [...html.matchAll(/data-campus="([a-z]+)"/g)].map((m) => m[1]);
+}
+
+test("the alert buttons are Both plus the campus of the tab, and show a stored choice for the other campus too", () => {
+  assert.deepEqual(pickerLabels("kirchberg"), ["all", "kirchberg"]);
+  assert.deepEqual(pickerLabels("belval"), ["all", "belval"]);
+  assert.deepEqual(pickerLabels("kirchberg", "belval"), ["all", "kirchberg", "belval"]); // saved earlier on the Belval tab
+  assert.deepEqual(pickerLabels("belval", "all"), ["all", "belval"]);
 });

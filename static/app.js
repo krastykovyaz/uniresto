@@ -2504,14 +2504,17 @@ function groupOrdersByCanteen(orders) {
 
 // The campus choice for a courier who already registered an address on this device: shown on the Delivery screen once
 // a Belval restaurant exists. The server holds the choice, so the current one is asked for; a failed save is undone.
-function registeredCourierCampusRow() {
+function registeredCourierCampusRow(tabCampus) {
   const email = loadDeliveryRegisteredEmail();
   if (!email || !belvalListed()) return null;
-  const picker = deliveryCampusPicker("all", (campus) =>
-    api("/api/delivery/register/campus", { method: "POST", body: JSON.stringify({ email, campus }) }).catch((err) => {
-      showToast(tr("verificationFailed"));
-      throw err;
-    }),
+  const picker = deliveryCampusPicker(
+    "all",
+    (campus) =>
+      api("/api/delivery/register/campus", { method: "POST", body: JSON.stringify({ email, campus }) }).catch((err) => {
+        showToast(tr("verificationFailed"));
+        throw err;
+      }),
+    tabCampus,
   );
   api(`/api/delivery/register/campus?email=${encodeURIComponent(email)}`)
     .then((r) => picker.set(r.campus))
@@ -2526,47 +2529,58 @@ function belvalListed() {
   return Array.isArray(state.restaurants) && state.restaurants.some((r) => campusOfRestaurant(r) === "belval");
 }
 
-// "Get order alerts for: Both campuses / Kirchberg / Belval" -- three buttons, one active. `onPick(campus)` runs on a
-// change; `set()` updates the highlight without calling it (used when the server's stored choice arrives).
-function deliveryCampusPicker(initial, onPick) {
+// "Get order alerts for": two buttons, "Both campuses" and the campus of the tab the courier is on (Kirchberg on the
+// Kirchberg tab, Belval on the Belval tab). If the stored choice is the other campus, that one is shown too, so the
+// buttons always say what is really saved. `onPick(campus)` runs on a change and may return a promise; `set()` updates
+// the highlight without calling it (used when the server's stored choice arrives).
+function deliveryCampusPicker(initial, onPick, tabCampus = "kirchberg") {
   const labels = { all: tr("deliveryCampusAll"), kirchberg: tr("deliveryCampusKirchberg"), belval: tr("deliveryCampusBelval") };
+  const choices = ["all", DELIVERY_CAMPUS_CHOICES.includes(tabCampus) ? tabCampus : "kirchberg"];
+  let current = DELIVERY_CAMPUS_CHOICES.includes(initial) ? initial : "all";
+  if (!choices.includes(current)) choices.push(current);
   const wrap = el(`
     <div class="delivery-campus">
       <p class="delivery-campus-title">${escapeHtml(tr("deliveryCampusTitle"))}</p>
-      <div class="delivery-campus-row" role="group" aria-label="${escapeHtml(tr("deliveryCampusTitle"))}">
-        ${DELIVERY_CAMPUS_CHOICES.map((c) => `<button type="button" class="delivery-campus-btn" data-campus="${c}">${escapeHtml(labels[c])}</button>`).join("")}
-      </div>
+      <div class="delivery-campus-row" role="group" aria-label="${escapeHtml(tr("deliveryCampusTitle"))}"></div>
     </div>
   `);
-  let current = DELIVERY_CAMPUS_CHOICES.includes(initial) ? initial : "all";
+  const row = wrap.querySelector(".delivery-campus-row");
   const paint = () =>
-    wrap.querySelectorAll(".delivery-campus-btn").forEach((b) => {
+    row.querySelectorAll(".delivery-campus-btn").forEach((b) => {
       const on = b.dataset.campus === current;
       b.classList.toggle("is-active", on);
       b.setAttribute("aria-pressed", String(on));
     });
-  wrap.querySelectorAll(".delivery-campus-btn").forEach((b) =>
-    b.addEventListener("click", () => {
-      if (b.dataset.campus === current) return;
-      const previous = current;
-      current = b.dataset.campus;
-      paint();
-      // onPick may return a promise; if saving the choice fails the buttons go back to what is really stored.
-      Promise.resolve(onPick(current)).catch(() => {
-        current = previous;
+  const draw = () => {
+    row.innerHTML = choices.map((c) => `<button type="button" class="delivery-campus-btn" data-campus="${c}">${escapeHtml(labels[c])}</button>`).join("");
+    row.querySelectorAll(".delivery-campus-btn").forEach((b) =>
+      b.addEventListener("click", () => {
+        if (b.dataset.campus === current) return;
+        const previous = current;
+        current = b.dataset.campus;
         paint();
-      });
-    }),
-  );
-  paint();
+        // if saving the choice fails the buttons go back to what is really stored
+        Promise.resolve(onPick(current)).catch(() => {
+          current = previous;
+          paint();
+        });
+      }),
+    );
+    paint();
+  };
+  draw();
   return {
     el: wrap,
     get value() {
       return current;
     },
     set(campus) {
-      if (DELIVERY_CAMPUS_CHOICES.includes(campus)) {
-        current = campus;
+      if (!DELIVERY_CAMPUS_CHOICES.includes(campus)) return;
+      current = campus;
+      if (!choices.includes(campus)) {
+        choices.push(campus);
+        draw();
+      } else {
         paint();
       }
     },
@@ -2606,12 +2620,12 @@ function deliveryRegisterCard(onRegistered, sheet, closeSheet) {
   const registeredEmail = loadDeliveryRegisteredEmail();
   if (registeredEmail) {
     const box = el(`<div class="delivery-registered"><p class="info-banner">${escapeHtml(tr("deliveryRegisteredAs", { email: registeredEmail }))}</p></div>`);
-    const row = registeredCourierCampusRow();
+    const row = registeredCourierCampusRow(state.deliveryCampusFilter);
     if (row) box.append(row);
     return box;
   }
   // Only once a Belval restaurant is listed does a courier have a campus to choose; "all" until then.
-  const campusPicker = belvalListed() ? deliveryCampusPicker("all", () => {}) : null;
+  const campusPicker = belvalListed() ? deliveryCampusPicker("all", () => {}, state.deliveryCampusFilter) : null;
 
   // Inline card by default. With `sheet` (the bottom sheet's own element) the
   // form is drawn straight into it, header included, exactly like
@@ -3345,9 +3359,21 @@ async function renderDelivery() {
     }
     if (!stale()) paint();
   };
-  app.append(campusFilterRow("deliveryCampusFilter", paint));
-  const campusRow = DEMO ? null : registeredCourierCampusRow();
-  if (campusRow) app.append(campusRow);
+  // The alert choice follows the tab: Both + Kirchberg on the Kirchberg tab, Both + Belval on the Belval tab.
+  const campusSlot = el(`<div class="delivery-campus-slot"></div>`);
+  const paintCampusRow = () => {
+    campusSlot.innerHTML = "";
+    const row = DEMO ? null : registeredCourierCampusRow(state.deliveryCampusFilter);
+    if (row) campusSlot.append(row);
+  };
+  app.append(
+    campusFilterRow("deliveryCampusFilter", () => {
+      paintCampusRow();
+      paint();
+    }),
+  );
+  app.append(campusSlot);
+  paintCampusRow();
   paint();
   app.append(body);
   askForEmail();
