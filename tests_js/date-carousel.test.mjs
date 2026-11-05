@@ -15,7 +15,7 @@ test("one day carousel sits above all the restaurants of the chosen campus", () 
 
 test("each restaurant card says whether it is open on the chosen day", () => {
   assert.match(app, /function setCardDayStatus\(card, info\)/);
-  assert.match(app, /setCardDayStatus\(cards\.get\(r\.slug\), info\)/);
+  assert.match(app, /setCardDayStatus\(cards\.get\(r\.slug\), closedBeforeMenu/);
 });
 
 test("the open/closed indicator is a coloured pill, translated, with the closing time", () => {

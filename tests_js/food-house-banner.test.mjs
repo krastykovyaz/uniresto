@@ -41,7 +41,7 @@ test("the banner text exists in all 11 languages", () => {
 test("a registered courier gets the campus choice on the Delivery screen, following the tab, and a failed save is undone", () => {
   assert.match(app, /const row = DEMO \? null : registeredCourierCampusRow\(state\.deliveryCampusFilter\);\n\s+if \(row\) campusSlot\.append\(row\);/);
   assert.match(app, /campusFilterRow\("deliveryCampusFilter", \(\) => \{\n\s+paintCampusRow\(\);\n\s+paint\(\);/);
-  assert.match(app, /if \(!email \|\| !belvalListed\(\)\) return null;/);
+  assert.match(app, /if \(!belvalListed\(\)\) return null;/);
   assert.match(app, /Promise\.resolve\(onPick\(current\)\)\.catch\(\(\) => \{\n\s+current = previous;\n\s+paint\(\);/);
 });
 
@@ -62,4 +62,9 @@ test("the alert buttons are Both plus the campus of the tab, and show a stored c
   assert.deepEqual(pickerLabels("belval"), ["all", "belval"]);
   assert.deepEqual(pickerLabels("kirchberg", "belval"), ["all", "kirchberg", "belval"]); // saved earlier on the Belval tab
   assert.deepEqual(pickerLabels("belval", "all"), ["all", "belval"]);
+});
+
+test("a delivery you carry shows only on its own campus tab", () => {
+  const app = readFileSync(new URL("../static/app.js", import.meta.url), "utf8");
+  assert.match(app, /const mine = data\.mine\.filter\(inCampus\);/);
 });

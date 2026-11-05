@@ -2506,7 +2506,20 @@ function groupOrdersByCanteen(orders) {
 // a Belval restaurant exists. The server holds the choice, so the current one is asked for; a failed save is undone.
 function registeredCourierCampusRow(tabCampus) {
   const email = loadDeliveryRegisteredEmail();
-  if (!email || !belvalListed()) return null;
+  if (!belvalListed()) return null;
+  if (!email) {
+    // Not registered on this device: the choice is still on screen, and tapping it opens the registration.
+    const unregistered = deliveryCampusPicker(
+      "all",
+      () => {
+        openDeliveryRegisterSheet();
+        return Promise.reject(new Error("not registered"));
+      },
+      tabCampus,
+    );
+    unregistered.el.classList.add("is-on-screen");
+    return unregistered.el;
+  }
   const picker = deliveryCampusPicker(
     "all",
     (campus) =>
@@ -3224,8 +3237,8 @@ function deliveryOrderListContent(data, onChanged) {
   }
   const inCampus = (o) => orderCampus(o) === state.deliveryCampusFilter;
   const orders = data.orders.filter(inCampus);
-  // A delivery you are carrying is shown whichever campus tab is open.
-  const { mine } = data;
+  // Each campus tab shows only its own orders, a delivery you are carrying included.
+  const mine = data.mine.filter(inCampus);
   const online = loadCourierOnline();
 
   // 1) what I'm carrying right now
@@ -3575,6 +3588,15 @@ async function loadCampusDates(restaurants) {
   return perDay.filter(Boolean);
 }
 
+// A day Restopolis has no readable page for, before the restaurant's next published menu (a school
+// break, say), is a closed day, not one we failed to check.
+async function nextMenuDate(slug, date) {
+  const later = Array.from({ length: CAROUSEL_DAYS }, (_, i) => localDateString(i)).filter((d) => d > date);
+  const infos = await Promise.all(later.map((d) => loadDayStatus(slug, d).catch(() => null)));
+  const at = infos.findIndex((info) => info && info.status === "available");
+  return at < 0 ? null : later[at];
+}
+
 // The opening window shown on the open pill ("Open 11:30–14:00").
 const ORDER_OPEN_FROM = "11:30";
 const ORDER_OPEN_TO = "14:00";
@@ -3656,7 +3678,9 @@ function restaurantGridContent() {
         try {
           const info = await loadDayStatus(r.slug, date);
           if (state.listDate !== date || !grid.isConnected) return; // another day was picked, or this screen was left
-          setCardDayStatus(cards.get(r.slug), info);
+          const closedBeforeMenu = info.status === "unknown" && (await nextMenuDate(r.slug, date));
+          if (state.listDate !== date || !grid.isConnected) return;
+          setCardDayStatus(cards.get(r.slug), closedBeforeMenu ? { ...info, status: "closed" } : info);
           if (info.status === "available") prefetchMenu(r.slug, date);
         } catch {
           /* the card just shows no status */
@@ -3984,6 +4008,10 @@ async function selectDate(dateInfo, back = "dates") {
     api("/api/visit/menu", { method: "POST" }).catch(() => {});
   } catch (err) {
     state.menuError = { status: err.body && err.body.status, reason: err.message };
+    if (state.menuError.status === "unknown") {
+      const reopens = await nextMenuDate(state.slug, state.targetDate);
+      if (reopens) state.menuError = { status: "closed", reason: err.message, reopens };
+    }
   }
   if (seq === navSeq) goTo("menu");
 }
@@ -5250,7 +5278,7 @@ function renderMenu() {
   if (state.menuError) {
     const messages = {
       no_menu: ["plate", tr("menuNotYetTitle"), tr("menuNotYetBody")],
-      closed: ["ban", tr("restaurantClosedTitle"), tr("restaurantClosedBody")],
+      closed: ["ban", tr("restaurantClosedTitle"), state.menuError.reopens ? tr("restaurantReopensBody", { date: fmtLong(state.menuError.reopens) }) : tr("restaurantClosedBody")],
       ordering_closed: ["clock", tr("orderingClosedTitle"), tr("orderingClosedBody")],
       past_date: ["calendar", tr("dateNoLongerAvailableTitle"), state.menuError.reason],
       unknown: ["info", tr("statusUnknownTitle"), state.menuError.reason],
