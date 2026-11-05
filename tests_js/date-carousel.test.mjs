@@ -55,3 +55,10 @@ test("the picker and the carousel share one date card", () => {
 test("the new text exists in every language", () => {
   assert.equal((i18n.match(/noDaysToOrder:/g) || []).length, 11);
 });
+
+test("the restaurant list asks for all its restaurants and days in one request, falling back to single days", () => {
+  assert.match(app, /await loadDayStatuses\(restaurants\.map\(\(r\) => r\.slug\), days\);/);
+  assert.match(app, /await loadDayStatuses\(\[slug\], later\);/);
+  assert.match(app, /api\(`\/api\/status-range\?slugs=\$\{slugs\.map\(encodeURIComponent\)\.join\(","\)\}&from=\$\{dates\[0\]\}&days=\$\{dates\.length\}`\)/);
+  assert.match(app, /\} catch \{\n\s+\/\* the single-day requests below take over \*\/\n\s+\}/);
+});

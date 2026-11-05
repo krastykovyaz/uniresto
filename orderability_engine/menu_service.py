@@ -43,6 +43,31 @@ def requires_early_order(category: str, name: str) -> bool:
     return any(keyword in lowered for keyword in EARLY_ORDER_KEYWORDS)
 
 
+# Parsing one week page (about 430 KB of HTML) takes the better part of a second on this server, and every menu
+# request used to do it again. The parsed week is kept per (restaurant, week, with/without constant products) for as
+# long as the page itself is the same text, so a refreshed page is always parsed afresh. Callers only read the result.
+_PARSED_WEEKS: dict[tuple, tuple[str, list[DailyMenu]]] = {}
+_PARSED_WEEKS_MAX = 64
+
+
+def _parsed_week(html: str, restaurant: RestaurantConfig, weeks_ahead: int, include_constant_products: bool) -> list[DailyMenu]:
+    key = (restaurant.code, weeks_ahead, include_constant_products)
+    kept = _PARSED_WEEKS.get(key)
+    if kept is not None and (kept[0] is html or kept[0] == html):
+        return kept[1]
+    menus = parse_week_html(
+        html,
+        restaurant.code,
+        restaurant.name,
+        MENU_SOURCE_URL,
+        include_constant_products=include_constant_products,
+    )
+    if len(_PARSED_WEEKS) >= _PARSED_WEEKS_MAX and key not in _PARSED_WEEKS:
+        _PARSED_WEEKS.clear()
+    _PARSED_WEEKS[key] = (html, menus)
+    return menus
+
+
 def get_menu_for_date(
     service: OrderabilityService,
     restaurant: RestaurantConfig,
@@ -53,14 +78,8 @@ def get_menu_for_date(
     Raises the same PastDateError/HorizonExceededError/MenuParseError as
     the detector if the date can't be reached -- callers should have
     already confirmed status == "available" via check_orderability."""
-    html, _weeks_ahead = service.get_week_html(restaurant, target_date)
-    all_menus = parse_week_html(
-        html,
-        restaurant.code,
-        restaurant.name,
-        MENU_SOURCE_URL,
-        include_constant_products=include_constant_products,
-    )
+    html, weeks_ahead = service.get_week_html(restaurant, target_date)
+    all_menus = _parsed_week(html, restaurant, weeks_ahead, include_constant_products)
     return [m for m in all_menus if m.menu_date == target_date]
 
 

@@ -3549,12 +3549,30 @@ async function loadDayStatus(slug, date) {
   return info;
 }
 
+// Every restaurant and day a screen is about to ask for, in ONE request (the days must be consecutive), put in the
+// same cache loadDayStatus() reads. If it fails, the per-day requests still work.
+async function loadDayStatuses(slugs, dates) {
+  const fresh = (slug, date) => {
+    const hit = dayStatusCache.get(menuCacheKey(slug, date));
+    return hit && Date.now() - hit.at < DAY_STATUS_TTL_MS;
+  };
+  if (slugs.length === 0 || dates.length === 0 || slugs.every((s) => dates.every((d) => fresh(s, d)))) return;
+  try {
+    const all = await api(`/api/status-range?slugs=${slugs.map(encodeURIComponent).join(",")}&from=${dates[0]}&days=${dates.length}`);
+    const at = Date.now();
+    for (const [slug, byDate] of Object.entries(all)) for (const [date, info] of Object.entries(byDate)) dayStatusCache.set(menuCacheKey(slug, date), { at, info });
+  } catch {
+    /* the single-day requests below take over */
+  }
+}
+
 // The campus's next days, closed ones and weekends included: every restaurant there is asked about each day.
 // A day is orderable if any of them can take an order; otherwise it shows the most telling reason among them.
 const STATUS_PRIORITY = ["ordering_closed", "available", "closed", "no_menu", "past_date", "unknown"];
 async function loadCampusDates(restaurants) {
   // Yesterday too (DATE_PICKER_PAST_DAYS): closed, but its menu can still be looked at.
   const days = Array.from({ length: DATE_PICKER_PAST_DAYS + CAROUSEL_DAYS }, (_, i) => localDateString(i - DATE_PICKER_PAST_DAYS));
+  await loadDayStatuses(restaurants.map((r) => r.slug), days);
   const perDay = await Promise.all(
     days.map(async (date) => {
       const infos = (await Promise.all(restaurants.map((r) => loadDayStatus(r.slug, date).catch(() => null)))).filter(Boolean);
@@ -3571,6 +3589,7 @@ async function loadCampusDates(restaurants) {
 // break, say), is a closed day, not one we failed to check.
 async function nextMenuDate(slug, date) {
   const later = Array.from({ length: CAROUSEL_DAYS }, (_, i) => localDateString(i)).filter((d) => d > date);
+  await loadDayStatuses([slug], later);
   const infos = await Promise.all(later.map((d) => loadDayStatus(slug, d).catch(() => null)));
   const at = infos.findIndex((info) => info && info.status === "available");
   return at < 0 ? null : later[at];

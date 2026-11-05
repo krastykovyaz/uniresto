@@ -919,6 +919,31 @@ def create_app(
         result = svc().check_orderability(restaurant, target_date, refresh=refresh)
         return jsonify(result.to_api_dict())
 
+    # The restaurant list shows a campus's restaurants over a run of days: one request for all of them, instead of
+    # one per restaurant per day (45 at once on Kirchberg). Cache reads only, exactly like the single-day route.
+    STATUS_RANGE_MAX_DAYS = 21
+
+    @app.get("/api/status-range")
+    def api_status_range():
+        slugs = [s for s in (request.args.get("slugs") or "").split(",") if s]
+        if not slugs or len(slugs) > len(svc().restaurants):
+            abort(400, description="'slugs' must name between one and all of the restaurants, comma-separated")
+        first = parse_date_arg(request.args.get("from"))
+        try:
+            days = int(request.args.get("days", 1))
+        except ValueError:
+            abort(400, description="'days' must be a whole number")
+        if not 1 <= days <= STATUS_RANGE_MAX_DAYS:
+            abort(400, description=f"'days' must be between 1 and {STATUS_RANGE_MAX_DAYS}")
+        out = {}
+        for slug in dict.fromkeys(slugs):
+            restaurant = get_restaurant_or_404(slug)
+            out[slug] = {}
+            for offset in range(days):
+                d = first + timedelta(days=offset)
+                out[slug][d.isoformat()] = svc().check_orderability(restaurant, d).to_api_dict()
+        return jsonify(out)
+
     @app.get("/api/restaurants/<slug>/available-dates")
     def api_available_dates(slug):
         restaurant = get_restaurant_or_404(slug)

@@ -190,6 +190,29 @@ def test_api_status_available(client):
     assert body["status"] == "available"
 
 
+def test_status_range_gives_every_restaurant_and_day_the_single_route_would(client):
+    resp = client.get("/api/status-range?slugs=altius,brasserie-johns&from=2026-09-23&days=3")
+    assert resp.status_code == 200
+    body = resp.get_json()
+    assert sorted(body) == ["altius", "brasserie-johns"]
+    assert sorted(body["altius"]) == ["2026-09-23", "2026-09-24", "2026-09-25"]
+    for slug in body:
+        for day, info in body[slug].items():
+            single = client.get(f"/api/restaurants/{slug}/status?date={day}").get_json()
+            for key in ("status", "date", "restaurant", "restopolis", "our_delivery"):
+                assert info[key] == single[key], (slug, day, key)
+
+
+def test_status_range_refuses_bad_input(client):
+    assert client.get("/api/status-range?from=2026-09-24&days=3").status_code == 400  # no restaurants
+    assert client.get("/api/status-range?slugs=altius&days=3").status_code == 400  # no first day
+    assert client.get("/api/status-range?slugs=altius&from=2026-09-24&days=0").status_code == 400
+    assert client.get("/api/status-range?slugs=altius&from=2026-09-24&days=22").status_code == 400
+    assert client.get("/api/status-range?slugs=altius&from=2026-09-24&days=x").status_code == 400
+    assert client.get("/api/status-range?slugs=nope&from=2026-09-24&days=1").status_code == 404
+    assert client.get("/api/status-range?slugs=" + ",".join(["altius"] * 50) + "&from=2026-09-24&days=1").status_code == 400
+
+
 def test_api_status_missing_date_is_400(client):
     assert client.get("/api/restaurants/altius/status").status_code == 400
 

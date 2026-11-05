@@ -57,3 +57,34 @@ def test_typical_range_only_where_no_weight_and_never_in_calories():
     assert sausage["calories_typical_low"] < sausage["calories_typical_high"]
     assert rice["calories"] is not None and rice["calories_typical_low"] is None
     assert soda["calories_typical_low"] is None
+
+
+def test_a_week_page_is_parsed_once_until_its_text_changes(monkeypatch):
+    from datetime import date
+    from types import SimpleNamespace
+    from orderability_engine import menu_service
+    from restopolis.models import DailyMenu
+
+    calls = []
+
+    def fake_parse(html, code, name, url, include_constant_products=False):
+        calls.append((html, include_constant_products))
+        return [DailyMenu(code, name, date(2026, 9, 24), "Menu", None, url), DailyMenu(code, name, date(2026, 9, 25), "Menu", None, url)]
+
+    monkeypatch.setattr(menu_service, "parse_week_html", fake_parse)
+    monkeypatch.setattr(menu_service, "_PARSED_WEEKS", {})
+    restaurant = SimpleNamespace(code="X", name="X - Restaurant")
+    page = {"html": "<html>week one</html>"}
+    service = SimpleNamespace(get_week_html=lambda r, d: (page["html"], 0))
+
+    first = menu_service.get_menu_for_date(service, restaurant, date(2026, 9, 24), include_constant_products=True)
+    second = menu_service.get_menu_for_date(service, restaurant, date(2026, 9, 25), include_constant_products=True)
+    assert [m.menu_date for m in first] == [date(2026, 9, 24)] and [m.menu_date for m in second] == [date(2026, 9, 25)]
+    assert len(calls) == 1  # the other day of the same week reuses the parse
+
+    menu_service.get_menu_for_date(service, restaurant, date(2026, 9, 24), include_constant_products=False)
+    assert len(calls) == 2  # with and without constant products are different parses
+
+    page["html"] = "<html>week one, refreshed</html>"
+    menu_service.get_menu_for_date(service, restaurant, date(2026, 9, 24), include_constant_products=True)
+    assert len(calls) == 3 and calls[-1][0] == "<html>week one, refreshed</html>"  # a refreshed page is parsed afresh
