@@ -39,7 +39,7 @@ test("the banner text exists in all 11 languages", () => {
 });
 
 test("a registered courier gets the campus choice on the Delivery screen, following the tab, and a failed save is undone", () => {
-  assert.match(app, /const row = DEMO \? null : registeredCourierCampusRow\(state\.deliveryCampusFilter\);\n\s+if \(row\) campusSlot\.append\(row\);/);
+  assert.match(app, /const row = DEMO \? null : registeredCourierCampusRow\(\);\n\s+if \(row\) campusSlot\.append\(row\);/);
   assert.match(app, /campusFilterRow\("deliveryCampusFilter", \(\) => \{\n\s+paintCampusRow\(\);\n\s+paint\(\);/);
   assert.match(app, /if \(!belvalListed\(\)\) return null;/);
   assert.match(app, /Promise\.resolve\(onPick\(current\)\)\.catch\(\(\) => \{\n\s+current = previous;\n\s+paint\(\);/);
@@ -57,11 +57,10 @@ function pickerLabels(tabCampus, stored) {
   return [...html.matchAll(/data-campus="([a-z]+)"/g)].map((m) => m[1]);
 }
 
-test("the alert buttons are Both plus the campus of the tab, and show a stored choice for the other campus too", () => {
-  assert.deepEqual(pickerLabels("kirchberg"), ["all", "kirchberg"]);
-  assert.deepEqual(pickerLabels("belval"), ["all", "belval"]);
-  assert.deepEqual(pickerLabels("kirchberg", "belval"), ["all", "kirchberg", "belval"]); // saved earlier on the Belval tab
-  assert.deepEqual(pickerLabels("belval", "all"), ["all", "belval"]);
+test("the alert buttons are Both campuses, Kirchberg and Belval in one row, whichever tab is open", () => {
+  assert.deepEqual(pickerLabels(), ["all", "kirchberg", "belval"]);
+  assert.deepEqual(pickerLabels("belval"), ["all", "kirchberg", "belval"]);
+  assert.deepEqual(pickerLabels("kirchberg", "belval"), ["all", "kirchberg", "belval"]);
 });
 
 test("a delivery you carry shows only on its own campus tab", () => {

@@ -2504,7 +2504,7 @@ function groupOrdersByCanteen(orders) {
 
 // The campus choice for a courier who already registered an address on this device: shown on the Delivery screen once
 // a Belval restaurant exists. The server holds the choice, so the current one is asked for; a failed save is undone.
-function registeredCourierCampusRow(tabCampus) {
+function registeredCourierCampusRow() {
   const email = loadDeliveryRegisteredEmail();
   if (!belvalListed()) return null;
   if (!email) {
@@ -2515,7 +2515,6 @@ function registeredCourierCampusRow(tabCampus) {
         openDeliveryRegisterSheet();
         return Promise.reject(new Error("not registered"));
       },
-      tabCampus,
     );
     unregistered.el.classList.add("is-on-screen");
     return unregistered.el;
@@ -2527,7 +2526,6 @@ function registeredCourierCampusRow(tabCampus) {
         showToast(tr("verificationFailed"));
         throw err;
       }),
-    tabCampus,
   );
   api(`/api/delivery/register/campus?email=${encodeURIComponent(email)}`)
     .then((r) => picker.set(r.campus))
@@ -2542,15 +2540,13 @@ function belvalListed() {
   return Array.isArray(state.restaurants) && state.restaurants.some((r) => campusOfRestaurant(r) === "belval");
 }
 
-// "Get order alerts for": two buttons, "Both campuses" and the campus of the tab the courier is on (Kirchberg on the
-// Kirchberg tab, Belval on the Belval tab). If the stored choice is the other campus, that one is shown too, so the
-// buttons always say what is really saved. `onPick(campus)` runs on a change and may return a promise; `set()` updates
-// the highlight without calling it (used when the server's stored choice arrives).
-function deliveryCampusPicker(initial, onPick, tabCampus = "kirchberg") {
+// "Get order alerts for": three buttons in one row, Both campuses, Kirchberg and Belval. `onPick(campus)` runs on a
+// change and may return a promise; `set()` updates the highlight without calling it (used when the server's stored
+// choice arrives).
+function deliveryCampusPicker(initial, onPick) {
   const labels = { all: tr("deliveryCampusAll"), kirchberg: tr("deliveryCampusKirchberg"), belval: tr("deliveryCampusBelval") };
-  const choices = ["all", DELIVERY_CAMPUS_CHOICES.includes(tabCampus) ? tabCampus : "kirchberg"];
+  const choices = DELIVERY_CAMPUS_CHOICES;
   let current = DELIVERY_CAMPUS_CHOICES.includes(initial) ? initial : "all";
-  if (!choices.includes(current)) choices.push(current);
   const wrap = el(`
     <div class="delivery-campus">
       <p class="delivery-campus-title">${escapeHtml(tr("deliveryCampusTitle"))}</p>
@@ -2590,12 +2586,7 @@ function deliveryCampusPicker(initial, onPick, tabCampus = "kirchberg") {
     set(campus) {
       if (!DELIVERY_CAMPUS_CHOICES.includes(campus)) return;
       current = campus;
-      if (!choices.includes(campus)) {
-        choices.push(campus);
-        draw();
-      } else {
-        paint();
-      }
+      paint();
     },
   };
 }
@@ -2633,12 +2624,12 @@ function deliveryRegisterCard(onRegistered, sheet, closeSheet) {
   const registeredEmail = loadDeliveryRegisteredEmail();
   if (registeredEmail) {
     const box = el(`<div class="delivery-registered"><p class="info-banner">${escapeHtml(tr("deliveryRegisteredAs", { email: registeredEmail }))}</p></div>`);
-    const row = registeredCourierCampusRow(state.deliveryCampusFilter);
+    const row = registeredCourierCampusRow();
     if (row) box.append(row);
     return box;
   }
   // Only once a Belval restaurant is listed does a courier have a campus to choose; "all" until then.
-  const campusPicker = belvalListed() ? deliveryCampusPicker("all", () => {}, state.deliveryCampusFilter) : null;
+  const campusPicker = belvalListed() ? deliveryCampusPicker("all", () => {}) : null;
 
   // Inline card by default. With `sheet` (the bottom sheet's own element) the
   // form is drawn straight into it, header included, exactly like
@@ -3376,7 +3367,7 @@ async function renderDelivery() {
   const campusSlot = el(`<div class="delivery-campus-slot"></div>`);
   const paintCampusRow = () => {
     campusSlot.innerHTML = "";
-    const row = DEMO ? null : registeredCourierCampusRow(state.deliveryCampusFilter);
+    const row = DEMO ? null : registeredCourierCampusRow();
     if (row) campusSlot.append(row);
   };
   app.append(
