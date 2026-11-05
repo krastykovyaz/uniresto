@@ -167,10 +167,10 @@ test("the Your delivery box has room above it, so it doesn't touch the campus fi
   assert.match(rule, /margin:\s*var\(--space-3\) var\(--space-4\);/); // top and bottom space-3, sides space-4
 });
 
-test("with a delivery in hand the empty line says 'other', in all 11 languages", async () => {
+test("with a delivery in hand there is no empty line; without one it says no new orders, in all 11 languages", async () => {
   const { readFileSync } = await import("node:fs");
   const app = readFileSync(new URL("../static/app.js", import.meta.url), "utf8");
-  assert.match(app, /hx\(active\.length > 0 \? "noOtherOffers" : "noOffers"\)/);
-  assert.equal((app.match(/^\s+noOtherOffers: ".+",$/gm) || []).length, 11);
+  assert.match(app, /offers\.length === 0 && active\.length === 0\) \{\n\s+wrap\.append\(el\(`<p class="kind delivery-no-offers">\$\{escapeHtml\(hx\("noOffers"\)\)\}/);
+  assert.doesNotMatch(app, /noOtherOffers/);
   assert.equal((app.match(/^\s+noOffers: ".+",$/gm) || []).length, 11);
 });
