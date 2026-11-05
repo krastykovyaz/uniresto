@@ -8107,4 +8107,26 @@ async function init() {
   if (!restored) goTo("role");
 }
 
+// The app is one page that stays open for days, so a deploy never reaches it by itself. When it comes back to the
+// front and its own script has changed on the server, it reloads once (the open screen is restored by restoreLocation).
+async function ownScriptVersion() {
+  try {
+    const res = await fetch(import.meta.url, { method: "HEAD", cache: "no-store" });
+    return res.ok ? res.headers.get("etag") || res.headers.get("last-modified") : null;
+  } catch {
+    return null;
+  }
+}
+
+function reloadWhenANewVersionIsOut() {
+  let loaded = null;
+  ownScriptVersion().then((v) => (loaded = v));
+  document.addEventListener("visibilitychange", async () => {
+    if (document.visibilityState !== "visible" || !loaded) return;
+    const now = await ownScriptVersion();
+    if (now && now !== loaded) location.reload();
+  });
+}
+
+if (!DEMO) reloadWhenANewVersionIsOut();
 init();

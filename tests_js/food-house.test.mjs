@@ -35,3 +35,9 @@ test("the courier alert choice is on the Delivery screen even before this device
   assert.match(app, /if \(!belvalListed\(\)\) return null;\n  if \(!email\) \{/);
   assert.match(app, /openDeliveryRegisterSheet\(\);\n        return Promise\.reject/);
 });
+
+test("the app reloads itself when it comes back to the front and its script changed on the server", () => {
+  assert.match(app, /fetch\(import\.meta\.url, \{ method: "HEAD", cache: "no-store" \}\)/);
+  assert.match(app, /document\.visibilityState !== "visible" \|\| !loaded/);
+  assert.match(app, /if \(now && now !== loaded\) location\.reload\(\);/);
+});
