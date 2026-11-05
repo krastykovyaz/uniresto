@@ -131,7 +131,7 @@ test("a delivered order stays on the list in the fog, tagged Delivered, with no 
   const list = js.slice(js.indexOf("function deliveryOrderListContent("), js.indexOf("async function loadDeliveryData("));
   assert.match(list, /buckets\.delivered\.filter\(deliveredToday\)/);
   assert.match(list, /\[\.\.\.offers, \.\.\.taken, \.\.\.delivered\]/);
-  assert.match(list, /delivered\.length === 0\) \{/); // the big empty state is only for a screen with nothing at all
+  assert.match(list, /delivered\.length === 0 && !sharedCard\) \{/); // the big empty state is only for a screen with nothing at all
 });
 
 test("a delivered card shows the date, not the admin-side status (Pending)", () => {

@@ -31,9 +31,20 @@ test("the menu screen of such a day says Closed and when the restaurant reopens,
   for (const lang of LANGUAGES) assert.match(translations[lang.code].restaurantReopensBody, /\{date\}/, lang.code);
 });
 
-test("the courier alert choice is on the Delivery screen even before this device is registered", () => {
-  assert.match(app, /if \(!belvalListed\(\)\) return null;\n  if \(!email\) \{/);
-  assert.match(app, /openDeliveryRegisterSheet\(\);\n        return Promise\.reject/);
+test("a registered courier changes the alert choice from Profile, in the New-order emails sheet", () => {
+  assert.match(app, /if \(!DEMO && loadDeliveryRegisteredEmail\(\) && belvalListed\(\)\) \{/);
+  assert.match(app, /courierRow\.addEventListener\("click", \(\) => openDeliveryRegisterSheet\(true\)\);/);
+  assert.match(app, /if \(\(registered && !manage\) \|\| document\.querySelector\("\.delivery-register-sheet"\)\) return;/);
+  assert.match(app, /sheet\.append\(deliveryRegisterCard\(\)\);/);
+});
+
+test("Delivery opens on the campus of a linked order, else of a delivery in hand the open tab would hide", () => {
+  assert.match(app, /if \(linked\) state\.deliveryCampusFilter = orderCampus\(linked\);/);
+  assert.match(app, /else if \(carried\.length > 0 && !carried\.some\(\(o\) => orderCampus\(o\) === state\.deliveryCampusFilter\)\) state\.deliveryCampusFilter = orderCampus\(carried\[0\]\);/);
+});
+
+test("the self-reload waits while a basket has items, a sheet is open or the screen can't be restored", () => {
+  assert.match(app, /if \(state\.selection\.length > 0 \|\| !RESTORABLE_SCREENS\.has\(state\.screen\) \|\| document\.querySelector\("\.sheet-overlay, \.dish-detail-overlay"\)\) return;/);
 });
 
 test("the app reloads itself when it comes back to the front and its script changed on the server", () => {

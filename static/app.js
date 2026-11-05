@@ -2502,23 +2502,11 @@ function groupOrdersByCanteen(orders) {
   return groups;
 }
 
-// The campus choice for a courier who already registered an address on this device: shown on the Delivery screen once
-// a Belval restaurant exists. The server holds the choice, so the current one is asked for; a failed save is undone.
+// The campus choice for a courier who already registered an address on this device: shown in the "New-order emails"
+// sheet (opened from Profile) once a Belval restaurant exists. The server holds the choice, so the current one is asked for; a failed save is undone.
 function registeredCourierCampusRow() {
   const email = loadDeliveryRegisteredEmail();
-  if (!belvalListed()) return null;
-  if (!email) {
-    // Not registered on this device: the choice is still on screen, and tapping it opens the registration.
-    const unregistered = deliveryCampusPicker(
-      "all",
-      () => {
-        openDeliveryRegisterSheet();
-        return Promise.reject(new Error("not registered"));
-      },
-    );
-    unregistered.el.classList.add("is-on-screen");
-    return unregistered.el;
-  }
+  if (!email || !belvalListed()) return null;
   const picker = deliveryCampusPicker(
     "all",
     (campus) =>
@@ -2530,7 +2518,6 @@ function registeredCourierCampusRow() {
   api(`/api/delivery/register/campus?email=${encodeURIComponent(email)}`)
     .then((r) => picker.set(r.campus))
     .catch(() => {});
-  picker.el.classList.add("is-on-screen");
   return picker.el;
 }
 
@@ -2792,8 +2779,10 @@ function deliveryRegisterCard(onRegistered, sheet, closeSheet) {
 // The same form as a bottom sheet, like every other place this app asks for
 // an email. Opened when a courier goes Online without an address registered;
 // closes itself (with a confirmation toast) once the code is verified.
-function openDeliveryRegisterSheet() {
-  if (loadDeliveryRegisteredEmail() || document.querySelector(".delivery-register-sheet")) return;
+// `manage` (from Profile): a courier already registered on this device gets the sheet too, to change the campus choice.
+function openDeliveryRegisterSheet(manage = false) {
+  const registered = loadDeliveryRegisteredEmail();
+  if ((registered && !manage) || document.querySelector(".delivery-register-sheet")) return;
   const overlay = el(`<div class="sheet-overlay"></div>`);
   const sheet = el(`<div class="lang-sheet delivery-register-sheet" role="dialog" aria-modal="true" aria-label="${escapeHtml(hx("orderEmailsTitle"))}"></div>`);
   function close() {
@@ -2803,16 +2792,27 @@ function openDeliveryRegisterSheet() {
   function onKey(e) {
     if (e.key === "Escape") close();
   }
-  // The sheet element itself is the form's host, so it is built exactly like
-  // the University-email sheet (same header, hint, input and button layout).
-  deliveryRegisterCard(
-    (email) => {
-      close();
-      showToast(tr("deliveryRegisteredAs", { email }));
-    },
-    sheet,
-    close
-  );
+  if (registered) {
+    sheet.innerHTML = `
+      <div class="sheet-grabber" aria-hidden="true"></div>
+      <div class="lang-sheet-header">
+        <p class="screen-title">${escapeHtml(hx("orderEmailsTitle"))}</p>
+        <button type="button" class="filter-close" aria-label="${escapeHtml(tr("back"))}">${icon("close", 20)}</button>
+      </div>`;
+    sheet.querySelector(".filter-close").addEventListener("click", close);
+    sheet.append(deliveryRegisterCard());
+  } else {
+    // The sheet element itself is the form's host, so it is built exactly like
+    // the University-email sheet (same header, hint, input and button layout).
+    deliveryRegisterCard(
+      (email) => {
+        close();
+        showToast(tr("deliveryRegisteredAs", { email }));
+      },
+      sheet,
+      close
+    );
+  }
   overlay.addEventListener("click", (e) => {
     if (e.target === overlay) close();
   });
@@ -3273,7 +3273,7 @@ function deliveryOrderListContent(data, onChanged) {
     // delivered today, most recently delivered first -- so a courier or a customer can see it went through.
     const deliveredToday = (o) => forToday(o) && dateToLocalString(new Date(o.delivered_at)) === today;
     const delivered = buckets.delivered.filter(deliveredToday).sort((a, b) => b.delivered_at.localeCompare(a.delivered_at));
-    if (offers.length === 0 && active.length === 0 && taken.length === 0 && delivered.length === 0) {
+    if (offers.length === 0 && active.length === 0 && taken.length === 0 && delivered.length === 0 && !sharedCard) {
       wrap.append(emptyState("receipt", tr("deliveryOrdersEmptyTitle")));
     }
     if (offers.length + taken.length + delivered.length > 0) {
@@ -3331,6 +3331,12 @@ async function renderDelivery() {
   }
   if (stale()) return; // navigated away, or a newer load took over, while this was in flight
   app.querySelector(".loading-state")?.remove();
+
+  // Open on the campus that matters: the order a link pointed at, else a delivery in hand that the open tab would hide.
+  const linked = state.sharedOrderId != null && data.orders.find((o) => o.id === state.sharedOrderId);
+  const carried = data.mine.filter((o) => !o.delivered_at && o.status !== "cancelled" && o.status !== "expired");
+  if (linked) state.deliveryCampusFilter = orderCampus(linked);
+  else if (carried.length > 0 && !carried.some((o) => orderCampus(o) === state.deliveryCampusFilter)) state.deliveryCampusFilter = orderCampus(carried[0]);
 
   const body = el(`<div class="delivery-campus-body"></div>`);
   // Asked as a bottom sheet, only for someone Online with no delivery email
@@ -4941,6 +4947,19 @@ function renderProfile() {
   `);
   notifRow.addEventListener("click", () => goTo("notifications"));
   rows.append(notifRow);
+
+  // A registered courier's alert choice (Both campuses, Kirchberg, Belval): the only place to change it.
+  if (!DEMO && loadDeliveryRegisteredEmail() && belvalListed()) {
+    const courierRow = el(`
+      <button type="button" class="profile-row profile-row-courier-alerts" aria-haspopup="dialog">
+        <span class="profile-row-icon">${icon("receipt", 20)}</span>
+        <span class="profile-row-label">${escapeHtml(hx("orderEmailsTitle"))}</span>
+        <span class="profile-row-chevron">${icon("chevron", 16)}</span>
+      </button>
+    `);
+    courierRow.addEventListener("click", () => openDeliveryRegisterSheet(true));
+    rows.append(courierRow);
+  }
 
   const emailRow = el(`
     <button type="button" class="profile-row profile-row-email" aria-haspopup="dialog">
@@ -8109,6 +8128,7 @@ async function init() {
 
 // The app is one page that stays open for days, so a deploy never reaches it by itself. When it comes back to the
 // front and its own script has changed on the server, it reloads once (the open screen is restored by restoreLocation).
+// Put off, until the next time it comes to the front, while an order is being put together.
 async function ownScriptVersion() {
   try {
     const res = await fetch(import.meta.url, { method: "HEAD", cache: "no-store" });
@@ -8123,6 +8143,8 @@ function reloadWhenANewVersionIsOut() {
   ownScriptVersion().then((v) => (loaded = v));
   document.addEventListener("visibilitychange", async () => {
     if (document.visibilityState !== "visible" || !loaded) return;
+    // Never over work in progress: a basket (it is not stored), an open sheet, or a screen a reload can't bring back.
+    if (state.selection.length > 0 || !RESTORABLE_SCREENS.has(state.screen) || document.querySelector(".sheet-overlay, .dish-detail-overlay")) return;
     const now = await ownScriptVersion();
     if (now && now !== loaded) location.reload();
   });
