@@ -38,9 +38,9 @@ test("the banner text exists in all 11 languages", () => {
   }
 });
 
-test("a registered courier gets the campus choice on the Delivery screen, following the tab, and a failed save is undone", () => {
-  assert.match(app, /const row = DEMO \? null : registeredCourierCampusRow\(\);\n\s+if \(row\) campusSlot\.append\(row\);/);
-  assert.match(app, /campusFilterRow\("deliveryCampusFilter", \(\) => \{\n\s+paintCampusRow\(\);\n\s+paint\(\);/);
+test("the Delivery screen has no alert-choice row under the campus tabs; the registered card keeps it", () => {
+  assert.doesNotMatch(app, /campusSlot/);
+  assert.match(app, /app\.append\(campusFilterRow\("deliveryCampusFilter", paint\)\);/);
   assert.match(app, /if \(!belvalListed\(\)\) return null;/);
   assert.match(app, /Promise\.resolve\(onPick\(current\)\)\.catch\(\(\) => \{\n\s+current = previous;\n\s+paint\(\);/);
 });

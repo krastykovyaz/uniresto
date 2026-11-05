@@ -3363,21 +3363,7 @@ async function renderDelivery() {
     }
     if (!stale()) paint();
   };
-  // The alert choice follows the tab: Both + Kirchberg on the Kirchberg tab, Both + Belval on the Belval tab.
-  const campusSlot = el(`<div class="delivery-campus-slot"></div>`);
-  const paintCampusRow = () => {
-    campusSlot.innerHTML = "";
-    const row = DEMO ? null : registeredCourierCampusRow();
-    if (row) campusSlot.append(row);
-  };
-  app.append(
-    campusFilterRow("deliveryCampusFilter", () => {
-      paintCampusRow();
-      paint();
-    }),
-  );
-  app.append(campusSlot);
-  paintCampusRow();
+  app.append(campusFilterRow("deliveryCampusFilter", paint));
   paint();
   app.append(body);
   askForEmail();
