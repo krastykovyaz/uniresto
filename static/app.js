@@ -3274,9 +3274,7 @@ function deliveryOrderListContent(data, onChanged) {
     const deliveredToday = (o) => forToday(o) && dateToLocalString(new Date(o.delivered_at)) === today;
     const delivered = buckets.delivered.filter(deliveredToday).sort((a, b) => b.delivered_at.localeCompare(a.delivered_at));
     if (offers.length === 0 && active.length === 0 && taken.length === 0 && delivered.length === 0) {
-      wrap.append(emptyState("receipt", tr("deliveryOrdersEmptyTitle"), hx("noOffers")));
-    } else if (offers.length === 0 && active.length === 0) {
-      wrap.append(el(`<p class="kind delivery-no-offers">${escapeHtml(hx("noOffers"))}</p>`));
+      wrap.append(emptyState("receipt", tr("deliveryOrdersEmptyTitle")));
     }
     if (offers.length + taken.length + delivered.length > 0) {
       const list = el(`<div class="order-list courier-offers"></div>`);
@@ -4193,7 +4191,6 @@ const HISTORY_STRINGS = {
     online: "Online",
     offline: "Offline",
     offlineMessage: "You're offline. Switch Online on to see new orders.",
-    noOffers: "No new orders right now.",
     orderEmailsTitle: "New-order emails",
   },
   fr: {
@@ -4211,7 +4208,6 @@ const HISTORY_STRINGS = {
     online: "En ligne",
     offline: "Hors ligne",
     offlineMessage: "Vous êtes hors ligne. Activez « En ligne » pour voir les nouvelles commandes.",
-    noOffers: "Aucune nouvelle commande pour l'instant.",
     orderEmailsTitle: "E-mails de nouvelles commandes",
   },
   es: {
@@ -4229,7 +4225,6 @@ const HISTORY_STRINGS = {
     online: "Conectado",
     offline: "Desconectado",
     offlineMessage: "Estás desconectado. Activa «Conectado» para ver pedidos nuevos.",
-    noOffers: "No hay pedidos nuevos ahora.",
     orderEmailsTitle: "Avisos de pedidos nuevos",
   },
   pt: {
@@ -4247,7 +4242,6 @@ const HISTORY_STRINGS = {
     online: "Online",
     offline: "Offline",
     offlineMessage: "Estás offline. Ativa «Online» para ver novos pedidos.",
-    noOffers: "Sem novos pedidos de momento.",
     orderEmailsTitle: "Avisos de novos pedidos",
   },
   ru: {
@@ -4265,7 +4259,6 @@ const HISTORY_STRINGS = {
     online: "Онлайн",
     offline: "Офлайн",
     offlineMessage: "Вы не в сети. Включите «Онлайн», чтобы видеть новые заказы.",
-    noOffers: "Новых заказов пока нет.",
     orderEmailsTitle: "Письма о новых заказах",
   },
   zh: {
@@ -4283,7 +4276,6 @@ const HISTORY_STRINGS = {
     online: "在线",
     offline: "离线",
     offlineMessage: "你处于离线状态。打开“在线”即可查看新订单。",
-    noOffers: "暂时没有新订单。",
     orderEmailsTitle: "新订单邮件",
   },
   lb: {
@@ -4301,7 +4293,6 @@ const HISTORY_STRINGS = {
     online: "Online",
     offline: "Offline",
     offlineMessage: "Du bass offline. Schalt „Online“ un, fir nei Bestellungen ze gesinn.",
-    noOffers: "Elo keng nei Bestellungen.",
     orderEmailsTitle: "E-Mailen iwwer nei Bestellungen",
   },
   hi: {
@@ -4319,7 +4310,6 @@ const HISTORY_STRINGS = {
     online: "ऑनलाइन",
     offline: "ऑफ़लाइन",
     offlineMessage: "आप ऑफ़लाइन हैं। नए ऑर्डर देखने के लिए «ऑनलाइन» चालू करें।",
-    noOffers: "अभी कोई नया ऑर्डर नहीं।",
     orderEmailsTitle: "नए ऑर्डर के ईमेल",
   },
   ar: {
@@ -4337,7 +4327,6 @@ const HISTORY_STRINGS = {
     online: "متصل",
     offline: "غير متصل",
     offlineMessage: "أنت غير متصل. فعّل «متصل» لرؤية الطلبات الجديدة.",
-    noOffers: "لا توجد طلبات جديدة حاليًا.",
     orderEmailsTitle: "رسائل الطلبات الجديدة",
   },
   bn: {
@@ -4355,7 +4344,6 @@ const HISTORY_STRINGS = {
     online: "অনলাইন",
     offline: "অফলাইন",
     offlineMessage: "আপনি অফলাইনে আছেন। নতুন অর্ডার দেখতে «অনলাইন» চালু করুন।",
-    noOffers: "এই মুহূর্তে কোনো নতুন অর্ডার নেই।",
     orderEmailsTitle: "নতুন অর্ডারের ইমেইল",
   },
   ur: {
@@ -4373,7 +4361,6 @@ const HISTORY_STRINGS = {
     online: "آن لائن",
     offline: "آف لائن",
     offlineMessage: "آپ آف لائن ہیں۔ نئے آرڈر دیکھنے کے لیے «آن لائن» آن کریں۔",
-    noOffers: "ابھی کوئی نیا آرڈر نہیں۔",
     orderEmailsTitle: "نئے آرڈرز کی ای میلز",
   },
 };

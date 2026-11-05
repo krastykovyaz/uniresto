@@ -42,7 +42,7 @@ test("the list shows taken orders (reserved) instead of a contradictory empty st
   const list = js.slice(js.indexOf("function deliveryOrderListContent("), js.indexOf("async function loadDeliveryData("));
   assert.match(list, /const taken = buckets\.pending\.filter\(\(o\) => o\.claimed_at && !o\.mine_courier && forToday\(o\)\)/);
   assert.match(list, /offers\.length === 0 && active\.length === 0 && taken\.length === 0/);
-  assert.match(list, /delivery-no-offers/);
+  assert.doesNotMatch(list, /delivery-no-offers/);
 });
 
 test("the fog style removes pointer events", () => {
@@ -167,10 +167,9 @@ test("the Your delivery box has room above it, so it doesn't touch the campus fi
   assert.match(rule, /margin:\s*var\(--space-3\) var\(--space-4\);/); // top and bottom space-3, sides space-4
 });
 
-test("with a delivery in hand there is no empty line; without one it says no new orders, in all 11 languages", async () => {
+test("the Delivery screen never writes a 'no new orders' line", async () => {
   const { readFileSync } = await import("node:fs");
   const app = readFileSync(new URL("../static/app.js", import.meta.url), "utf8");
-  assert.match(app, /offers\.length === 0 && active\.length === 0\) \{\n\s+wrap\.append\(el\(`<p class="kind delivery-no-offers">\$\{escapeHtml\(hx\("noOffers"\)\)\}/);
-  assert.doesNotMatch(app, /noOtherOffers/);
-  assert.equal((app.match(/^\s+noOffers: ".+",$/gm) || []).length, 11);
+  assert.doesNotMatch(app, /noOffers|noOtherOffers|delivery-no-offers/);
+  assert.match(app, /emptyState\("receipt", tr\("deliveryOrdersEmptyTitle"\)\)/);
 });
