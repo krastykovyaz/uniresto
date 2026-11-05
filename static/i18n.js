@@ -6949,7 +6949,7 @@ export const DISH_NAME_LABELS = {
   "Mini bouchée au quorn": {
     en: "Mini quorn bite", zh: "迷你Quorn小酥盒", hi: "मिनी क्वॉर्न बाइट",
     es: "Mini bocado de quorn", fr: "Mini bouchée au quorn", ar: "لقمة كورن صغيرة",
-    bn: "মিনি কোয়র্ন বাইট", pt: "Mini bocado de quorn", ru: "Мини-пирожок с квороном",
+    bn: "মিনি কোয়র্ন বাইট", pt: "Mini bocado de quorn", ru: "Мини-слойка с Quorn",
     ur: "منی کوورن بائٹ", lb: "Mini Quorn-Häppchen",
   },
   "Petits chaussons aux épinards et fromage Emmental": {
@@ -7117,7 +7117,7 @@ export const DISH_NAME_LABELS = {
   "Lasagne au quorn": {
     en: "Quorn lasagne", zh: "Quorn素肉千层面", hi: "क्वॉर्न लज़ान्या",
     es: "Lasaña de quorn", fr: "Lasagne au quorn", ar: "لازانيا بالكورن",
-    bn: "কোয়র্ন ল্যাজাগনা", pt: "Lasanha de quorn", ru: "Лазанья с квороном",
+    bn: "কোয়র্ন ল্যাজাগনা", pt: "Lasanha de quorn", ru: "Лазанья с Quorn",
     ur: "کوورن لزانیا", lb: "Quorn-Lasagne",
   },
   "Linguine au poulet et brocolis, sauce crémeuse": {
@@ -7225,7 +7225,7 @@ export const DISH_NAME_LABELS = {
   "Bouchée au quorn": {
     en: "Quorn bite", zh: "Quorn素肉小酥盒", hi: "क्वॉर्न बाइट",
     es: "Bocado de quorn", fr: "Bouchée au quorn", ar: "لقمة الكورن",
-    bn: "কোয়র্ন বাইট", pt: "Bocado de quorn", ru: "Пирожок с квороном",
+    bn: "কোয়র্ন বাইট", pt: "Bocado de quorn", ru: "Слойка с Quorn",
     ur: "کوورن بائٹ", lb: "Quorn-Häppchen",
   },
   "Boulettes végétales, sauce Chimichurri": {

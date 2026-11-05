@@ -3729,7 +3729,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "ar": "لقمة كورن صغيرة",
         "bn": "মিনি কোয়র্ন বাইট",
         "pt": "Mini bocado de quorn",
-        "ru": "Мини-пирожок с квороном",
+        "ru": "Мини-слойка с Quorn",
         "ur": "منی کوورن بائٹ",
         "lb": "Mini Quorn-Häppchen"
     },
@@ -4093,7 +4093,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "ar": "لازانيا بالكورن",
         "bn": "কোয়র্ন ল্যাজাগনা",
         "pt": "Lasanha de quorn",
-        "ru": "Лазанья с квороном",
+        "ru": "Лазанья с Quorn",
         "ur": "کوورن لزانیا",
         "lb": "Quorn-Lasagne"
     },
@@ -4327,7 +4327,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "ar": "لقمة الكورن",
         "bn": "কোয়র্ন বাইট",
         "pt": "Bocado de quorn",
-        "ru": "Пирожок с квороном",
+        "ru": "Слойка с Quorn",
         "ur": "کوورن بائٹ",
         "lb": "Quorn-Häppchen"
     },
