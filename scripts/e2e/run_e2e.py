@@ -13,6 +13,7 @@ import argparse
 import json
 import re
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -73,6 +74,13 @@ class Mock:
 
     def emails(self, to=None, subject=None):
         return [m for m in self._call("GET", "/__outbox?kind=email") if (to is None or m["to"] == to) and (subject is None or subject in (m["subject"] or ""))]
+
+    def await_email(self, to, subject, seconds=8.0):
+        """The courier emails leave the request (the app sends them in the background), so they land a moment after
+        the API has answered: wait for one instead of looking straight away."""
+        deadline = time.monotonic() + seconds
+        while not self.emails(to=to, subject=subject) and time.monotonic() < deadline:
+            time.sleep(0.2)
 
     def telegrams(self, contains=None):
         return [m for m in self._call("GET", "/__outbox?kind=telegram") if contains is None or contains in (m["text"] or "")]
@@ -137,6 +145,7 @@ def main() -> int:
     check("the customer gets an order-confirmation email naming the restaurant and the dishes", len(conf) == 1 and "LTC-K" in conf[0]["subject"] and pasta["name"] in conf[0]["text"])
     tg = mock.telegrams("order")
     check("the admin gets a Telegram message with the order", any(str(oid) in (t["text"] or "") for t in tg), f"{len(tg)} message(s)")
+    mock.await_email(COURIER, "New order to deliver")
     new = mock.emails(to=COURIER, subject="New order to deliver")
     check("the registered courier gets a 'new order to deliver' email", len(new) == 1 and "LTC-K" in new[0]["subject"])
     check("no email went to anyone else", {m["to"] for m in mock.emails()} == {PUPIL, COURIER})
@@ -146,6 +155,7 @@ def main() -> int:
     code, r = api.request("POST", f"/api/orders/{oid}/claim", {"courier_email": COURIER, "lang": "en"}, emails=[COURIER])
     check("claimed", code == 200 and r["claimed"] is True)
     check("the admin is told it was claimed", bool(mock.telegrams("claim")) or bool(mock.telegrams(str(oid))))
+    mock.await_email(COURIER, "New order to deliver")
     check("the courier gets the order description email", len(mock.emails(to=COURIER, subject="New order to deliver")) == 1)
     check("the customer gets an 'order accepted' email", len(mock.emails(to=PUPIL, subject="was accepted")) == 1)
     mock.reset()

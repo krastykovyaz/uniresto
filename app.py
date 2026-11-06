@@ -306,6 +306,9 @@ def _building_only(delivery_location: str | None) -> str | None:
 # which otherwise ends up in web-server logs and browser history. The first hop is the only URL that still
 # carries one (a bookmark, or a Telegram link with its own 2-day token); base.html then removes it from the
 # address bar.
+# The stricter policy on trial (see security_headers): scripts and requests only from this site.
+CSP_TRIAL_POLICY = "script-src 'self'; connect-src 'self'; report-uri /api/csp-report"
+CSP_REPORT_MAX_BYTES = 8 * 1024
 ADMIN_SESSION_COOKIE = "uniresto_admin"
 ADMIN_SESSION_SECONDS = 12 * 3600
 
@@ -498,6 +501,9 @@ def create_app(
         # pass first. These three lines break nothing and still stop
         # framing, plugins and <base> hijacking.
         headers.setdefault("Content-Security-Policy", "frame-ancestors 'none'; object-src 'none'; base-uri 'self'")
+        # A trial of the stricter policy: Report-Only blocks nothing, the browser only posts what WOULD be
+        # blocked to /api/csp-report (logged as [CSP-REPORT]). Enforce it once the log stays quiet.
+        headers.setdefault("Content-Security-Policy-Report-Only", CSP_TRIAL_POLICY)
         if request.is_secure:
             headers.setdefault("Strict-Transport-Security", "max-age=31536000")
         # Admin pages and the email confirm/cancel pages carry their
@@ -669,6 +675,7 @@ def create_app(
         "coming_soon_click": (30, 3600),
         # Only cache MISSES cost anything (a 1200x630 render); a hit is a file read.
         "og_render": (30, 3600),
+        "csp_report": (20, 3600),     # each one: a log line
     }
 
     def within_rate_limit(bucket: str, suffix: str = "", per_client: bool = True) -> tuple[bool, int]:
@@ -2261,6 +2268,19 @@ def create_app(
         source = (body.get("source") or "").strip()[:MAX_SOURCE_LENGTH] or None
         page_views().record(event, source=source)
         return jsonify({"recorded": True})
+
+    @app.post("/api/csp-report")
+    def api_csp_report():
+        """Where browsers post what the trial policy (CSP_TRIAL_POLICY) would have blocked. Only logged:
+        one short line per report, capped per client, nothing stored."""
+        if within_rate_limit("csp_report")[0] and (request.content_length or 0) <= CSP_REPORT_MAX_BYTES:
+            body = request.get_json(force=True, silent=True)
+            report = body.get("csp-report") if isinstance(body, dict) else None
+            if isinstance(report, dict):
+                fields = ("effective-directive", "violated-directive", "blocked-uri", "document-uri", "source-file", "line-number")
+                line = " ".join(f"{k}={str(report.get(k))[:200]!r}" for k in fields if report.get(k) is not None)
+                print(f"[CSP-REPORT] {line}", flush=True)
+        return "", 204
 
     @app.post("/api/feedback")
     def api_feedback():

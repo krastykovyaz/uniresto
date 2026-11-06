@@ -2982,6 +2982,21 @@ def test_security_headers_on_every_response(client):
     assert resp.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
 
 
+def test_stricter_script_policy_is_on_trial_and_its_reports_are_logged(client, capsys):
+    resp = client.get("/")
+    assert resp.headers["Content-Security-Policy-Report-Only"] == "script-src 'self'; connect-src 'self'; report-uri /api/csp-report"
+    assert "script-src" not in resp.headers["Content-Security-Policy"]  # nothing is blocked yet
+
+    report = {"csp-report": {"blocked-uri": "inline", "violated-directive": "script-src-elem", "document-uri": "https://x/admin/orders"}}
+    sent = client.post("/api/csp-report", data=json.dumps(report), content_type="application/csp-report")
+    assert sent.status_code == 204
+    assert "[CSP-REPORT] violated-directive='script-src-elem' blocked-uri='inline' document-uri='https://x/admin/orders'" in capsys.readouterr().out
+
+    for junk in (b"not json", b"[]", json.dumps({"csp-report": "x"}).encode(), b"x" * 9000):
+        assert client.post("/api/csp-report", data=junk, content_type="application/csp-report").status_code == 204
+    assert "[CSP-REPORT]" not in capsys.readouterr().out
+
+
 def test_admin_and_email_link_pages_never_leak_their_token(client):
     resp = client.get("/o/1/confirm?token=nonsense")
     assert resp.headers["Referrer-Policy"] == "no-referrer"
