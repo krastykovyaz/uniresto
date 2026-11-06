@@ -67,15 +67,15 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
     "Carottes persillées": {
         "en": "Parsleyed carrots",
         "zh": "欧芹胡萝卜",
-        "hi": "अजमोद के साथ गाजर",
+        "hi": "पार्सले के साथ गाजर",
         "es": "Zanahorias al perejil",
         "fr": "Carottes persillées",
         "ar": "جزر بالبقدونس",
         "bn": "পার্সলে গাজর",
         "pt": "Cenouras com salsa",
         "ru": "Морковь с петрушкой",
-        "ur": "اجمود کے ساتھ گاجر",
-        "lb": "Muert mat Peitercili"
+        "ur": "پارسلے کے ساتھ گاجر",
+        "lb": "Muert mat Péiterséileg"
     },
     "Chocolat chaud \"Commerce équitable\"": {
         "en": "Fair trade hot chocolate",
@@ -133,7 +133,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "en": "Grilled beef sirloin with Béarnaise sauce",
         "zh": "烤牛排配贝亚恩酱",
         "hi": "बियर्नेज़ सॉस के साथ ग्रिल्ड बीफ़ सिरलॉइन",
-        "es": "Solomillo de ternera a la parrilla con salsa bearnesa",
+        "es": "Entrecot de ternera a la parrilla con salsa bearnesa",
         "fr": "Faux-filet de boeuf grillé sauce Béarnaise",
         "ar": "شريحة لحم بقري مشوية بصلصة البيارنيز",
         "bn": "বেয়ারনেজ সসসহ গ্রিলড বিফ সিরলোইন",
@@ -244,7 +244,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Batatas novas assadas",
         "ru": "Запечённый молодой картофель",
         "ur": "بھنے ہوئے نئے آلو",
-        "lb": "Gebrode Fréikartoffelen"
+        "lb": "Gebroden nei Gromperen"
     },
     "Rôti de porc Orloff, jus lié": {
         "en": "Pork roast Orloff, thickened jus",
@@ -322,7 +322,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Sopa de batata",
         "ru": "Картофельный суп",
         "ur": "آلو کا سوپ",
-        "lb": "Kartoffelzopp"
+        "lb": "Gromperenzopp"
     },
     "Thé \"commerce équitable\"": {
         "en": "Fair trade tea",
@@ -812,7 +812,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "hi": "ग्लूटेन-मुक्त मिनी बैगेट, वीगन \"Schockelasbotter\" (चॉकलेट स्प्रेड) के साथ",
         "es": "Mini baguette sin gluten con \"Schockelasbotter\" vegano (crema de chocolate)",
         "fr": "Mini baguette sans gluten \"Schockelasbotter végan\"",
-        "ar": "ميني باجيت خالٍ من الغلوتين بدهن الشوكولاتة النباتي \"Schockelasbotter\"",
+        "ar": "ميني باجيت خالٍ من الغلوتين بدهن الشوكولاتة النباتي الصرف \"Schockelasbotter\"",
         "bn": "গ্লুটেন-মুক্ত মিনি ব্যাগেট, ভেগান \"Schockelasbotter\" (চকোলেট স্প্রেড) সহ",
         "pt": "Mini baguete sem glúten com \"Schockelasbotter\" vegano (creme de chocolate)",
         "ru": "Безглютеновый мини-багет с веганской шоколадной пастой «Schockelasbotter»",
@@ -903,7 +903,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "hi": "वीगन \"Schockelasbotter\" (चॉकलेट स्प्रेड) वाला सफ़ेद रोल",
         "es": "Panecillo blanco con \"Schockelasbotter\" vegano (crema de chocolate)",
         "fr": "Petit pain blanc \"Schockelasbotter végan\"",
-        "ar": "خبز أبيض صغير بدهن الشوكولاتة النباتي \"Schockelasbotter\"",
+        "ar": "خبز أبيض صغير بدهن الشوكولاتة النباتي الصرف \"Schockelasbotter\"",
         "bn": "ভেগান \"Schockelasbotter\" (চকোলেট স্প্রেড) সহ সাদা রোল",
         "pt": "Pãozinho branco com \"Schockelasbotter\" vegano (creme de chocolate)",
         "ru": "Белая булочка с веганской шоколадной пастой «Schockelasbotter»",
@@ -1182,7 +1182,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Vaca salteada, marinada de molho tamari e cebolinhas",
         "ru": "Обжаренная говядина в маринаде из соуса тамари с зелёным луком",
         "ur": "تماری میرینیڈ اور ہری پیاز کے ساتھ بھنا ہوا گائے کا گوشت",
-        "lb": "Gebroden Rëndfleesch, Tamari-Marinad a Fréijoerszwiebelen"
+        "lb": "Gebroden Rëndfleesch, Tamari-Marinad a Fréijoerszwiwwelen"
     },
     "Bouillon de légumes aux pâtes": {
         "en": "Vegetable broth with pasta",
@@ -1216,7 +1216,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "hi": "टमाटर वाले दाल के गोले, नींबू वाला वीगन दही डिप",
         "es": "Albóndigas de lentejas con tomate, salsa de yogur vegano al limón",
         "fr": "Boulettes de lentilles tomatées, dip au yaourt végan citronné",
-        "ar": "كرات العدس بالطماطم مع غموس الزبادي النباتي بالليمون",
+        "ar": "كرات العدس بالطماطم مع غموس الزبادي النباتي الصرف بالليمون",
         "bn": "টমেটোয় মসুর ডালের বল, লেবুর ভেগান দইয়ের ডিপ",
         "pt": "Bolinhas de lentilhas em molho de tomate, molho de iogurte vegano com limão",
         "ru": "Чечевичные шарики в томатном соусе, лимонный веганский йогуртовый соус",
@@ -1242,7 +1242,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "hi": "वीगन मीटबॉल्स, टमाटर सॉस",
         "es": "Albóndigas veganas, salsa de tomate",
         "fr": "Boulettes véganes, sauce tomate",
-        "ar": "كرات نباتية بصلصة الطماطم",
+        "ar": "كرات نباتية صرفة بصلصة الطماطم",
         "bn": "ভেগান মিটবল, টমেটো সস",
         "pt": "Almôndegas veganas, molho de tomate",
         "ru": "Веганские фрикадельки, томатный соус",
@@ -1307,7 +1307,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "hi": "दाल बर्गर, वीगन दही सॉस",
         "es": "Hamburguesa de lentejas, salsa de yogur vegano",
         "fr": "Burger aux lentilles, sauce yaourt végane",
-        "ar": "برغر العدس مع صلصة الزبادي النباتي",
+        "ar": "برغر العدس مع صلصة الزبادي النباتي الصرف",
         "bn": "মসুর ডালের বার্গার, ভেগান দইয়ের সস",
         "pt": "Hambúrguer de lentilhas, molho de iogurte vegano",
         "ru": "Бургер с чечевицей, веганский йогуртовый соус",
@@ -1338,7 +1338,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Quadrado de quiche de alho-porro",
         "ru": "Квадрат киша с луком-пореем",
         "ur": "لیک کیچ کا چوکور ٹکڑا",
-        "lb": "Quadrat Quiche mat Lauch"
+        "lb": "Quadrat Quiche mat Porett"
     },
     "Cevapcici au quorn, sauce tomate": {
         "en": "Quorn cevapcici, tomato sauce",
@@ -1390,7 +1390,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Cogumelos salteados com salsa",
         "ru": "Жареные шампиньоны с петрушкой",
         "ur": "پارسلے کے ساتھ بھونے مشروم",
-        "lb": "Gebroden Champignonen mat Péiterséilie"
+        "lb": "Gebroden Champignonen mat Péiterséileg"
     },
     "Champignons, ail et persil": {
         "en": "Mushrooms, garlic and parsley",
@@ -1403,7 +1403,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Cogumelos, alho e salsa",
         "ru": "Шампиньоны, чеснок и петрушка",
         "ur": "مشروم، لہسن اور پارسلے",
-        "lb": "Champignonen, Knuewelek a Péiterséilie"
+        "lb": "Champignonen, Knuewelek a Péiterséileg"
     },
     "Chausson aux pommes, chantilly": {
         "en": "Apple turnover, whipped cream",
@@ -1533,7 +1533,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Couve romanesco com alho",
         "ru": "Романеско с чесноком",
         "ur": "لہسن والی رومانیسکو گوبھی",
-        "lb": "Rumanesco mam Knuewelek"
+        "lb": "Romanesco mam Knuewelek"
     },
     "Chou rouge": {
         "en": "Red cabbage",
@@ -1559,7 +1559,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Couve-flor com alho e salsa",
         "ru": "Цветная капуста с чесноком и петрушкой",
         "ur": "لہسن اور پارسلے والی پھول گوبھی",
-        "lb": "Blummekéis mat Knuewelek a Péiterséilie"
+        "lb": "Choufleur mat Knuewelek a Péiterséileg"
     },
     "Clafoutis aux quetsches": {
         "en": "Damson plum clafoutis",
@@ -1593,7 +1593,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "hi": "वीगन पीनट बटर और चॉकलेट चिप कुकी",
         "es": "Galleta vegana de mantequilla de cacahuete y pepitas de chocolate",
         "fr": "Cookie végan au beurre de cacahuètes et pépites de chocolat",
-        "ar": "كوكيز نباتي بزبدة الفول السوداني ورقائق الشوكولاتة",
+        "ar": "كوكيز نباتي صرف بزبدة الفول السوداني ورقائق الشوكولاتة",
         "bn": "ভেগান পিনাট বাটার ও চকোলেট চিপ কুকি",
         "pt": "Cookie vegano de manteiga de amendoim e pepitas de chocolate",
         "ru": "Веганское печенье с арахисовой пастой и шоколадной крошкой",
@@ -1663,7 +1663,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Creme de couve romanesco",
         "ru": "Крем-суп из романеско",
         "ur": "رومانیسکو گوبھی کا کریمی سوپ",
-        "lb": "Rumanesco-Crèmesop"
+        "lb": "Romanesco-Crèmezopp"
     },
     "Crème de chou-fleur au curry": {
         "en": "Cream of cauliflower soup with curry",
@@ -1676,7 +1676,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Creme de couve-flor com caril",
         "ru": "Крем-суп из цветной капусты с карри",
         "ur": "کری کے ساتھ پھول گوبھی کا کریمی سوپ",
-        "lb": "Blummekéis-Crèmesop mam Curry"
+        "lb": "Choufleur-Crèmezopp mam Curry"
     },
     "Crème de potiron": {
         "en": "Cream of pumpkin soup",
@@ -1689,7 +1689,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Creme de abóbora",
         "ru": "Крем-суп из тыквы",
         "ur": "کدو کا کریمی سوپ",
-        "lb": "Kierbesecrèmesop"
+        "lb": "Kürbis-Crèmezopp"
     },
     "Crêpe farcie au fromage frais et ciboulette": {
         "en": "Crêpe filled with fresh cheese and chives",
@@ -1702,7 +1702,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Crepe recheado com queijo fresco e cebolinho",
         "ru": "Блинчик с творожным сыром и шнитт-луком",
         "ur": "تازہ پنیر اور چائیوز سے بھرا کریپ",
-        "lb": "Crêpe gefëllt mat frëschem Kéis a Schnëssléck"
+        "lb": "Crêpe gefëllt mat frëschem Kéis a Schnëttlach"
     },
     "Cuisse de poulet rôtie au four, jus corsé": {
         "en": "Oven-roasted chicken leg, rich gravy",
@@ -1715,7 +1715,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Coxa de frango assada no forno, molho encorpado",
         "ru": "Куриная ножка, запечённая в духовке, насыщенный соус",
         "ur": "اوون میں بھنی چکن ران، گاڑھی گریوی",
-        "lb": "Am Uewen gebake Hänkelsschenkel, kräfteg Jus"
+        "lb": "Am Uewen gebake Pouletsschenkel, kräfteg Jus"
     },
     "Curry aux cubes de tofu marinés, brocolis et carottes": {
         "en": "Curry with marinated tofu cubes, broccoli and carrots",
@@ -1728,7 +1728,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Caril com cubos de tofu marinado, brócolos e cenoura",
         "ru": "Карри с маринованными кубиками тофу, брокколи и морковью",
         "ur": "میرینیٹ کیے ٹوفو، بروکلی اور گاجر کے ساتھ کری",
-        "lb": "Curry mat marinéierte Tofuwürfel, Brokkoli a Muerren"
+        "lb": "Curry mat marinéierte Tofuwürfel, Brokkoli a Muerten"
     },
     "Curry de poulet façon Colombo": {
         "en": "Chicken curry, Colombo style",
@@ -1741,7 +1741,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Caril de frango à moda colombo",
         "ru": "Куриное карри в стиле коломбо",
         "ur": "کولمبو انداز کی چکن کری",
-        "lb": "Hänkelscurry am Colombo-Stil"
+        "lb": "Pouletscurry am Colombo-Stil"
     },
     "Duo de mousse au chocolat": {
         "en": "Chocolate mousse duo",
@@ -1767,7 +1767,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Cubos de abóbora assados no forno",
         "ru": "Кубики тыквы, запечённые в духовке",
         "ur": "اوون میں بھنے کدو کے ٹکڑے",
-        "lb": "Am Uewen geréischte Kierbeswürfel"
+        "lb": "Am Uewen geréischte Kürbiswürfel"
     },
     "Ecrasé de pommes de terre": {
         "en": "Crushed potatoes",
@@ -1871,7 +1871,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Focaccia com pesto de salsa e bolinhas de mozzarella",
         "ru": "Фокачча с песто из петрушки и шариками моцареллы",
         "ur": "پارسلے پیسٹو اور موزاریلا بالز والی فوکاچیا",
-        "lb": "Focaccia mat Péiterséilie-Pesto a Mozzarellakugelen"
+        "lb": "Focaccia mat Péiterséileg-Pesto a Mozzarellakugelen"
     },
     "Frittata aux épinards et feta": {
         "en": "Spinach and feta frittata",
@@ -1927,11 +1927,11 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
     },
     "Gyros de seitan, dip au yaourt végan": {
         "en": "Seitan gyros, vegan yoghurt dip",
-        "zh": "面筋烤肉，纯素酸奶蘸酱",
+        "zh": "面筋素烤肉，纯素酸奶蘸酱",
         "hi": "सीटन गायरोस, वीगन दही डिप",
         "es": "Gyros de seitán, salsa de yogur vegano",
         "fr": "Gyros de seitan, dip au yaourt végan",
-        "ar": "جيروس السيتان مع غموس الزبادي النباتي",
+        "ar": "جيروس السيتان مع غموس الزبادي النباتي الصرف",
         "bn": "সেইটান গাইরোস, ভেগান দইয়ের ডিপ",
         "pt": "Gyros de seitan, molho de iogurte vegano",
         "ru": "Гирос из сейтана, веганский йогуртовый соус",
@@ -1940,7 +1940,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
     },
     "Gyros de seitan, dip yaourt grec": {
         "en": "Seitan gyros, Greek yoghurt dip",
-        "zh": "面筋烤肉，希腊酸奶蘸酱",
+        "zh": "面筋素烤肉，希腊酸奶蘸酱",
         "hi": "सीटन गायरोस, ग्रीक दही डिप",
         "es": "Gyros de seitán, salsa de yogur griego",
         "fr": "Gyros de seitan, dip yaourt grec",
@@ -1962,7 +1962,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Feijão-mungo com cebola",
         "ru": "Маш с луком",
         "ur": "پیاز کے ساتھ مونگ",
-        "lb": "Mungbounen mat Zwiebelen"
+        "lb": "Mungbounen mat Zwiwwelen"
     },
     "Haricots verts au beurre": {
         "en": "Green beans with butter",
@@ -1975,7 +1975,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Feijão-verde com manteiga",
         "ru": "Стручковая фасоль с маслом",
         "ur": "مکھن والی ہری پھلیاں",
-        "lb": "Buschbounen mat Botter"
+        "lb": "Gréng Bounen mat Botter"
     },
     "Haricots verts à l'ail": {
         "en": "Green beans with garlic",
@@ -1988,7 +1988,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Feijão-verde com alho",
         "ru": "Стручковая фасоль с чесноком",
         "ur": "لہسن والی ہری پھلیاں",
-        "lb": "Buschbounen mam Knuewelek"
+        "lb": "Gréng Bounen mam Knuewelek"
     },
     "Jambon braisé au four, fond réduit": {
         "en": "Oven-braised ham, reduced gravy",
@@ -2005,7 +2005,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
     },
     "Kebab végétal, hoummous, chou blanc et crudités marinées": {
         "en": "Vegetable kebab, hummus, white cabbage and marinated raw vegetables",
-        "zh": "蔬菜烤肉，鹰嘴豆泥，白菜和腌制生蔬菜",
+        "zh": "素食卡巴，鹰嘴豆泥，白菜和腌制生蔬菜",
         "hi": "वेजिटेबल कबाब, हम्मस, सफ़ेद पत्तागोभी और मैरिनेट की हुई कच्ची सब्ज़ियाँ",
         "es": "Kebab vegetal, hummus, col blanca y crudités marinadas",
         "fr": "Kebab végétal, hoummous, chou blanc et crudités marinées",
@@ -2118,7 +2118,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Grelhado misto de frango, molho raita",
         "ru": "Ассорти из курицы на гриле, соус райта",
         "ur": "چکن مکسڈ گرل، رائتہ ساس",
-        "lb": "Hänkels-Mixed-Grill, Raita-Sauce"
+        "lb": "Poulet-Mixed-Grill, Raita-Sauce"
     },
     "Moules à la crème": {
         "en": "Mussels in cream sauce",
@@ -2131,7 +2131,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Mexilhões com natas",
         "ru": "Мидии в сливочном соусе",
         "ur": "کریم ساس میں مسلز",
-        "lb": "Mouselen an der Crèmesauce"
+        "lb": "Mullen an der Crèmesauce"
     },
     "Mousse Forêt noire": {
         "en": "Black Forest mousse",
@@ -2248,7 +2248,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Omelete com cogumelos, mozzarella e cebolinho",
         "ru": "Омлет с грибами, моцареллой и шнитт-луком",
         "ur": "مشروم، موزاریلا اور چائیوز کا آملیٹ",
-        "lb": "Omelette mat Champignonen, Mozzarella a Schnëssléck"
+        "lb": "Omelette mat Champignonen, Mozzarella a Schnëttlach"
     },
     "Onion rings, crème aigre": {
         "en": "Onion rings, sour cream",
@@ -2261,7 +2261,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Anéis de cebola, natas azedas",
         "ru": "Луковые кольца, сметана",
         "ur": "پیاز کے چھلے، کھٹی کریم",
-        "lb": "Zwiebelréng, sauer Crème"
+        "lb": "Zwiwwelréng, sauer Crème"
     },
     "Pad thaï au tofu": {
         "en": "Pad thai with tofu",
@@ -2326,7 +2326,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Parmentier vegetal, cenouras e molho de tomate",
         "ru": "Овощной пармантье, морковь и томатный соус",
         "ur": "سبزیوں کا پارمانتیے، گاجر اور ٹماٹر کی ساس",
-        "lb": "Vegetaresche Parmentier, Muerren an Tomatesauce"
+        "lb": "Vegetaresche Parmentier, Muerten an Tomatesauce"
     },
     "Patatas bravas": {
         "en": "Patatas bravas",
@@ -2391,7 +2391,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Ervilhas com cebola e salsa",
         "ru": "Горошек с луком и петрушкой",
         "ur": "پیاز اور پارسلے والے مٹر",
-        "lb": "Äerbessen mat Zwiebelen a Péiterséilie"
+        "lb": "Ierbsen mat Zwiwwelen a Péiterséileg"
     },
     "Petits pois écrasés": {
         "en": "Crushed peas",
@@ -2404,7 +2404,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Ervilhas esmagadas",
         "ru": "Размятый горошек",
         "ur": "کچلے ہوئے مٹر",
-        "lb": "Zerdréckt Äerbessen"
+        "lb": "Zerdréckt Ierbsen"
     },
     "Polenta crémeuse": {
         "en": "Creamy polenta",
@@ -2456,7 +2456,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Batatas com salsa",
         "ru": "Картофель с петрушкой",
         "ur": "پارسلے والے آلو",
-        "lb": "Gromperen mat Péiterséilie"
+        "lb": "Gromperen mat Péiterséileg"
     },
     "Pommes de terre rissolées": {
         "en": "Pan-fried potatoes",
@@ -2495,7 +2495,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Batatas assadas com cebola",
         "ru": "Печёный картофель с луком",
         "ur": "پیاز کے ساتھ روسٹ آلو",
-        "lb": "Gebake Gromperen mat Zwiebelen"
+        "lb": "Gebake Gromperen mat Zwiwwelen"
     },
     "Pommes de terre sautées": {
         "en": "Sautéed potatoes",
@@ -2521,7 +2521,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Sopa de brócolos",
         "ru": "Суп из брокколи",
         "ur": "بروکلی سوپ",
-        "lb": "Brokkolissop"
+        "lb": "Brokkolizopp"
     },
     "Potage aux haricots verts": {
         "en": "Green bean soup",
@@ -2534,7 +2534,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Sopa de feijão-verde",
         "ru": "Суп из стручковой фасоли",
         "ur": "ہری پھلیوں کا سوپ",
-        "lb": "Buschbounesop"
+        "lb": "Gréng-Bounen-Zopp"
     },
     "Potage de légumes": {
         "en": "Vegetable soup",
@@ -2547,7 +2547,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Sopa de legumes",
         "ru": "Овощной суп",
         "ur": "سبزیوں کا سوپ",
-        "lb": "Geméissop"
+        "lb": "Geméiszopp"
     },
     "Potiron farci aux lentilles et coulis de tomates": {
         "en": "Pumpkin stuffed with lentils, tomato coulis",
@@ -2560,7 +2560,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Abóbora recheada com lentilhas, coulis de tomate",
         "ru": "Тыква, фаршированная чечевицей, томатный соус",
         "ur": "مسور سے بھرا کدو، ٹماٹر کولس",
-        "lb": "Kierbes gefëllt mat Lënsen, Tomatecoulis"
+        "lb": "Kürbis gefëllt mat Lënsen, Tomatecoulis"
     },
     "Potiron farci aux lentilles et fromage de chèvre": {
         "en": "Pumpkin stuffed with lentils and goat cheese",
@@ -2573,7 +2573,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Abóbora recheada com lentilhas e queijo de cabra",
         "ru": "Тыква, фаршированная чечевицей и козьим сыром",
         "ur": "مسور اور بکری کے پنیر سے بھرا کدو",
-        "lb": "Kierbes gefëllt mat Lënsen a Geessekéis"
+        "lb": "Kürbis gefëllt mat Lënsen a Geessekéis"
     },
     "Poulet à la luxembourgeoise": {
         "en": "Chicken Luxembourg style",
@@ -2612,7 +2612,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Puré de batata com manteiga e cebolinho",
         "ru": "Картофельное пюре со сливочным маслом и шнитт-луком",
         "ur": "مکھن اور چائیوز کے ساتھ آلو کا پیوری",
-        "lb": "Gromperepuree mat Botter a Schnëssléck"
+        "lb": "Gromperepuree mat Botter a Schnëttlach"
     },
     "Quiche aux brocolis et tomates cerises": {
         "en": "Broccoli and cherry tomato quiche",
@@ -2664,7 +2664,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Quinoa com cebolinho",
         "ru": "Киноа со шнитт-луком",
         "ur": "چائیوز کے ساتھ کینوا",
-        "lb": "Quinoa mat Schnëssléck"
+        "lb": "Quinoa mat Schnëttlach"
     },
     "Ragoût de boeuf tomaté aux champignons": {
         "en": "Beef stew in tomato sauce with mushrooms",
@@ -2924,7 +2924,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Salada de quinoa, abóbora assada e feta",
         "ru": "Салат из киноа с печёной тыквой и фетой",
         "ur": "بھنے کدو اور فیٹا کے ساتھ کینوا سلاد",
-        "lb": "Quinoa-Zalot mat gebakene Kierbes a Feta"
+        "lb": "Quinoa-Zalot mat gebakene Kürbis a Feta"
     },
     "Salade de tapas végétariens": {
         "en": "Vegetarian tapas salad",
@@ -2950,7 +2950,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Salada de kebab de frango, molho tzatziki",
         "ru": "Салат с куриным кебабом, соус дзадзики",
         "ur": "چکن کباب سلاد، ززیکی ساس",
-        "lb": "Hänkels-Kebab-Zalot, Tzatziki-Sauce"
+        "lb": "Poulet-Kebab-Zalot, Tzatziki-Sauce"
     },
     "Salade mexicaine": {
         "en": "Mexican salad",
@@ -2989,7 +2989,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Samosas de lentilhas e cenoura, chutney de tomate",
         "ru": "Самосы с чечевицей и морковью, томатный чатни",
         "ur": "مسور اور گاجر کے سموسے، ٹماٹر کی چٹنی",
-        "lb": "Samosas mat Lënsen a Muerren, Tomatechutney"
+        "lb": "Samosas mat Lënsen a Muerten, Tomatechutney"
     },
     "Samossas aux pommes et poires": {
         "en": "Apple and pear samosas",
@@ -3041,7 +3041,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Sopa de feijão-verde",
         "ru": "Суп из стручковой фасоли",
         "ur": "ہری پھلیوں کا سوپ",
-        "lb": "Buschbounesop"
+        "lb": "Gréng-Bounen-Zopp"
     },
     "Soupe aux petits pois": {
         "en": "Pea soup",
@@ -3054,7 +3054,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Sopa de ervilhas",
         "ru": "Гороховый суп",
         "ur": "مٹر کا سوپ",
-        "lb": "Äerbessesop"
+        "lb": "Ierbsenzopp"
     },
     "Soupe aux poireaux": {
         "en": "Leek soup",
@@ -3067,7 +3067,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Sopa de alho-porro",
         "ru": "Суп из порея",
         "ur": "لیک کا سوپ",
-        "lb": "Lauchsop"
+        "lb": "Porettenzopp"
     },
     "Soupe de carottes au gingembre": {
         "en": "Carrot and ginger soup",
@@ -3080,7 +3080,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Sopa de cenoura e gengibre",
         "ru": "Морковный суп с имбирём",
         "ur": "گاجر اور ادرک کا سوپ",
-        "lb": "Muerrewëssop mam Ingwer"
+        "lb": "Muertenzopp mam Ingwer"
     },
     "Soupe à l'oignon": {
         "en": "Onion soup",
@@ -3093,7 +3093,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Sopa de cebola",
         "ru": "Луковый суп",
         "ur": "پیاز کا سوپ",
-        "lb": "Zwiebelsop"
+        "lb": "Zwiwwelzopp"
     },
     "Spaghetti, bolognaise au seitan haché": {
         "en": "Spaghetti with minced seitan bolognese",
@@ -3132,7 +3132,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Strudel de abóbora e acelgas, molho de iogurte grego com salsa",
         "ru": "Штрудель с тыквой и мангольдом, соус из греческого йогурта с петрушкой",
         "ur": "کدو اور چارڈ کا اسٹروڈل، پارسلے والا یونانی دہی ڈپ",
-        "lb": "Strudel mat Kierbes a Mangold, griichesche Joghurt-Dip mat Péiterséilie"
+        "lb": "Strudel mat Kürbis a Mangold, griichesche Joghurt-Dip mat Péiterséileg"
     },
     "Strudel au potiron et blettes, tartinade de betteraves": {
         "en": "Pumpkin and chard strudel, beetroot spread",
@@ -3145,7 +3145,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Strudel de abóbora e acelgas, pasta de beterraba",
         "ru": "Штрудель с тыквой и мангольдом, свекольная паста",
         "ur": "کدو اور چارڈ کا اسٹروڈل، چقندر اسپریڈ",
-        "lb": "Strudel mat Kierbes a Mangold, Rouer-Rüben-Opstrach"
+        "lb": "Strudel mat Kürbis a Mangold, Rouer-Rüben-Opstrach"
     },
     "Strudel aux poires, pommes, raisins secs et amandes, chantilly": {
         "en": "Pear, apple, raisin and almond strudel, whipped cream",
@@ -3197,7 +3197,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Tajine de grão-de-bico e abóbora butternut",
         "ru": "Тажин из нута и мускатной тыквы",
         "ur": "چنے اور بٹرنٹ اسکواش کا ٹاجن",
-        "lb": "Tajine mat Kichererbsen a Butternut-Kierbes"
+        "lb": "Tajine mat Kichererbsen a Butternut-Kürbis"
     },
     "Tarte Tatin aux tomates et épinards": {
         "en": "Tomato and spinach tarte Tatin",
@@ -3236,7 +3236,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Tarte flambée com queijo de cabra, alho, cebola e cogumelos",
         "ru": "Фламбе-тарт с козьим сыром, чесноком, луком и грибами",
         "ur": "بکری کے پنیر، لہسن، پیاز اور مشروم والا ٹارٹ فلامبے",
-        "lb": "Flammekuch mat Geessekéis, Knuewelek, Zwiebelen a Champignonen"
+        "lb": "Flammekuch mat Geessekéis, Knuewelek, Zwiwwelen a Champignonen"
     },
     "Tarte végétale aux champignons et épinards": {
         "en": "Plant-based tart with mushrooms and spinach",
@@ -3270,7 +3270,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "hi": "टोफू स्टिक्स, वीगन रेमूलाद सॉस",
         "es": "Palitos de tofu, salsa remoulade vegana",
         "fr": "Tofu sticks, sauce rémoulade végane",
-        "ar": "أصابع التوفو مع صلصة ريمولاد نباتية",
+        "ar": "أصابع التوفو مع صلصة ريمولاد نباتية صرفة",
         "bn": "টফু স্টিক, ভেগান রেমুলাদ সস",
         "pt": "Palitos de tofu, molho rémoulade vegano",
         "ru": "Палочки из тофу, веганский соус ремулад",
@@ -3327,7 +3327,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Tomate com mozzarella, pesto de salsa",
         "ru": "Томаты с моцареллой, песто из петрушки",
         "ur": "ٹماٹر موزاریلا، پارسلے پیسٹو",
-        "lb": "Tomat-Mozzarella, Péiterséilie-Pesto"
+        "lb": "Tomat-Mozzarella, Péiterséileg-Pesto"
     },
     "Tombée d'épinards aux échalotes": {
         "en": "Wilted spinach with shallots",
@@ -3366,7 +3366,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Creme de cogumelos",
         "ru": "Грибной крем-суп",
         "ur": "مشروم کا کریمی سوپ",
-        "lb": "Champignons-Crèmesop"
+        "lb": "Champignons-Crèmezopp"
     },
     "Velouté aux épinards": {
         "en": "Cream of spinach soup",
@@ -3379,7 +3379,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Creme de espinafres",
         "ru": "Крем-суп из шпината",
         "ur": "پالک کا کریمی سوپ",
-        "lb": "Spinat-Crèmesop"
+        "lb": "Spinat-Crèmezopp"
     },
     "Velouté de carottes": {
         "en": "Cream of carrot soup",
@@ -3392,7 +3392,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Creme de cenoura",
         "ru": "Морковный крем-суп",
         "ur": "گاجر کا کریمی سوپ",
-        "lb": "Muerrecrèmesop"
+        "lb": "Muerten-Crèmezopp"
     },
     "Velouté de courgettes": {
         "en": "Cream of zucchini soup",
@@ -3405,7 +3405,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Creme de courgette",
         "ru": "Крем-суп из цуккини",
         "ur": "زوکینی کا کریمی سوپ",
-        "lb": "Zucchini-Crèmesop"
+        "lb": "Zucchini-Crèmezopp"
     },
     "Wok au tempeh, carottes et brocolis": {
         "en": "Tempeh wok with carrots and broccoli",
@@ -3418,7 +3418,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Wok de tempeh com cenouras e brócolos",
         "ru": "Вок с темпе, морковью и брокколи",
         "ur": "ٹیمپے، گاجر اور بروکلی کا ووک",
-        "lb": "Wok mat Tempeh, Muerren a Brokkoli"
+        "lb": "Wok mat Tempeh, Muerten a Brokkoli"
     },
     "Wrap \"Great Cesar\"": {
         "en": "Wrap \"Great Cesar\"",
@@ -3522,7 +3522,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Iogurte grego com pêras salteadas",
         "ru": "Греческий йогурт с обжаренными грушами",
         "ur": "بھونے ہوئے ناشپاتی کے ساتھ یونانی دہی",
-        "lb": "Griichesche Joghurt mat gebroden Birnen"
+        "lb": "Griichesche Joghurt mat gebroden Biren"
     },
     "Yaourt grec fouetté, compotée d'oranges": {
         "en": "Whipped Greek yoghurt, orange compote",
@@ -3572,7 +3572,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "fr": "Biscuit roulé à la crème pâtissière",
         "ar": "رولية إسفنجية بكريمة الباتيسيير",
         "bn": "পেস্ট্রি ক্রিম দিয়ে স্পঞ্জ রোল",
-        "pt": "Rocambole com creme pasteleiro",
+        "pt": "Torta enrolada com creme pasteleiro",
         "ru": "Бисквитный рулет с заварным кремом",
         "ur": "پیسٹری کریم کے ساتھ اسفنج رول",
         "lb": "Biskuitsrulle mat Konditerkrëm"
@@ -3601,7 +3601,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Crumble de pera e avelã",
         "ru": "Крамбл с грушей и фундуком",
         "ur": "ناشپاتی اور ہیزل نٹ کرمبل",
-        "lb": "Biere-Hasselnoss-Crumble"
+        "lb": "Biren-Hieselnoss-Crumble"
     },
     "Mille feuille au caramel beurre salé": {
         "en": "Salted butter caramel millefeuille",
@@ -3640,7 +3640,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Tarte fina de pera, chantilly de baunilha",
         "ru": "Тонкий грушевый пирог, ванильные взбитые сливки",
         "ur": "پتلا ناشپاتی ٹارٹ، ونیلا وہپڈ کریم",
-        "lb": "Dënn Biertaart, Vanille-Schlagsahn"
+        "lb": "Dënn Birentaart, Vanill-Chantilly"
     },
     "Yaourt grec fouetté, poire pochée aux épices": {
         "en": "Whipped Greek yoghurt, spiced poached pear",
@@ -3653,7 +3653,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Iogurte grego batido, pera escalfada com especiarias",
         "ru": "Взбитый греческий йогурт, груша, томлёная со специями",
         "ur": "پھینٹا ہوا یونانی دہی، مصالحہ دار ابلا ناشپاتی",
-        "lb": "Gerühert griichesche Joghurt, gewürzt pochéiert Bier"
+        "lb": "Gerühert griichesche Joghurt, gewürzt pochéiert Bir"
     },
     "Bouillon aux oeufs": {
         "en": "Broth with eggs",
@@ -3692,7 +3692,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Creme de brócolos",
         "ru": "Крем-суп из брокколи",
         "ur": "بروکلی کریم سوپ",
-        "lb": "Brokkelicrèmesupp"
+        "lb": "Brokkoli-Crèmezopp"
     },
     "Empanadas aux lentilles, sauce salsa": {
         "en": "Lentil empanadas, salsa sauce",
@@ -3718,20 +3718,20 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Bolinhos de abóbora, molho aioli",
         "ru": "Тыквенные оладьи, соус айоли",
         "ur": "کدو کی ٹکیاں، ایولی ساس",
-        "lb": "Kierbesgaletten, Aioli-Sauce"
+        "lb": "Kürbisgaletten, Aioli-Sauce"
     },
     "Mini bouchée au quorn": {
-        "en": "Mini quorn bite",
-        "zh": "迷你Quorn小酥盒",
-        "hi": "मिनी क्वॉर्न बाइट",
-        "es": "Mini bocado de quorn",
+        "en": "Mini Quorn vol-au-vent",
+        "zh": "迷你 Quorn 酥皮盒",
+        "hi": "मिनी क्वॉर्न पफ़ पेस्ट्री",
+        "es": "Mini volován de Quorn",
         "fr": "Mini bouchée au quorn",
-        "ar": "لقمة كورن صغيرة",
-        "bn": "মিনি কোয়র্ন বাইট",
-        "pt": "Mini bocado de quorn",
+        "ar": "فطيرة هشة صغيرة بالكوورن",
+        "bn": "মিনি কোয়ার্ন পাফ পেস্ট্রি",
+        "pt": "Mini vol-au-vent de Quorn",
         "ru": "Мини-слойка с Quorn",
-        "ur": "منی کوورن بائٹ",
-        "lb": "Mini Quorn-Häppchen"
+        "ur": "منی کوارن پف پیسٹری",
+        "lb": "Mini Quorn-Paschtéitchen"
     },
     "Petits chaussons aux épinards et fromage Emmental": {
         "en": "Small spinach and Emmental turnovers",
@@ -3757,7 +3757,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Sopa de abóbora",
         "ru": "Тыквенный суп",
         "ur": "کدو کا سوپ",
-        "lb": "Kierbessupp"
+        "lb": "Kürbiszopp"
     },
     "Potage aux légumes": {
         "en": "Vegetable soup",
@@ -3770,7 +3770,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Sopa de legumes",
         "ru": "Овощной суп",
         "ur": "سبزیوں کا سوپ",
-        "lb": "Geméissupp"
+        "lb": "Geméiszopp"
     },
     "Salade de quinoa au butternut grillé": {
         "en": "Quinoa salad with grilled butternut squash",
@@ -3796,7 +3796,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Sopa de couve",
         "ru": "Капустный суп",
         "ur": "بند گوبھی کا سوپ",
-        "lb": "Kabissoupp"
+        "lb": "Kabeszopp"
     },
     "Pommes de terre au four, crème aigre aux herbes": {
         "en": "Baked potatoes, herb sour cream",
@@ -3809,7 +3809,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Batatas assadas, natas azedas com ervas",
         "ru": "Печёный картофель, сметана с зеленью",
         "ur": "بیکڈ آلو، جڑی بوٹیوں والی کھٹی کریم",
-        "lb": "Gebakene Gromperen, Kraider-Sauerrahm"
+        "lb": "Gebakene Gromperen, sauer Crème mat Kraider"
     },
     "Pommes de terre nature": {
         "en": "Plain potatoes",
@@ -3848,20 +3848,20 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Brócolos com chalotas",
         "ru": "Брокколи с шалотом",
         "ur": "شالوٹ کے ساتھ بروکلی",
-        "lb": "Brokkeli mat Schalotten"
+        "lb": "Brokkoli mat Schalotten"
     },
     "Carottes au beurre et persil": {
         "en": "Buttered carrots with parsley",
         "zh": "黄油欧芹胡萝卜",
-        "hi": "मक्खन और अजमोद वाली गाजर",
+        "hi": "मक्खन और पार्सले वाली गाजर",
         "es": "Zanahorias con mantequilla y perejil",
         "fr": "Carottes au beurre et persil",
         "ar": "جزر بالزبدة والبقدونس",
         "bn": "মাখন ও পার্সলে দিয়ে গাজর",
         "pt": "Cenouras com manteiga e salsa",
         "ru": "Морковь с маслом и петрушкой",
-        "ur": "مکھن اور اجمود والی گاجر",
-        "lb": "Muert mat Botter a Péiterséilech"
+        "ur": "مکھن اور پارسلے والی گاجر",
+        "lb": "Muert mat Botter a Péiterséileg"
     },
     "Carottes à la crème et aux oignons": {
         "en": "Carrots in cream with onions",
@@ -3887,7 +3887,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Abóbora assada",
         "ru": "Запечённая тыква",
         "ur": "بیکڈ کدو",
-        "lb": "Gebakene Kierbes"
+        "lb": "Gebakene Kürbis"
     },
     "Flan de potiron": {
         "en": "Pumpkin flan",
@@ -3900,7 +3900,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Flan de abóbora",
         "ru": "Тыквенный флан",
         "ur": "کدو کا فلان",
-        "lb": "Kierbesflan"
+        "lb": "Kürbisflan"
     },
     "Assiette de Gyros de boeuf, sauce Pita": {
         "en": "Beef gyros plate, pita sauce",
@@ -4079,7 +4079,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "fr": "Gnocchis gratinées à la sauce tomate",
         "ar": "نيوكي بالفرن مع صلصة الطماطم",
         "bn": "টমেটো সসে বেকড নিওকি",
-        "pt": "Nhoque gratinado com molho de tomate",
+        "pt": "Gnocchi gratinados com molho de tomate",
         "ru": "Запечённые ньокки в томатном соусе",
         "ur": "ٹماٹر ساس میں بیکڈ نیوکی",
         "lb": "Iwwerbak Gnocchi mat Tomatesauce"
@@ -4091,10 +4091,10 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "es": "Lasaña de quorn",
         "fr": "Lasagne au quorn",
         "ar": "لازانيا بالكورن",
-        "bn": "কোয়র্ন ল্যাজাগনা",
+        "bn": "কোয়ার্ন ল্যাজাগনা",
         "pt": "Lasanha de quorn",
         "ru": "Лазанья с Quorn",
-        "ur": "کوورن لزانیا",
+        "ur": "کوارن لزانیا",
         "lb": "Quorn-Lasagne"
     },
     "Linguine au poulet et brocolis, sauce crémeuse": {
@@ -4108,7 +4108,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Linguine com frango e brócolos, molho cremoso",
         "ru": "Лингвини с курицей и брокколи, сливочный соус",
         "ur": "چکن اور بروکلی کے ساتھ لنگوئنی، کریمی ساس",
-        "lb": "Linguine mat Poulet a Brokkeli, crèmeg Sauce"
+        "lb": "Linguine mat Poulet a Brokkoli, crèmeg Sauce"
     },
     "Linguine à l'oeuf": {
         "en": "Linguine with egg",
@@ -4181,7 +4181,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "hi": "आटे की क्वेनेल, क्रीम और बेकन सॉस",
         "es": "Albóndigas de harina, salsa de nata y bacon",
         "fr": "Quenelles de farine, sauce crème lardons",
-        "ar": "كرات الدقيق مع صلصة الكريمة ولحم المقدد",
+        "ar": "كرات الدقيق مع صلصة الكريمة ولحم الخنزير المقدد",
         "bn": "ময়দার কুয়েনেল, ক্রিম ও বেকন সস",
         "pt": "Quenelles de farinha, molho de natas e bacon",
         "ru": "Мучные кнели, сливочный соус с беконом",
@@ -4280,17 +4280,17 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "lb": "Tortellini mat Fleesch, Tomatesauce"
     },
     "Bouchée au tofu": {
-        "en": "Tofu bite",
-        "zh": "豆腐小酥盒",
-        "hi": "टोफू बाइट",
-        "es": "Bocado de tofu",
+        "en": "Tofu vol-au-vent",
+        "zh": "豆腐酥皮盒",
+        "hi": "टोफू पफ़ पेस्ट्री",
+        "es": "Volován de tofu",
         "fr": "Bouchée au tofu",
-        "ar": "لقمة التوفو",
-        "bn": "টোফু বাইট",
-        "pt": "Bocado de tofu",
-        "ru": "Пирожок с тофу",
-        "ur": "ٹوفو بائٹ",
-        "lb": "Tofu-Häppchen"
+        "ar": "فطيرة هشة بالتوفو",
+        "bn": "টফু পাফ পেস্ট্রি",
+        "pt": "Vol-au-vent de tofu",
+        "ru": "Слойка с тофу",
+        "ur": "ٹوفو پف پیسٹری",
+        "lb": "Tofu-Paschtéitchen"
     },
     "Feuille de brique craquante au tofu, crémeux aux champignons et pesto persil": {
         "en": "Crispy brick pastry with tofu, creamy mushrooms and parsley pesto",
@@ -4302,8 +4302,8 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "bn": "মচমচে ব্রিক পেস্ট্রিতে টোফু, ক্রিমি মাশরুম ও পার্সলে পেস্টো",
         "pt": "Folha de brick estaladiça com tofu, creme de cogumelos e pesto de salsa",
         "ru": "Хрустящее тесто брик с тофу, сливочные грибы и песто из петрушки",
-        "ur": "کرسپی بریک پیسٹری میں ٹوفو، کریمی مشروم اور اجمود پیسٹو",
-        "lb": "Knusprege Brick-Teig mat Tofu, crèmege Champignonen a Péiterséilech-Pesto"
+        "ur": "کرسپی بریک پیسٹری میں ٹوفو، کریمی مشروم اور پارسلے پیسٹو",
+        "lb": "Knusprege Brick-Teig mat Tofu, crèmege Champignonen a Péiterséileg-Pesto"
     },
     "Riz sauté au tofu, brocolis, oignons fanes et carottes": {
         "en": "Stir-fried rice with tofu, broccoli, spring onions and carrots",
@@ -4316,20 +4316,20 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Arroz salteado com tofu, brócolos, cebolas novas e cenouras",
         "ru": "Жареный рис с тофу, брокколи, зелёным луком и морковью",
         "ur": "ٹوفو، بروکلی، ہری پیاز اور گاجر کے ساتھ تلے ہوئے چاول",
-        "lb": "Gebrode Räis mat Tofu, Brokkeli, Fréijoerszwiwwelen a Muert"
+        "lb": "Gebrode Räis mat Tofu, Brokkoli, Fréijoerszwiwwelen a Muert"
     },
     "Bouchée au quorn": {
-        "en": "Quorn bite",
-        "zh": "Quorn素肉小酥盒",
-        "hi": "क्वॉर्न बाइट",
-        "es": "Bocado de quorn",
+        "en": "Quorn vol-au-vent",
+        "zh": "Quorn 酥皮盒",
+        "hi": "क्वॉर्न पफ़ पेस्ट्री",
+        "es": "Volován de Quorn",
         "fr": "Bouchée au quorn",
-        "ar": "لقمة الكورن",
-        "bn": "কোয়র্ন বাইট",
-        "pt": "Bocado de quorn",
+        "ar": "فطيرة هشة بالكوورن",
+        "bn": "কোয়ার্ন পাফ পেস্ট্রি",
+        "pt": "Vol-au-vent de Quorn",
         "ru": "Слойка с Quorn",
-        "ur": "کوورن بائٹ",
-        "lb": "Quorn-Häppchen"
+        "ur": "کوارن پف پیسٹری",
+        "lb": "Quorn-Paschtéitchen"
     },
     "Boulettes végétales, sauce Chimichurri": {
         "en": "Plant-based balls, chimichurri sauce",
@@ -4355,7 +4355,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Caril de abóbora e grão-de-bico",
         "ru": "Карри из тыквы и нута",
         "ur": "کدو اور چنوں کی کری",
-        "lb": "Kierbes-Kichererbsen-Curry"
+        "lb": "Kürbis-Kichererbsen-Curry"
     },
     "Dahl de lentilles et épinards, lait de coco": {
         "en": "Lentil and spinach dahl, coconut milk",
@@ -4378,10 +4378,10 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "fr": "Omelette aux tomates cerises, mozzarella et ciboulette",
         "ar": "عجة بطماطم الكرز والموزاريلا والثوم المعمر",
         "bn": "চেরি টমেটো, মোজারেলা ও চাইভস দিয়ে অমলেট",
-        "pt": "Omelete com tomate cereja, mozarela e cebolinho",
+        "pt": "Omelete com tomate cereja, mozzarella e cebolinho",
         "ru": "Омлет с помидорами черри, моцареллой и шнитт-луком",
         "ur": "چیری ٹماٹر، موزاریلا اور چائیوز والا آملیٹ",
-        "lb": "Omelett mat Kiischtentomaten, Mozzarella a Schnidlach"
+        "lb": "Omelett mat Kiischtentomaten, Mozzarella a Schnëttlach"
     },
     "Riz sauté à l'omelette, brocolis, oignons fanes et carottes": {
         "en": "Stir-fried rice with omelette, broccoli, spring onions and carrots",
@@ -4394,7 +4394,7 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "pt": "Arroz salteado com omelete, brócolos, cebolas novas e cenouras",
         "ru": "Жареный рис с омлетом, брокколи, зелёным луком и морковью",
         "ur": "آملیٹ، بروکلی، ہری پیاز اور گاجر کے ساتھ تلے ہوئے چاول",
-        "lb": "Gebrode Räis mat Omelett, Brokkeli, Fréijoerszwiwwelen a Muert"
+        "lb": "Gebrode Räis mat Omelett, Brokkoli, Fréijoerszwiwwelen a Muert"
     },
     "Wellington aux champignons et butternut": {
         "en": "Mushroom and butternut Wellington",
@@ -4418,9 +4418,9 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "ar": "ووك بمكعبات التوفو المتبّلة والبروكلي والجزر وفاصولياء المونج",
         "bn": "ম্যারিনেট করা টোফুর টুকরো, ব্রোকলি, গাজর ও মুগ ডাল দিয়ে ওক",
         "pt": "Wok de cubos de tofu marinado, brócolos, cenouras e feijão-mungo",
-        "ru": "Вок с маринованным тофу, брокколи, морковью и маш",
+        "ru": "Вок с маринованным тофу, брокколи, морковью и машем",
         "ur": "میرینیٹ ٹوفو کے ٹکڑوں، بروکلی، گاجر اور مونگ کے ساتھ ووک",
-        "lb": "Wok mat marinéierte Tofu-Würfelen, Brokkeli, Muert a Mungbounen"
+        "lb": "Wok mat marinéierte Tofu-Würfelen, Brokkoli, Muert a Mungbounen"
     },
     "Nuggets de quorn, sauce chili": {
         "en": "Quorn nuggets, chili sauce",
@@ -4434,6 +4434,1320 @@ DISH_NAME_LABELS: dict[str, dict[str, str]] = {
         "ru": "Наггетсы из Quorn, соус чили",
         "ur": "کوارن نگٹس، چلی ساس",
         "lb": "Quorn-Nuggets, Chili-Sauce"
+    },
+    # --- dishes on the menus of November 2026: drafted by Claude, not yet checked by a native speaker
+    "1/2 Flaguette Kebab de boeuf (sauce Tzatziki)": {
+        "en": "1/2 Flaguette beef kebab (tzatziki sauce)",
+        "zh": "1/2 扁法棍牛肉烤肉三明治（希腊黄瓜酸奶酱）",
+        "hi": "1/2 फ्लैगेट बीफ़ कबाब (ज़ात्ज़िकी सॉस)",
+        "es": "1/2 Flaguette de kebab de ternera (salsa tzatziki)",
+        "fr": "1/2 Flaguette Kebab de boeuf (sauce Tzatziki)",
+        "ar": "1/2 فلاغيت كباب لحم بقري (صلصة التزاتزيكي)",
+        "bn": "1/2 ফ্লাগেট গরুর কাবাব (জাজিকি সস)",
+        "pt": "1/2 Flaguette de kebab de vaca (molho tzatziki)",
+        "ru": "1/2 флагет с говяжьим кебабом (соус дзадзики)",
+        "ur": "1/2 فلاگیٹ بیف کباب (ززیکی ساس)",
+        "lb": "1/2 Flaguette Rëndfleesch-Kebab (Tzatziki-Sauce)"
+    },
+    "1/2 Levain Green Sandwich": {
+        "en": "1/2 sourdough Green sandwich",
+        "zh": "1/2 酸面包 Green 三明治",
+        "hi": "1/2 सावरडो ग्रीन सैंडविच",
+        "es": "1/2 sándwich de masa madre Green",
+        "fr": "1/2 Levain Green Sandwich",
+        "ar": "نصف ساندويتش خبز مخمّر غرين",
+        "bn": "আধা সাওয়ারডো গ্রিন স্যান্ডউইচ",
+        "pt": "1/2 sanduíche de massa madre Green",
+        "ru": "1/2 сэндвич на закваске «Green»",
+        "ur": "آدھا سوردو گرین سینڈوچ",
+        "lb": "1/2 Sauerteg-Sandwich Green"
+    },
+    "Assiette de Kebab au seitan, sauce Tzatziki": {
+        "en": "Seitan kebab plate, tzatziki sauce",
+        "zh": "面筋素烤肉拼盘，希腊黄瓜酸奶酱",
+        "hi": "सीटन कबाब प्लेट, ज़ात्ज़िकी सॉस",
+        "es": "Plato de kebab de seitán, salsa tzatziki",
+        "fr": "Assiette de Kebab au seitan, sauce Tzatziki",
+        "ar": "طبق كباب السيتان مع صلصة التزاتزيكي",
+        "bn": "সেইটান কাবাব প্লেট, জাজিকি সস",
+        "pt": "Prato de kebab de seitan, molho tzatziki",
+        "ru": "Тарелка с кебабом из сейтана, соус дзадзики",
+        "ur": "سیٹن کباب پلیٹ، ززیکی ساس",
+        "lb": "Teller mat Seitan-Kebab, Tzatziki-Sauce"
+    },
+    "Assiette de Kebab au seitan, sauce Tzatziki végane": {
+        "en": "Seitan kebab plate, vegan tzatziki sauce",
+        "zh": "面筋素烤肉拼盘，纯素希腊黄瓜酸奶酱",
+        "hi": "सीटन कबाब प्लेट, वीगन ज़ात्ज़िकी सॉस",
+        "es": "Plato de kebab de seitán, salsa tzatziki vegana",
+        "fr": "Assiette de Kebab au seitan, sauce Tzatziki végane",
+        "ar": "طبق كباب السيتان مع صلصة تزاتزيكي نباتية صرفة",
+        "bn": "সেইটান কাবাব প্লেট, ভেগান জাজিকি সস",
+        "pt": "Prato de kebab de seitan, molho tzatziki vegano",
+        "ru": "Тарелка с кебабом из сейтана, веганский соус дзадзики",
+        "ur": "سیٹن کباب پلیٹ، ویگن ززیکی ساس",
+        "lb": "Teller mat Seitan-Kebab, vegan Tzatziki-Sauce"
+    },
+    "Bifteki, dip au yaourt grec": {
+        "en": "Bifteki (Greek beef patty), Greek yoghurt dip",
+        "zh": "希腊牛肉饼（Bifteki），希腊酸奶蘸酱",
+        "hi": "बिफ़्तेकी (ग्रीक बीफ़ पैटी), ग्रीक दही डिप",
+        "es": "Bifteki (hamburguesa griega de ternera), salsa de yogur griego",
+        "fr": "Bifteki, dip au yaourt grec",
+        "ar": "بيفتيكي (قرص لحم بقري يوناني) مع غموس الزبادي اليوناني",
+        "bn": "বিফতেকি (গ্রিক গরুর প্যাটি), গ্রিক দইয়ের ডিপ",
+        "pt": "Bifteki (hambúrguer grego de vaca), molho de iogurte grego",
+        "ru": "Бифтеки (греческая говяжья котлета), соус из греческого йогурта",
+        "ur": "بفتیکی (یونانی بیف پیٹی)، یونانی دہی ڈپ",
+        "lb": "Bifteki (griichescht Rëndfleesch-Frikadell), griichesche Joghurt-Dip"
+    },
+    "Boeuf bourguignon": {
+        "en": "Beef bourguignon",
+        "zh": "勃艮第红酒炖牛肉",
+        "hi": "बीफ़ बूरगिन्यों (रेड वाइन में पका बीफ़)",
+        "es": "Ternera a la borgoñona",
+        "fr": "Boeuf bourguignon",
+        "ar": "لحم بقري بورغينيون (مطهو بالنبيذ الأحمر)",
+        "bn": "বিফ বুরগিনিওঁ (রেড ওয়াইনে রান্না গরুর মাংস)",
+        "pt": "Vaca à borgonhesa",
+        "ru": "Говядина по-бургундски",
+        "ur": "بیف بورگینیوں (سرخ وائن میں پکا گائے کا گوشت)",
+        "lb": "Boeuf bourguignon (Rëndfleesch a roudem Wäin)"
+    },
+    "Bol de salades et crudités assorties": {
+        "en": "Bowl of assorted salads and raw vegetables",
+        "zh": "什锦沙拉和生蔬菜碗",
+        "hi": "मिले-जुले सलाद और कच्ची सब्ज़ियों का कटोरा",
+        "es": "Bol de ensaladas y crudités variadas",
+        "fr": "Bol de salades et crudités assorties",
+        "ar": "وعاء سلطات وخضار نيئة مشكلة",
+        "bn": "মিশ্র সালাদ ও কাঁচা সবজির বাটি",
+        "pt": "Taça de saladas e crudités variadas",
+        "ru": "Миска с ассорти из салатов и сырых овощей",
+        "ur": "ملے جلے سلاد اور کچی سبزیوں کا پیالہ",
+        "lb": "Schossel mat verschiddenen Zaloten a rauem Geméis"
+    },
+    "Bouchée à la Reine": {
+        "en": "Bouchée à la Reine (chicken vol-au-vent)",
+        "zh": "皇后酥盒（奶油鸡肉酥皮盒）",
+        "hi": "बूशे आ ला रेन (चिकन वोलोवां)",
+        "es": "Bouchée à la Reine (volován de pollo)",
+        "fr": "Bouchée à la Reine",
+        "ar": "بوشيه آ لا رين (فطيرة هشة بالدجاج)",
+        "bn": "বুশে আ লা রেন (চিকেন ভল-ও-ভঁ)",
+        "pt": "Bouchée à la Reine (vol-au-vent de frango)",
+        "ru": "Буше а-ля рен (слойка с курицей в сливочном соусе)",
+        "ur": "بوشے آ لا رین (چکن وول او واں)",
+        "lb": "Paschtéit (Bouchée à la Reine)"
+    },
+    "Bowl à la carotte, céleri rave, pommes de terre et oeuf poché": {
+        "en": "Bowl with carrot, celeriac, potatoes and poached egg",
+        "zh": "胡萝卜根芹土豆水波蛋碗",
+        "hi": "गाजर, सेलेरिएक, आलू और पोच्ड अंडे का बाउल",
+        "es": "Bowl de zanahoria, apionabo, patatas y huevo escalfado",
+        "fr": "Bowl à la carotte, céleri rave, pommes de terre et oeuf poché",
+        "ar": "بول بالجزر والكرفس الجذري والبطاطس والبيضة المسلوقة بدون قشر",
+        "bn": "গাজর, সেলেরিয়াক, আলু ও পোচড ডিমের বোল",
+        "pt": "Bowl de cenoura, aipo-rábano, batatas e ovo escalfado",
+        "ru": "Боул с морковью, корневым сельдереем, картофелем и яйцом пашот",
+        "ur": "گاجر، سیلیریک، آلو اور پوچڈ انڈے کا باؤل",
+        "lb": "Bowl mat Muerten, Knollenzeller, Gromperen a pochéiertem Ee"
+    },
+    "Bowl à la carotte, céleri rave, pommes de terre et tempeh mariné": {
+        "en": "Bowl with carrot, celeriac, potatoes and marinated tempeh",
+        "zh": "胡萝卜根芹土豆腌天贝碗",
+        "hi": "गाजर, सेलेरिएक, आलू और मैरिनेट किए टेंपे का बाउल",
+        "es": "Bowl de zanahoria, apionabo, patatas y tempeh marinado",
+        "fr": "Bowl à la carotte, céleri rave, pommes de terre et tempeh mariné",
+        "ar": "بول بالجزر والكرفس الجذري والبطاطس والتمبيه المتبل",
+        "bn": "গাজর, সেলেরিয়াক, আলু ও মেরিনেট করা টেম্পেহর বোল",
+        "pt": "Bowl de cenoura, aipo-rábano, batatas e tempeh marinado",
+        "ru": "Боул с морковью, корневым сельдереем, картофелем и маринованным темпе",
+        "ur": "گاجر، سیلیریک، آلو اور میرینیٹ کیے ٹیمپے کا باؤل",
+        "lb": "Bowl mat Muerten, Knollenzeller, Gromperen a marinéiertem Tempeh"
+    },
+    "Boxemännchen 95 g": {
+        "en": "Boxemännchen (brioche man) 95 g",
+        "zh": "Boxemännchen（卢森堡小人形奶油面包）95 g",
+        "hi": "बॉक्समैनशेन (ब्रियोश का पुतला) 95 g",
+        "es": "Boxemännchen (muñeco de brioche) 95 g",
+        "fr": "Boxemännchen 95 g",
+        "ar": "بوكسمنشن (دمية من خبز البريوش) 95 g",
+        "bn": "বক্সেম্যানশেন (ব্রিওশের পুতুল) 95 g",
+        "pt": "Boxemännchen (boneco de brioche) 95 g",
+        "ru": "Боксеменхен (бриошь-человечек) 95 g",
+        "ur": "باکسے مینشن (بریوش کا پتلا) 95 g",
+        "lb": "Boxemännchen 95 g"
+    },
+    "Boxemännchen choco 70 g": {
+        "en": "Chocolate Boxemännchen (brioche man) 70 g",
+        "zh": "巧克力 Boxemännchen（卢森堡小人形奶油面包）70 g",
+        "hi": "चॉकलेट बॉक्समैनशेन (ब्रियोश का पुतला) 70 g",
+        "es": "Boxemännchen de chocolate (muñeco de brioche) 70 g",
+        "fr": "Boxemännchen choco 70 g",
+        "ar": "بوكسمنشن بالشوكولاتة (دمية من خبز البريوش) 70 g",
+        "bn": "চকোলেট বক্সেম্যানশেন (ব্রিওশের পুতুল) 70 g",
+        "pt": "Boxemännchen de chocolate (boneco de brioche) 70 g",
+        "ru": "Шоколадный боксеменхен (бриошь-человечек) 70 g",
+        "ur": "چاکلیٹ باکسے مینشن (بریوش کا پتلا) 70 g",
+        "lb": "Schockelas-Boxemännchen 70 g"
+    },
+    "Brownie, crème anglaise": {
+        "en": "Brownie, custard sauce",
+        "zh": "布朗尼，英式奶油酱",
+        "hi": "ब्राउनी, कस्टर्ड सॉस",
+        "es": "Brownie, crema inglesa",
+        "fr": "Brownie, crème anglaise",
+        "ar": "براوني مع صلصة الكاسترد",
+        "bn": "ব্রাউনি, কাস্টার্ড সস",
+        "pt": "Brownie, creme inglês",
+        "ru": "Брауни, английский крем",
+        "ur": "براؤنی، کسٹرڈ ساس",
+        "lb": "Brownie, Vanillssauce"
+    },
+    "Carré de quiche aux oignons et fromage": {
+        "en": "Onion and cheese quiche square",
+        "zh": "洋葱奶酪乳蛋饼方块",
+        "hi": "प्याज़ और चीज़ क्विश का टुकड़ा",
+        "es": "Cuadrado de quiche de cebolla y queso",
+        "fr": "Carré de quiche aux oignons et fromage",
+        "ar": "مربع كيش البصل والجبن",
+        "bn": "পেঁয়াজ ও চিজ কুইশের টুকরো",
+        "pt": "Quadrado de quiche de cebola e queijo",
+        "ru": "Квадрат киша с луком и сыром",
+        "ur": "پیاز اور پنیر کی کیچ کا چوکور ٹکڑا",
+        "lb": "Quadrat Quiche mat Zwiwwelen a Kéis"
+    },
+    "Carré de quiche aux poireaux et feta": {
+        "en": "Leek and feta quiche square",
+        "zh": "韭葱菲达奶酪乳蛋饼方块",
+        "hi": "लीक और फ़ेटा क्विश का टुकड़ा",
+        "es": "Cuadrado de quiche de puerro y feta",
+        "fr": "Carré de quiche aux poireaux et feta",
+        "ar": "مربع كيش الكراث والفيتا",
+        "bn": "লিক ও ফেটা কুইশের টুকরো",
+        "pt": "Quadrado de quiche de alho-porro e feta",
+        "ru": "Квадрат киша с луком-пореем и фетой",
+        "ur": "لیک اور فیٹا کی کیچ کا چوکور ٹکڑا",
+        "lb": "Quadrat Quiche mat Porett a Feta"
+    },
+    "Champignons sautés à l'ail et persil frais": {
+        "en": "Sautéed mushrooms with garlic and fresh parsley",
+        "zh": "蒜香新鲜欧芹炒蘑菇",
+        "hi": "लहसुन और ताज़ा पार्सले के साथ सौते किए मशरूम",
+        "es": "Champiñones salteados con ajo y perejil fresco",
+        "fr": "Champignons sautés à l'ail et persil frais",
+        "ar": "فطر مقلي بالثوم والبقدونس الطازج",
+        "bn": "রসুন ও তাজা পার্সলিসহ সতে করা মাশরুম",
+        "pt": "Cogumelos salteados com alho e salsa fresca",
+        "ru": "Жареные шампиньоны с чесноком и свежей петрушкой",
+        "ur": "لہسن اور تازہ پارسلے کے ساتھ بھونے مشروم",
+        "lb": "Gebroden Champignonen mat Knuewelek a frëschem Péiterséileg"
+    },
+    "Cheese Bacon Burger": {
+        "en": "Cheese and bacon burger",
+        "zh": "芝士培根汉堡",
+        "hi": "चीज़ बेकन बर्गर",
+        "es": "Hamburguesa con queso y bacon",
+        "fr": "Cheese Bacon Burger",
+        "ar": "برغر بالجبن والبيكون",
+        "bn": "চিজ বেকন বার্গার",
+        "pt": "Hambúrguer com queijo e bacon",
+        "ru": "Чизбургер с беконом",
+        "ur": "چیز بیکن برگر",
+        "lb": "Cheese-Bacon-Burger"
+    },
+    "Cheeseburger maison garni": {
+        "en": "Homemade cheeseburger with toppings",
+        "zh": "自制配料芝士汉堡",
+        "hi": "घर का बना भरपूर चीज़बर्गर",
+        "es": "Hamburguesa con queso casera con guarnición",
+        "fr": "Cheeseburger maison garni",
+        "ar": "تشيز برغر منزلي مع الإضافات",
+        "bn": "বাড়িতে তৈরি সাজানো চিজবার্গার",
+        "pt": "Cheeseburger caseiro guarnecido",
+        "ru": "Домашний чизбургер с начинкой",
+        "ur": "گھر کا بنا بھرپور چیز برگر",
+        "lb": "Hausgemaachte garnéierte Cheeseburger"
+    },
+    "Chou chinois sauté aux oignons": {
+        "en": "Stir-fried Chinese cabbage with onions",
+        "zh": "洋葱炒大白菜",
+        "hi": "प्याज़ के साथ तली चीनी पत्तागोभी",
+        "es": "Col china salteada con cebolla",
+        "fr": "Chou chinois sauté aux oignons",
+        "ar": "ملفوف صيني مقلي بالبصل",
+        "bn": "পেঁয়াজসহ ভাজা চাইনিজ বাঁধাকপি",
+        "pt": "Couve chinesa salteada com cebola",
+        "ru": "Обжаренная пекинская капуста с луком",
+        "ur": "پیاز کے ساتھ بھنی چینی بند گوبھی",
+        "lb": "Gebrodene Chinakabes mat Zwiwwelen"
+    },
+    "Chou fleur à la crème et au persil": {
+        "en": "Cauliflower with cream and parsley",
+        "zh": "奶油欧芹花椰菜",
+        "hi": "क्रीम और पार्सले वाली फूलगोभी",
+        "es": "Coliflor a la crema con perejil",
+        "fr": "Chou fleur à la crème et au persil",
+        "ar": "قرنبيط بالكريمة والبقدونس",
+        "bn": "ক্রিম ও পার্সলি দিয়ে ফুলকপি",
+        "pt": "Couve-flor com natas e salsa",
+        "ru": "Цветная капуста в сливках с петрушкой",
+        "ur": "کریم اور پارسلے والی پھول گوبھی",
+        "lb": "Choufleur mat Crème a Péiterséileg"
+    },
+    "Chou, crème pâtissière, chantilly": {
+        "en": "Cream puff, pastry cream, whipped cream",
+        "zh": "泡芙，卡仕达奶油，鲜奶油",
+        "hi": "क्रीम पफ़, पेस्ट्री क्रीम, व्हिप्ड क्रीम",
+        "es": "Petisú, crema pastelera, nata montada",
+        "fr": "Chou, crème pâtissière, chantilly",
+        "ar": "شو بالكريمة مع كريمة الباتيسيير والكريمة المخفوقة",
+        "bn": "ক্রিম পাফ, পেস্ট্রি ক্রিম, হুইপড ক্রিম",
+        "pt": "Profiterole, creme pasteleiro, chantilly",
+        "ru": "Заварное пирожное, заварной крем, взбитые сливки",
+        "ur": "کریم پف، پیسٹری کریم، وہپڈ کریم",
+        "lb": "Choux, Crème pâtissière, Chantilly"
+    },
+    "Choucroute": {
+        "en": "Sauerkraut",
+        "zh": "酸菜",
+        "hi": "सावरक्राउट (खट्टी पत्तागोभी)",
+        "es": "Chucrut",
+        "fr": "Choucroute",
+        "ar": "مخلل الملفوف (شوكروت)",
+        "bn": "সাওয়ারক্রাউট (টক বাঁধাকপি)",
+        "pt": "Chucrute",
+        "ru": "Квашеная капуста",
+        "ur": "ساورکراؤٹ (کھٹی بند گوبھی)",
+        "lb": "Sauerkraut"
+    },
+    "Choucroute maison": {
+        "en": "Homemade sauerkraut",
+        "zh": "自制酸菜",
+        "hi": "घर का बना सावरक्राउट (खट्टी पत्तागोभी)",
+        "es": "Chucrut casero",
+        "fr": "Choucroute maison",
+        "ar": "مخلل الملفوف المنزلي (شوكروت)",
+        "bn": "বাড়িতে তৈরি সাওয়ারক্রাউট (টক বাঁধাকপি)",
+        "pt": "Chucrute caseiro",
+        "ru": "Домашняя квашеная капуста",
+        "ur": "گھر کا بنا ساورکراؤٹ (کھٹی بند گوبھی)",
+        "lb": "Hausgemaachte Sauerkraut"
+    },
+    "Churros, sauce chocolat": {
+        "en": "Churros, chocolate sauce",
+        "zh": "吉事果，巧克力酱",
+        "hi": "चुरोस, चॉकलेट सॉस",
+        "es": "Churros, salsa de chocolate",
+        "fr": "Churros, sauce chocolat",
+        "ar": "تشوروس مع صلصة الشوكولاتة",
+        "bn": "চুরোস, চকোলেট সস",
+        "pt": "Churros, molho de chocolate",
+        "ru": "Чуррос, шоколадный соус",
+        "ur": "چوروس، چاکلیٹ ساس",
+        "lb": "Churros, Schockelassauce"
+    },
+    "Cookie géant au chocolat": {
+        "en": "Giant chocolate cookie",
+        "zh": "巨型巧克力曲奇",
+        "hi": "जायंट चॉकलेट कुकी",
+        "es": "Galleta gigante de chocolate",
+        "fr": "Cookie géant au chocolat",
+        "ar": "كوكيز شوكولاتة عملاقة",
+        "bn": "জায়ান্ট চকোলেট কুকি",
+        "pt": "Cookie gigante de chocolate",
+        "ru": "Гигантское шоколадное печенье",
+        "ur": "بڑی چاکلیٹ کوکی",
+        "lb": "Risege Schockelas-Cookie"
+    },
+    "Cordon bleu de porc pané, sauce aux champignons": {
+        "en": "Breaded pork cordon bleu, mushroom sauce",
+        "zh": "裹面包屑猪肉蓝带排，蘑菇酱",
+        "hi": "ब्रेडेड पोर्क कॉर्डन ब्लू, मशरूम सॉस",
+        "es": "Cordon bleu de cerdo empanado, salsa de champiñones",
+        "fr": "Cordon bleu de porc pané, sauce aux champignons",
+        "ar": "كوردون بلو لحم الخنزير بالبقسماط مع صلصة الفطر",
+        "bn": "ব্রেডেড শূকরের কর্ডন ব্লু, মাশরুম সস",
+        "pt": "Cordon bleu de porco panado, molho de cogumelos",
+        "ru": "Кордон блю из свинины в панировке, грибной соус",
+        "ur": "بریڈڈ پورک کورڈن بلو، مشروم ساس",
+        "lb": "Panéierte Cordon bleu vum Schwäin, Champignonssauce"
+    },
+    "Crumble aux pommes": {
+        "en": "Apple crumble",
+        "zh": "苹果酥粒派",
+        "hi": "सेब क्रम्बल",
+        "es": "Crumble de manzana",
+        "fr": "Crumble aux pommes",
+        "ar": "كرامبل التفاح",
+        "bn": "আপেল ক্রাম্বল",
+        "pt": "Crumble de maçã",
+        "ru": "Яблочный крамбл",
+        "ur": "سیب کا کرمبل",
+        "lb": "Äppel-Crumble"
+    },
+    "Crème de carottes": {
+        "en": "Cream of carrot soup",
+        "zh": "胡萝卜奶油浓汤",
+        "hi": "गाजर की क्रीमी सूप",
+        "es": "Crema de zanahoria",
+        "fr": "Crème de carottes",
+        "ar": "حساء كريمة الجزر",
+        "bn": "গাজরের ক্রিম স্যুপ",
+        "pt": "Creme de cenoura",
+        "ru": "Крем-суп из моркови",
+        "ur": "گاجر کا کریمی سوپ",
+        "lb": "Muerten-Crèmezopp"
+    },
+    "Crème de laitue": {
+        "en": "Cream of lettuce soup",
+        "zh": "生菜奶油浓汤",
+        "hi": "लेट्यूस की क्रीमी सूप",
+        "es": "Crema de lechuga",
+        "fr": "Crème de laitue",
+        "ar": "حساء كريمة الخس",
+        "bn": "লেটুসের ক্রিম স্যুপ",
+        "pt": "Creme de alface",
+        "ru": "Крем-суп из салата-латука",
+        "ur": "لیٹش کا کریمی سوپ",
+        "lb": "Zalot-Crèmezopp"
+    },
+    "Cuisse de poulet à la portugaise": {
+        "en": "Chicken leg Portuguese style",
+        "zh": "葡式鸡腿",
+        "hi": "पुर्तगाली शैली की चिकन लेग",
+        "es": "Muslo de pollo a la portuguesa",
+        "fr": "Cuisse de poulet à la portugaise",
+        "ar": "فخذ دجاج على الطريقة البرتغالية",
+        "bn": "পর্তুগিজ স্টাইলের মুরগির রান",
+        "pt": "Coxa de frango à portuguesa",
+        "ru": "Куриная ножка по-португальски",
+        "ur": "پرتگالی انداز کی چکن ران",
+        "lb": "Pouletsschenkel op portugisesch Aart"
+    },
+    "Curry aux pois chiches, épinards et tomates": {
+        "en": "Curry with chickpeas, spinach and tomatoes",
+        "zh": "鹰嘴豆菠菜番茄咖喱",
+        "hi": "छोले, पालक और टमाटर की करी",
+        "es": "Curry de garbanzos, espinacas y tomate",
+        "fr": "Curry aux pois chiches, épinards et tomates",
+        "ar": "كاري بالحمص والسبانخ والطماطم",
+        "bn": "ছোলা, পালংশাক ও টমেটোর কারি",
+        "pt": "Caril de grão-de-bico, espinafres e tomate",
+        "ru": "Карри с нутом, шпинатом и помидорами",
+        "ur": "چنوں، پالک اور ٹماٹر کی کری",
+        "lb": "Curry mat Kichererbsen, Spinat an Tomaten"
+    },
+    "Currywurst, sauce curry maison": {
+        "en": "Currywurst (sausage), homemade curry sauce",
+        "zh": "咖喱香肠，自制咖喱酱",
+        "hi": "करीवुर्स्ट (सॉसेज), घर की बनी करी सॉस",
+        "es": "Currywurst (salchicha), salsa de curry casera",
+        "fr": "Currywurst, sauce curry maison",
+        "ar": "كاري فورست (نقانق) مع صلصة كاري منزلية",
+        "bn": "কারিভুর্স্ট (সসেজ), বাড়িতে তৈরি কারি সস",
+        "pt": "Currywurst (salsicha), molho de caril caseiro",
+        "ru": "Карривурст (колбаска), домашний соус карри",
+        "ur": "کری ورسٹ (ساسیج)، گھر کی بنی کری ساس",
+        "lb": "Currywurscht, hausgemaachte Currysauce"
+    },
+    "Eclair à la vanille": {
+        "en": "Vanilla éclair",
+        "zh": "香草闪电泡芙",
+        "hi": "वनीला एक्लेयर",
+        "es": "Éclair de vainilla",
+        "fr": "Eclair à la vanille",
+        "ar": "إكلير بالفانيليا",
+        "bn": "ভ্যানিলা একলেয়ার",
+        "pt": "Éclair de baunilha",
+        "ru": "Ванильный эклер",
+        "ur": "ونیلا ایکلیئر",
+        "lb": "Vanill-Eclair"
+    },
+    "Ecrasé de potiron": {
+        "en": "Crushed pumpkin",
+        "zh": "南瓜泥",
+        "hi": "मसला हुआ कद्दू",
+        "es": "Calabaza machacada",
+        "fr": "Ecrasé de potiron",
+        "ar": "قرع مهروس",
+        "bn": "চটকানো কুমড়ো",
+        "pt": "Abóbora esmagada",
+        "ru": "Размятая тыква",
+        "ur": "کچلا ہوا کدو",
+        "lb": "Zerdréckte Kürbis"
+    },
+    "Escalope de poulet grillée, sauce au curry": {
+        "en": "Grilled chicken escalope, curry sauce",
+        "zh": "烤鸡排，咖喱酱",
+        "hi": "ग्रिल्ड चिकन एस्कालोप, करी सॉस",
+        "es": "Escalope de pollo a la parrilla, salsa de curry",
+        "fr": "Escalope de poulet grillée, sauce au curry",
+        "ar": "إسكالوب دجاج مشوي مع صلصة الكاري",
+        "bn": "গ্রিল করা চিকেন এস্কালোপ, কারি সস",
+        "pt": "Escalope de frango grelhado, molho de caril",
+        "ru": "Куриный эскалоп на гриле, соус карри",
+        "ur": "گرل چکن اسکالوپ، کری ساس",
+        "lb": "Gegrëllte Pouletsescalope, Currysauce"
+    },
+    "Etuvée de quinoa": {
+        "en": "Braised quinoa",
+        "zh": "焖藜麦",
+        "hi": "धीमी आँच पर पका क्विनोआ",
+        "es": "Quinoa estofada",
+        "fr": "Etuvée de quinoa",
+        "ar": "كينوا مطهوة على البخار",
+        "bn": "ভাপে রান্না কিনোয়া",
+        "pt": "Quinoa estufada",
+        "ru": "Тушёная киноа",
+        "ur": "دم پخت کینوا",
+        "lb": "Gedämpfte Quinoa"
+    },
+    "Falafel Burger, sauce Tzatziki": {
+        "en": "Falafel burger, tzatziki sauce",
+        "zh": "法拉费汉堡，希腊黄瓜酸奶酱",
+        "hi": "फ़लाफ़ल बर्गर, ज़ात्ज़िकी सॉस",
+        "es": "Hamburguesa de falafel, salsa tzatziki",
+        "fr": "Falafel Burger, sauce Tzatziki",
+        "ar": "برغر الفلافل مع صلصة التزاتزيكي",
+        "bn": "ফালাফেল বার্গার, জাজিকি সস",
+        "pt": "Hambúrguer de falafel, molho tzatziki",
+        "ru": "Бургер с фалафелем, соус дзадзики",
+        "ur": "فلافل برگر، ززیکی ساس",
+        "lb": "Falafel-Burger, Tzatziki-Sauce"
+    },
+    "Farfalle à la saucisse italienne, concassé de tomates": {
+        "en": "Farfalle with Italian sausage, crushed tomatoes",
+        "zh": "意式香肠蝴蝶面，碎番茄",
+        "hi": "इटैलियन सॉसेज वाला फ़ार्फ़ाले, कुचले टमाटर",
+        "es": "Farfalle con salchicha italiana, tomate triturado",
+        "fr": "Farfalle à la saucisse italienne, concassé de tomates",
+        "ar": "فارفالي مع النقانق الإيطالية والطماطم المهروسة",
+        "bn": "ইতালিয়ান সসেজসহ ফারফালে, থেঁতো টমেটো",
+        "pt": "Farfalle com salsicha italiana, tomate esmagado",
+        "ru": "Фарфалле с итальянской колбаской, рубленые томаты",
+        "ur": "اطالوی ساسیج کے ساتھ فارفالے، کچلے ٹماٹر",
+        "lb": "Farfalle mat italienescher Wurscht, gehackten Tomaten"
+    },
+    "Faux-filet de boeuf grillé, sauce au poivre": {
+        "en": "Grilled beef sirloin, pepper sauce",
+        "zh": "烤牛排，胡椒酱",
+        "hi": "ग्रिल्ड बीफ़ सिरलॉइन, काली मिर्च की सॉस",
+        "es": "Entrecot de ternera a la parrilla, salsa de pimienta",
+        "fr": "Faux-filet de boeuf grillé, sauce au poivre",
+        "ar": "شريحة لحم بقري مشوية مع صلصة الفلفل",
+        "bn": "গ্রিলড বিফ সিরলোইন, গোলমরিচের সস",
+        "pt": "Lombo de vaca grelhado, molho de pimenta",
+        "ru": "Говяжий стейк на гриле, перечный соус",
+        "ur": "گرل بیف سرلوئن، کالی مرچ کی ساس",
+        "lb": "Gegrillten Rëndsentrecote, Peffersauce"
+    },
+    "Feuilles de bricks au tofu, oignons fanes et moutarde, dip Tzatziki": {
+        "en": "Brick pastry with tofu, spring onions and mustard, tzatziki dip",
+        "zh": "豆腐葱芥末酥脆薄饼，希腊黄瓜酸奶蘸酱",
+        "hi": "टोफू, हरी प्याज़ और सरसों वाली ब्रिक पेस्ट्री, ज़ात्ज़िकी डिप",
+        "es": "Hojas de brick con tofu, cebolletas y mostaza, dip de tzatziki",
+        "fr": "Feuilles de bricks au tofu, oignons fanes et moutarde, dip Tzatziki",
+        "ar": "عجينة بريك بالتوفو والبصل الأخضر والخردل مع غموس التزاتزيكي",
+        "bn": "টোফু, পেঁয়াজকলি ও সরিষাসহ ব্রিক পেস্ট্রি, জাজিকি ডিপ",
+        "pt": "Folhas de brick com tofu, cebolas novas e mostarda, dip de tzatziki",
+        "ru": "Тесто брик с тофу, зелёным луком и горчицей, соус дзадзики",
+        "ur": "ٹوفو، ہری پیاز اور رائی والی بریک پیسٹری، ززیکی ڈپ",
+        "lb": "Brick-Teig mat Tofu, Fréijoerszwiwwelen a Moschter, Tzatziki-Dip"
+    },
+    "Feuilles de bricks au tofu, oignons fanes et moutarde, dip Tzatziki végan": {
+        "en": "Brick pastry with tofu, spring onions and mustard, vegan tzatziki dip",
+        "zh": "豆腐葱芥末酥脆薄饼，纯素希腊黄瓜酸奶蘸酱",
+        "hi": "टोफू, हरी प्याज़ और सरसों वाली ब्रिक पेस्ट्री, वीगन ज़ात्ज़िकी डिप",
+        "es": "Hojas de brick con tofu, cebolletas y mostaza, dip de tzatziki vegano",
+        "fr": "Feuilles de bricks au tofu, oignons fanes et moutarde, dip Tzatziki végan",
+        "ar": "عجينة بريك بالتوفو والبصل الأخضر والخردل مع غموس تزاتزيكي نباتي صرف",
+        "bn": "টোফু, পেঁয়াজকলি ও সরিষাসহ ব্রিক পেস্ট্রি, ভেগান জাজিকি ডিপ",
+        "pt": "Folhas de brick com tofu, cebolas novas e mostarda, dip de tzatziki vegano",
+        "ru": "Тесто брик с тофу, зелёным луком и горчицей, веганский соус дзадзики",
+        "ur": "ٹوفو، ہری پیاز اور رائی والی بریک پیسٹری، ویگن ززیکی ڈپ",
+        "lb": "Brick-Teig mat Tofu, Fréijoerszwiwwelen a Moschter, veganen Tzatziki-Dip"
+    },
+    "Filet de lieu meunière, sauce aïoli maison": {
+        "en": "Pollock fillet meunière, homemade aioli sauce",
+        "zh": "黄油香煎鳕鱼片，自制蒜蓉蛋黄酱",
+        "hi": "पोलॉक फ़िलेट म्यूनिएर, घर की बनी एओली सॉस",
+        "es": "Filete de abadejo a la meunière, salsa alioli casera",
+        "fr": "Filet de lieu meunière, sauce aïoli maison",
+        "ar": "فيليه سمك البولاك مونيير مع صلصة أيولي منزلية",
+        "bn": "পোলক ফিলেট ম্যনিয়ের, বাড়িতে তৈরি আইওলি সস",
+        "pt": "Filete de escamudo à meunière, molho aioli caseiro",
+        "ru": "Филе сайды меньер, домашний соус айоли",
+        "ur": "پولاک فلیٹ میونیئر، گھر کی بنی ایولی ساس",
+        "lb": "Seelaachs-Filet Meunière, hausgemaachte Aioli-Sauce"
+    },
+    "Fusilli, sauce all'arrabbiata": {
+        "en": "Fusilli, arrabbiata sauce",
+        "zh": "螺旋面，香辣番茄酱",
+        "hi": "फ़ुसिली, अराबियाता सॉस",
+        "es": "Fusilli, salsa arrabbiata",
+        "fr": "Fusilli, sauce all'arrabbiata",
+        "ar": "فوسيلي مع صلصة أرابياتا",
+        "bn": "ফুসিলি, আরাবিয়াতা সস",
+        "pt": "Fusilli, molho arrabbiata",
+        "ru": "Фузилли, соус аррабиата",
+        "ur": "فوسیلی، ارابیاتا ساس",
+        "lb": "Fusilli, Arrabbiata-Sauce"
+    },
+    "Fuze Tea - Black Tea Pêche/Hibiscus 0,50 l non consigné": {
+        "en": "Fuze Tea - Black Tea Peach/Hibiscus 0,50 l non consigné",
+        "zh": "Fuze Tea - 蜜桃/洛神花红茶 0,50 l non consigné",
+        "hi": "Fuze Tea - ब्लैक टी पीच/हिबिस्कस 0,50 l non consigné",
+        "es": "Fuze Tea - té negro melocotón/hibisco 0,50 l non consigné",
+        "fr": "Fuze Tea - Black Tea Pêche/Hibiscus 0,50 l non consigné",
+        "ar": "Fuze Tea - شاي أسود خوخ/كركديه 0,50 l non consigné",
+        "bn": "Fuze Tea - ব্ল্যাক টি পিচ/হিবিস্কাস 0,50 l non consigné",
+        "pt": "Fuze Tea - chá preto pêssego/hibisco 0,50 l non consigné",
+        "ru": "Fuze Tea - чёрный чай персик/гибискус 0,50 l non consigné",
+        "ur": "Fuze Tea - بلیک ٹی آڑو/ہیبسکس 0,50 l non consigné",
+        "lb": "Fuze Tea - Schwaarzen Téi Peesch/Hibiskus 0,50 l non consigné"
+    },
+    "Galettes de haricots rouges au concassé de tomates à l'ail": {
+        "en": "Red bean patties with garlic crushed tomatoes",
+        "zh": "红豆饼配蒜香碎番茄",
+        "hi": "लहसुन वाले कुचले टमाटर के साथ राजमा की टिक्की",
+        "es": "Tortitas de alubias rojas con tomate triturado al ajo",
+        "fr": "Galettes de haricots rouges au concassé de tomates à l'ail",
+        "ar": "أقراص الفاصولياء الحمراء مع الطماطم المهروسة بالثوم",
+        "bn": "রসুন দেওয়া থেঁতো টমেটোসহ রাজমার প্যাটি",
+        "pt": "Bolinhos de feijão vermelho com tomate esmagado e alho",
+        "ru": "Котлеты из красной фасоли с рублеными томатами и чесноком",
+        "ur": "لہسن والے کچلے ٹماٹر کے ساتھ لال لوبیا کی ٹکیاں",
+        "lb": "Galette vu roude Bounen mat gehackten Tomaten a Knuewelek"
+    },
+    "Gnocchi aglio, olio, peperoncino et oignons rouges": {
+        "en": "Gnocchi with garlic, olive oil, chilli and red onions",
+        "zh": "蒜香橄榄油辣椒红洋葱土豆团子",
+        "hi": "लहसुन, जैतून के तेल, मिर्च और लाल प्याज़ वाली न्योकी",
+        "es": "Ñoquis con ajo, aceite de oliva, guindilla y cebolla roja",
+        "fr": "Gnocchi aglio, olio, peperoncino et oignons rouges",
+        "ar": "نيوكي بالثوم وزيت الزيتون والفلفل الحار والبصل الأحمر",
+        "bn": "রসুন, জলপাই তেল, মরিচ ও লাল পেঁয়াজসহ নিওকি",
+        "pt": "Gnocchi com alho, azeite, malagueta e cebola roxa",
+        "ru": "Ньокки с чесноком, оливковым маслом, перцем чили и красным луком",
+        "ur": "لہسن، زیتون کے تیل، مرچ اور لال پیاز والی نیوکی",
+        "lb": "Gnocchi mat Knuewelek, Olivenueleg, Peperoncino a roude Zwiwwelen"
+    },
+    "Gnocchis, tomates, mozzarella et basilic": {
+        "en": "Gnocchi, tomatoes, mozzarella and basil",
+        "zh": "土豆团子配番茄、马苏里拉和罗勒",
+        "hi": "न्योकी, टमाटर, मोज़ेरेला और तुलसी",
+        "es": "Ñoquis, tomate, mozzarella y albahaca",
+        "fr": "Gnocchis, tomates, mozzarella et basilic",
+        "ar": "نيوكي مع الطماطم والموزاريلا والريحان",
+        "bn": "নিওকি, টমেটো, মোজারেলা ও বেসিল",
+        "pt": "Gnocchi, tomate, mozzarella e manjericão",
+        "ru": "Ньокки, помидоры, моцарелла и базилик",
+        "ur": "نیوکی، ٹماٹر، موزاریلا اور تلسی",
+        "lb": "Gnocchi, Tomaten, Mozzarella a Basilikum"
+    },
+    "Haricots verts aux oignons": {
+        "en": "Green beans with onions",
+        "zh": "洋葱四季豆",
+        "hi": "प्याज़ वाली हरी बीन्स",
+        "es": "Judías verdes con cebolla",
+        "fr": "Haricots verts aux oignons",
+        "ar": "فاصولياء خضراء بالبصل",
+        "bn": "পেঁয়াজ দিয়ে সবুজ বিন",
+        "pt": "Feijão-verde com cebola",
+        "ru": "Стручковая фасоль с луком",
+        "ur": "پیاز والی ہری پھلیاں",
+        "lb": "Gréng Bounen mat Zwiwwelen"
+    },
+    "Kebab de boeuf mariné, sauce Tzatziki": {
+        "en": "Marinated beef kebab, tzatziki sauce",
+        "zh": "腌牛肉烤肉，希腊黄瓜酸奶酱",
+        "hi": "मैरिनेट किया बीफ़ कबाब, ज़ात्ज़िकी सॉस",
+        "es": "Kebab de ternera marinada, salsa tzatziki",
+        "fr": "Kebab de boeuf mariné, sauce Tzatziki",
+        "ar": "كباب لحم بقري متبل مع صلصة التزاتزيكي",
+        "bn": "মেরিনেট করা গরুর কাবাব, জাজিকি সস",
+        "pt": "Kebab de vaca marinada, molho tzatziki",
+        "ru": "Кебаб из маринованной говядины, соус дзадзики",
+        "ur": "میرینیٹ کیا ہوا بیف کباب، ززیکی ساس",
+        "lb": "Marinéierte Rëndfleesch-Kebab, Tzatziki-Sauce"
+    },
+    "Lasagne maison": {
+        "en": "Homemade lasagne",
+        "zh": "自制千层面",
+        "hi": "घर की बनी लज़ान्या",
+        "es": "Lasaña casera",
+        "fr": "Lasagne maison",
+        "ar": "لازانيا منزلية",
+        "bn": "বাড়িতে তৈরি লাজানিয়া",
+        "pt": "Lasanha caseira",
+        "ru": "Домашняя лазанья",
+        "ur": "گھر کی بنی لزانیہ",
+        "lb": "Hausgemaach Lasagne"
+    },
+    "Légumes kebab": {
+        "en": "Kebab-style vegetables",
+        "zh": "烤肉风味蔬菜",
+        "hi": "कबाब-शैली की सब्ज़ियाँ",
+        "es": "Verduras estilo kebab",
+        "fr": "Légumes kebab",
+        "ar": "خضار على طريقة الكباب",
+        "bn": "কাবাব-স্টাইলের সবজি",
+        "pt": "Legumes estilo kebab",
+        "ru": "Овощи в стиле кебаб",
+        "ur": "کباب انداز کی سبزیاں",
+        "lb": "Geméis am Kebab-Stil"
+    },
+    "Macaroni au jambon cuit et crème fraîche": {
+        "en": "Macaroni with cooked ham and crème fraîche",
+        "zh": "熟火腿鲜奶油通心粉",
+        "hi": "पकी हैम और क्रेम फ़्रेश वाली मैकरोनी",
+        "es": "Macarrones con jamón cocido y crème fraîche",
+        "fr": "Macaroni au jambon cuit et crème fraîche",
+        "ar": "معكرونة بالهام المطبوخ والكريمة الطازجة",
+        "bn": "রান্না করা হ্যাম ও ক্রেম ফ্রেশসহ ম্যাকারনি",
+        "pt": "Macarrão com fiambre e crème fraîche",
+        "ru": "Макароны с варёной ветчиной и крем-фреш",
+        "ur": "پکے ہوئے ہیم اور کریم فریش والی میکرونی",
+        "lb": "Macaroni mat gekachtem Schinken a Crème fraîche"
+    },
+    "Mont blanc": {
+        "en": "Mont Blanc (chestnut cream dessert)",
+        "zh": "蒙布朗（栗子奶油甜点）",
+        "hi": "मों ब्लां (चेस्टनट क्रीम मिठाई)",
+        "es": "Mont Blanc (postre de crema de castañas)",
+        "fr": "Mont blanc",
+        "ar": "مون بلان (حلوى كريمة الكستناء)",
+        "bn": "মঁ ব্লাঁ (চেস্টনাট ক্রিমের মিষ্টি)",
+        "pt": "Mont Blanc (sobremesa de creme de castanhas)",
+        "ru": "Монблан (десерт с каштановым кремом)",
+        "ur": "موں بلاں (شاہ بلوط کریم کا میٹھا)",
+        "lb": "Mont Blanc (Käschtecrème-Dessert)"
+    },
+    "Mousse au chocolat, chantilly à la vanille": {
+        "en": "Chocolate mousse, vanilla whipped cream",
+        "zh": "巧克力慕斯，香草鲜奶油",
+        "hi": "चॉकलेट मूस, वनीला व्हिप्ड क्रीम",
+        "es": "Mousse de chocolate, nata montada de vainilla",
+        "fr": "Mousse au chocolat, chantilly à la vanille",
+        "ar": "موس الشوكولاتة مع كريمة الفانيليا المخفوقة",
+        "bn": "চকোলেট মুস, ভ্যানিলা হুইপড ক্রিম",
+        "pt": "Mousse de chocolate, chantilly de baunilha",
+        "ru": "Шоколадный мусс, ванильные взбитые сливки",
+        "ur": "چاکلیٹ موس، ونیلا وہپڈ کریم",
+        "lb": "Schockelasmousse, Vanill-Chantilly"
+    },
+    "Mousse au pain d'épices et son biscuit": {
+        "en": "Gingerbread mousse with its biscuit",
+        "zh": "香料面包慕斯配饼干",
+        "hi": "जिंजरब्रेड मूस और बिस्किट",
+        "es": "Mousse de pan de especias con su galleta",
+        "fr": "Mousse au pain d'épices et son biscuit",
+        "ar": "موس خبز الزنجبيل مع البسكويت",
+        "bn": "জিঞ্জারব্রেড মুস ও বিস্কুট",
+        "pt": "Mousse de pão de especiarias com bolacha",
+        "ru": "Мусс из пряничного хлеба с печеньем",
+        "ur": "جنجربریڈ موس اور بسکٹ",
+        "lb": "Liefkuch-Mousse mat Kichelchen"
+    },
+    "Mousse aux deux chocolats chantilly": {
+        "en": "Two-chocolate mousse with whipped cream",
+        "zh": "双色巧克力慕斯配鲜奶油",
+        "hi": "दो चॉकलेट वाला मूस, व्हिप्ड क्रीम",
+        "es": "Mousse de dos chocolates con nata montada",
+        "fr": "Mousse aux deux chocolats chantilly",
+        "ar": "موس بنوعين من الشوكولاتة مع الكريمة المخفوقة",
+        "bn": "দুই চকোলেটের মুস, হুইপড ক্রিম",
+        "pt": "Mousse de dois chocolates com chantilly",
+        "ru": "Мусс из двух видов шоколада со взбитыми сливками",
+        "ur": "دو چاکلیٹ کا موس، وہپڈ کریم",
+        "lb": "Mousse mat zwou Schockelaszorten, Chantilly"
+    },
+    "Mozzarella sticks, coulis de tomates": {
+        "en": "Mozzarella sticks, tomato coulis",
+        "zh": "马苏里拉奶酪条，番茄酱汁",
+        "hi": "मोज़ेरेला स्टिक्स, टमाटर कूली",
+        "es": "Palitos de mozzarella, coulis de tomate",
+        "fr": "Mozzarella sticks, coulis de tomates",
+        "ar": "أصابع الموزاريلا مع كولي الطماطم",
+        "bn": "মোজারেলা স্টিকস, টমেটো কুলি",
+        "pt": "Palitos de mozzarella, coulis de tomate",
+        "ru": "Палочки моцареллы, томатный соус",
+        "ur": "موزاریلا اسٹکس، ٹماٹر کولس",
+        "lb": "Mozzarella-Sticks, Tomatecoulis"
+    },
+    "Navarin de boeuf": {
+        "en": "Beef navarin (stew with vegetables)",
+        "zh": "蔬菜炖牛肉（Navarin）",
+        "hi": "बीफ़ नवारिन (सब्ज़ियों के साथ स्टू)",
+        "es": "Navarin de ternera (estofado con verduras)",
+        "fr": "Navarin de boeuf",
+        "ar": "نافاران لحم بقري (يخنة بالخضار)",
+        "bn": "বিফ নাভারাঁ (সবজিসহ স্টু)",
+        "pt": "Navarin de vaca (guisado com legumes)",
+        "ru": "Наварен из говядины (рагу с овощами)",
+        "ur": "بیف ناوارین (سبزیوں کے ساتھ اسٹو)",
+        "lb": "Rëndfleesch-Navarin (Ragout mat Geméis)"
+    },
+    "Oeuf cocotte aux épinards": {
+        "en": "Baked egg en cocotte with spinach",
+        "zh": "菠菜烤盅蛋",
+        "hi": "पालक के साथ बेक्ड अंडा (कोकोट)",
+        "es": "Huevo en cocotte con espinacas",
+        "fr": "Oeuf cocotte aux épinards",
+        "ar": "بيضة مخبوزة في قالب مع السبانخ",
+        "bn": "পালংশাকসহ বেকড ডিম (কোকোট)",
+        "pt": "Ovo en cocotte com espinafres",
+        "ru": "Яйцо кокот со шпинатом",
+        "ur": "پالک کے ساتھ بیک کیا ہوا انڈا (کوکوٹ)",
+        "lb": "Ee an der Cocotte mat Spinat"
+    },
+    "Paëlla au tofu": {
+        "en": "Paella with tofu",
+        "zh": "豆腐西班牙饭",
+        "hi": "टोफू के साथ पाएया",
+        "es": "Paella con tofu",
+        "fr": "Paëlla au tofu",
+        "ar": "باييا بالتوفو",
+        "bn": "টফুসহ পায়েলা",
+        "pt": "Paelha com tofu",
+        "ru": "Паэлья с тофу",
+        "ur": "ٹوفو کے ساتھ پائیلا",
+        "lb": "Paella mat Tofu"
+    },
+    "Penne à la sauce tomate et billes de mozzarella": {
+        "en": "Penne with tomato sauce and mozzarella pearls",
+        "zh": "番茄酱马苏里拉小球通心粉",
+        "hi": "टमाटर सॉस और मोज़ेरेला बॉल्स वाली पेने",
+        "es": "Penne con salsa de tomate y perlas de mozzarella",
+        "fr": "Penne à la sauce tomate et billes de mozzarella",
+        "ar": "بيني بصلصة الطماطم وحبات الموزاريلا",
+        "bn": "টমেটো সস ও মোজারেলা বলসহ পেনে",
+        "pt": "Penne com molho de tomate e bolinhas de mozzarella",
+        "ru": "Пенне с томатным соусом и шариками моцареллы",
+        "ur": "ٹماٹر ساس اور موزاریلا بالز والی پینے",
+        "lb": "Penne mat Tomatesauce a Mozzarellakugelen"
+    },
+    "Pizza Margherita": {
+        "en": "Pizza Margherita",
+        "zh": "玛格丽特披萨",
+        "hi": "पिज़्ज़ा मार्गेरिटा",
+        "es": "Pizza Margarita",
+        "fr": "Pizza Margherita",
+        "ar": "بيتزا مارغريتا",
+        "bn": "পিৎজা মার্গারিটা",
+        "pt": "Pizza Margherita",
+        "ru": "Пицца «Маргарита»",
+        "ur": "پیزا مارگریٹا",
+        "lb": "Pizza Margherita"
+    },
+    "Pizza au chorizo": {
+        "en": "Chorizo pizza",
+        "zh": "西班牙辣香肠披萨",
+        "hi": "चोरिज़ो पिज़्ज़ा",
+        "es": "Pizza de chorizo",
+        "fr": "Pizza au chorizo",
+        "ar": "بيتزا الشوريزو",
+        "bn": "চোরিজো পিৎজা",
+        "pt": "Pizza de chouriço",
+        "ru": "Пицца с чоризо",
+        "ur": "چوریزو پیزا",
+        "lb": "Pizza mat Chorizo"
+    },
+    "Pizza au jambon cru, tomates cerises, crème épaisse et roquette": {
+        "en": "Pizza with cured ham, cherry tomatoes, thick cream and rocket",
+        "zh": "生火腿圣女果浓奶油芝麻菜披萨",
+        "hi": "कच्ची हैम, चेरी टमाटर, गाढ़ी क्रीम और रॉकेट वाला पिज़्ज़ा",
+        "es": "Pizza de jamón curado, tomates cherry, nata espesa y rúcula",
+        "fr": "Pizza au jambon cru, tomates cerises, crème épaisse et roquette",
+        "ar": "بيتزا بالهام النيء (لحم خنزير مقدد) وطماطم الكرز والكريمة الثقيلة والجرجير",
+        "bn": "কাঁচা হ্যাম, চেরি টমেটো, ঘন ক্রিম ও রকেটসহ পিৎজা",
+        "pt": "Pizza de presunto, tomate-cereja, natas espessas e rúcula",
+        "ru": "Пицца с сыровяленой ветчиной, помидорами черри, густыми сливками и рукколой",
+        "ur": "کچے ہیم، چیری ٹماٹر، گاڑھی کریم اور راکٹ والا پیزا",
+        "lb": "Pizza mat réiem Schinken, Kiischtentomaten, décker Crème a Rucola"
+    },
+    "Pizza au jambon cuit": {
+        "en": "Cooked ham pizza",
+        "zh": "熟火腿披萨",
+        "hi": "पकी हैम पिज़्ज़ा",
+        "es": "Pizza de jamón cocido",
+        "fr": "Pizza au jambon cuit",
+        "ar": "بيتزا الهام المطبوخ",
+        "bn": "রান্না করা হ্যাম পিৎজা",
+        "pt": "Pizza de fiambre",
+        "ru": "Пицца с варёной ветчиной",
+        "ur": "پکے ہوئے ہیم کا پیزا",
+        "lb": "Pizza mat gekachtem Schinken"
+    },
+    "Pizza au pesto persil et billes de mozzarella": {
+        "en": "Pizza with parsley pesto and mozzarella pearls",
+        "zh": "欧芹青酱马苏里拉小球披萨",
+        "hi": "पार्सले पेस्टो और मोज़ेरेला बॉल्स वाला पिज़्ज़ा",
+        "es": "Pizza con pesto de perejil y perlas de mozzarella",
+        "fr": "Pizza au pesto persil et billes de mozzarella",
+        "ar": "بيتزا ببيستو البقدونس وحبات الموزاريلا",
+        "bn": "পার্সলি পেস্তো ও মোজারেলা বলসহ পিৎজা",
+        "pt": "Pizza com pesto de salsa e bolinhas de mozzarella",
+        "ru": "Пицца с песто из петрушки и шариками моцареллы",
+        "ur": "پارسلے پیسٹو اور موزاریلا بالز والا پیزا",
+        "lb": "Pizza mat Péiterséileg-Pesto a Mozzarellakugelen"
+    },
+    "Pizza au potiron et fromage feta": {
+        "en": "Pumpkin and feta pizza",
+        "zh": "南瓜菲达奶酪披萨",
+        "hi": "कद्दू और फ़ेटा चीज़ पिज़्ज़ा",
+        "es": "Pizza de calabaza y queso feta",
+        "fr": "Pizza au potiron et fromage feta",
+        "ar": "بيتزا القرع وجبن الفيتا",
+        "bn": "কুমড়ো ও ফেটা চিজ পিৎজা",
+        "pt": "Pizza de abóbora e queijo feta",
+        "ru": "Пицца с тыквой и сыром фета",
+        "ur": "کدو اور فیٹا پنیر کا پیزا",
+        "lb": "Pizza mat Kürbis a Fetakéis"
+    },
+    "Pizza au poulet, mozzarella et épinards": {
+        "en": "Pizza with chicken, mozzarella and spinach",
+        "zh": "鸡肉马苏里拉菠菜披萨",
+        "hi": "चिकन, मोज़ेरेला और पालक वाला पिज़्ज़ा",
+        "es": "Pizza de pollo, mozzarella y espinacas",
+        "fr": "Pizza au poulet, mozzarella et épinards",
+        "ar": "بيتزا بالدجاج والموزاريلا والسبانخ",
+        "bn": "চিকেন, মোজারেলা ও পালংশাকসহ পিৎজা",
+        "pt": "Pizza de frango, mozzarella e espinafres",
+        "ru": "Пицца с курицей, моцареллой и шпинатом",
+        "ur": "چکن، موزاریلا اور پالک والا پیزا",
+        "lb": "Pizza mat Poulet, Mozzarella a Spinat"
+    },
+    "Pizza au salami": {
+        "en": "Salami pizza",
+        "zh": "萨拉米披萨",
+        "hi": "सलामी पिज़्ज़ा",
+        "es": "Pizza de salami",
+        "fr": "Pizza au salami",
+        "ar": "بيتزا السلامي",
+        "bn": "সালামি পিৎজা",
+        "pt": "Pizza de salame",
+        "ru": "Пицца с салями",
+        "ur": "سلامی پیزا",
+        "lb": "Pizza mat Salami"
+    },
+    "Pizza au salami piquant": {
+        "en": "Spicy salami pizza",
+        "zh": "辣味萨拉米披萨",
+        "hi": "तीखी सलामी पिज़्ज़ा",
+        "es": "Pizza de salami picante",
+        "fr": "Pizza au salami piquant",
+        "ar": "بيتزا السلامي الحار",
+        "bn": "ঝাল সালামি পিৎজা",
+        "pt": "Pizza de salame picante",
+        "ru": "Пицца с острой салями",
+        "ur": "تیکھی سلامی پیزا",
+        "lb": "Pizza mat schaarfem Salami"
+    },
+    "Pizza aux champignons": {
+        "en": "Mushroom pizza",
+        "zh": "蘑菇披萨",
+        "hi": "मशरूम पिज़्ज़ा",
+        "es": "Pizza de champiñones",
+        "fr": "Pizza aux champignons",
+        "ar": "بيتزا الفطر",
+        "bn": "মাশরুম পিৎজা",
+        "pt": "Pizza de cogumelos",
+        "ru": "Пицца с грибами",
+        "ur": "مشروم پیزا",
+        "lb": "Pizza mat Champignonen"
+    },
+    "Pizza aux mini boulettes et oignons rouges": {
+        "en": "Pizza with mini meatballs and red onions",
+        "zh": "迷你肉丸红洋葱披萨",
+        "hi": "मिनी मीटबॉल्स और लाल प्याज़ वाला पिज़्ज़ा",
+        "es": "Pizza con mini albóndigas y cebolla roja",
+        "fr": "Pizza aux mini boulettes et oignons rouges",
+        "ar": "بيتزا بكرات اللحم الصغيرة والبصل الأحمر",
+        "bn": "মিনি মিটবল ও লাল পেঁয়াজসহ পিৎজা",
+        "pt": "Pizza com mini almôndegas e cebola roxa",
+        "ru": "Пицца с мини-фрикадельками и красным луком",
+        "ur": "منی میٹ بالز اور لال پیاز والا پیزا",
+        "lb": "Pizza mat Mini-Fleeschbäll a roude Zwiwwelen"
+    },
+    "Pizza aux trois fromages": {
+        "en": "Three-cheese pizza",
+        "zh": "三种奶酪披萨",
+        "hi": "तीन चीज़ वाला पिज़्ज़ा",
+        "es": "Pizza a los tres quesos",
+        "fr": "Pizza aux trois fromages",
+        "ar": "بيتزا بالأجبان الثلاثة",
+        "bn": "তিন চিজের পিৎজা",
+        "pt": "Pizza aos três queijos",
+        "ru": "Пицца с тремя сырами",
+        "ur": "تین پنیروں والا پیزا",
+        "lb": "Pizza mat dräi Kéis"
+    },
+    "Pizza jambon cuit et champignons": {
+        "en": "Cooked ham and mushroom pizza",
+        "zh": "熟火腿蘑菇披萨",
+        "hi": "पकी हैम और मशरूम पिज़्ज़ा",
+        "es": "Pizza de jamón cocido y champiñones",
+        "fr": "Pizza jambon cuit et champignons",
+        "ar": "بيتزا الهام المطبوخ والفطر",
+        "bn": "রান্না করা হ্যাম ও মাশরুম পিৎজা",
+        "pt": "Pizza de fiambre e cogumelos",
+        "ru": "Пицца с варёной ветчиной и грибами",
+        "ur": "پکے ہوئے ہیم اور مشروم کا پیزا",
+        "lb": "Pizza mat gekachtem Schinken a Champignonen"
+    },
+    "Pizza à la saucisse italienne": {
+        "en": "Italian sausage pizza",
+        "zh": "意式香肠披萨",
+        "hi": "इटैलियन सॉसेज पिज़्ज़ा",
+        "es": "Pizza de salchicha italiana",
+        "fr": "Pizza à la saucisse italienne",
+        "ar": "بيتزا النقانق الإيطالية",
+        "bn": "ইতালিয়ান সসেজ পিৎজা",
+        "pt": "Pizza de salsicha italiana",
+        "ru": "Пицца с итальянской колбаской",
+        "ur": "اطالوی ساسیج پیزا",
+        "lb": "Pizza mat italienescher Wurscht"
+    },
+    "Pommes de terre au four": {
+        "en": "Baked potatoes",
+        "zh": "烤土豆",
+        "hi": "बेक्ड आलू",
+        "es": "Patatas al horno",
+        "fr": "Pommes de terre au four",
+        "ar": "بطاطس بالفرن",
+        "bn": "বেকড আলু",
+        "pt": "Batatas assadas no forno",
+        "ru": "Картофель, запечённый в духовке",
+        "ur": "بیک کیے ہوئے آلو",
+        "lb": "Gromperen aus dem Uewen"
+    },
+    "Potage au chou fleur": {
+        "en": "Cauliflower soup",
+        "zh": "花椰菜浓汤",
+        "hi": "फूलगोभी का सूप",
+        "es": "Sopa de coliflor",
+        "fr": "Potage au chou fleur",
+        "ar": "حساء القرنبيط",
+        "bn": "ফুলকপির স্যুপ",
+        "pt": "Sopa de couve-flor",
+        "ru": "Суп из цветной капусты",
+        "ur": "پھول گوبھی کا سوپ",
+        "lb": "Choufleurszopp"
+    },
+    "Potiron au four": {
+        "en": "Baked pumpkin",
+        "zh": "烤南瓜",
+        "hi": "बेक्ड कद्दू",
+        "es": "Calabaza al horno",
+        "fr": "Potiron au four",
+        "ar": "قرع بالفرن",
+        "bn": "বেকড কুমড়ো",
+        "pt": "Abóbora assada no forno",
+        "ru": "Запечённая тыква",
+        "ur": "بیک کیا ہوا کدو",
+        "lb": "Kürbis aus dem Uewen"
+    },
+    "Poêlée aux champignons, butternut et graines de sarrasin": {
+        "en": "Pan-fried mushrooms, butternut squash and buckwheat",
+        "zh": "香煎蘑菇、奶油南瓜和荞麦",
+        "hi": "मशरूम, बटरनट स्क्वैश और कुट्टू की सब्ज़ी",
+        "es": "Salteado de champiñones, calabaza butternut y trigo sarraceno",
+        "fr": "Poêlée aux champignons, butternut et graines de sarrasin",
+        "ar": "فطر مقلي مع قرع البترنت وبذور الحنطة السوداء",
+        "bn": "মাশরুম, বাটারনাট স্কোয়াশ ও বাকহুইট ভাজা",
+        "pt": "Salteado de cogumelos, abóbora butternut e trigo-sarraceno",
+        "ru": "Жаркое из грибов, тыквы баттернат и гречки",
+        "ur": "مشروم، بٹرنٹ اسکواش اور بک وہیٹ کی بھجیا",
+        "lb": "Pan mat Champignonen, Butternut a Bucheweess"
+    },
+    "Purée de pommes de terre": {
+        "en": "Mashed potatoes",
+        "zh": "土豆泥",
+        "hi": "आलू की प्यूरी",
+        "es": "Puré de patatas",
+        "fr": "Purée de pommes de terre",
+        "ar": "بطاطس مهروسة (بوريه)",
+        "bn": "আলুর পিউরি",
+        "pt": "Puré de batata",
+        "ru": "Картофельное пюре",
+        "ur": "آلو کی پیوری",
+        "lb": "Gromperepüree"
+    },
+    "Quinotto végan aux brocolis, carottes et tofu": {
+        "en": "Vegan quinotto (quinoa risotto) with broccoli, carrots and tofu",
+        "zh": "纯素藜麦烩饭配西兰花、胡萝卜和豆腐",
+        "hi": "ब्रोकली, गाजर और टोफू वाला वीगन क्विनोटो (क्विनोआ रिसोट्टो)",
+        "es": "Quinotto vegano (risotto de quinoa) con brócoli, zanahorias y tofu",
+        "fr": "Quinotto végan aux brocolis, carottes et tofu",
+        "ar": "كينوتو نباتي صرف (ريزوتو الكينوا) بالبروكلي والجزر والتوفو",
+        "bn": "ব্রোকলি, গাজর ও টফুসহ ভেগান কিনোত্তো (কিনোয়া রিসোত্তো)",
+        "pt": "Quinotto vegano (risotto de quinoa) com brócolos, cenouras e tofu",
+        "ru": "Веганское киноотто (ризотто из киноа) с брокколи, морковью и тофу",
+        "ur": "بروکلی، گاجر اور ٹوفو والا ویگن کینوٹو (کینوا ریزوٹو)",
+        "lb": "Vegane Quinotto (Quinoa-Risotto) mat Brokkoli, Muerten an Tofu"
+    },
+    "Quinotto végétarien aux brocolis, carottes et tofu": {
+        "en": "Vegetarian quinotto (quinoa risotto) with broccoli, carrots and tofu",
+        "zh": "素食藜麦烩饭配西兰花、胡萝卜和豆腐",
+        "hi": "ब्रोकली, गाजर और टोफू वाला शाकाहारी क्विनोटो (क्विनोआ रिसोट्टो)",
+        "es": "Quinotto vegetariano (risotto de quinoa) con brócoli, zanahorias y tofu",
+        "fr": "Quinotto végétarien aux brocolis, carottes et tofu",
+        "ar": "كينوتو للنباتيين (ريزوتو الكينوا) بالبروكلي والجزر والتوفو",
+        "bn": "ব্রোকলি, গাজর ও টফুসহ নিরামিষ কিনোত্তো (কিনোয়া রিসোত্তো)",
+        "pt": "Quinotto vegetariano (risotto de quinoa) com brócolos, cenouras e tofu",
+        "ru": "Вегетарианское киноотто (ризотто из киноа) с брокколи, морковью и тофу",
+        "ur": "بروکلی، گاجر اور ٹوفو والا سبزی خور کینوٹو (کینوا ریزوٹو)",
+        "lb": "Vegetaresche Quinotto (Quinoa-Risotto) mat Brokkoli, Muerten an Tofu"
+    },
+    "Ravioli au potiron, concassé de tomates": {
+        "en": "Pumpkin ravioli, crushed tomatoes",
+        "zh": "南瓜意式饺子，碎番茄",
+        "hi": "कद्दू रैवियोली, कुचले टमाटर",
+        "es": "Raviolis de calabaza, tomate triturado",
+        "fr": "Ravioli au potiron, concassé de tomates",
+        "ar": "رافيولي القرع مع الطماطم المهروسة",
+        "bn": "কুমড়োর রাভিওলি, থেঁতো টমেটো",
+        "pt": "Ravioli de abóbora, tomate esmagado",
+        "ru": "Равиоли с тыквой, рубленые томаты",
+        "ur": "کدو کی راویولی، کچلے ٹماٹر",
+        "lb": "Kürbis-Ravioli, gehackten Tomaten"
+    },
+    "Ravioli à la ricotta et aux épinards, sauce tomate": {
+        "en": "Ricotta and spinach ravioli, tomato sauce",
+        "zh": "里科塔奶酪菠菜意式饺子，番茄酱汁",
+        "hi": "रिकोटा और पालक रैवियोली, टमाटर सॉस",
+        "es": "Raviolis de ricotta y espinacas, salsa de tomate",
+        "fr": "Ravioli à la ricotta et aux épinards, sauce tomate",
+        "ar": "رافيولي الريكوتا والسبانخ مع صلصة الطماطم",
+        "bn": "রিকোটা ও পালংশাকের রাভিওলি, টমেটো সস",
+        "pt": "Ravioli de ricotta e espinafres, molho de tomate",
+        "ru": "Равиоли с рикоттой и шпинатом, томатный соус",
+        "ur": "ریکوٹا اور پالک کی راویولی، ٹماٹر ساس",
+        "lb": "Ravioli mat Ricotta a Spinat, Tomatesauce"
+    },
+    "Rouleaux de printemps, dip aux cacahuètes": {
+        "en": "Spring rolls, peanut dip",
+        "zh": "春卷，花生蘸酱",
+        "hi": "स्प्रिंग रोल, मूँगफली की डिप",
+        "es": "Rollitos de primavera, dip de cacahuete",
+        "fr": "Rouleaux de printemps, dip aux cacahuètes",
+        "ar": "لفائف الربيع مع غموس الفول السوداني",
+        "bn": "স্প্রিং রোল, চিনাবাদামের ডিপ",
+        "pt": "Crepes primavera, dip de amendoim",
+        "ru": "Спринг-роллы, арахисовый соус",
+        "ur": "اسپرنگ رولز، مونگ پھلی کی ڈپ",
+        "lb": "Fréijoersrullen, Äerdnoss-Dip"
+    },
+    "Rösti avec deux oeufs au plat": {
+        "en": "Rösti with two fried eggs",
+        "zh": "土豆饼配两个煎蛋",
+        "hi": "रॉस्टी के साथ दो तले अंडे",
+        "es": "Rösti con dos huevos fritos",
+        "fr": "Rösti avec deux oeufs au plat",
+        "ar": "روستي مع بيضتين مقليتين",
+        "bn": "রস্টির সাথে দুটি ভাজা ডিম",
+        "pt": "Rösti com dois ovos estrelados",
+        "ru": "Рёшти с двумя яйцами-глазуньями",
+        "ur": "روسٹی کے ساتھ دو تلے ہوئے انڈے",
+        "lb": "Rösti mat zwee Spigeleeër"
+    },
+    "Rösti de pommes de terre et tofu fumé aux champignons à l'ail et au persil": {
+        "en": "Potato rösti and smoked tofu with mushrooms, garlic and parsley",
+        "zh": "土豆饼和烟熏豆腐配蒜香欧芹蘑菇",
+        "hi": "आलू रॉस्टी और स्मोक्ड टोफू, लहसुन और पार्सले वाले मशरूम के साथ",
+        "es": "Rösti de patata y tofu ahumado con champiñones al ajo y perejil",
+        "fr": "Rösti de pommes de terre et tofu fumé aux champignons à l'ail et au persil",
+        "ar": "روستي البطاطس والتوفو المدخن مع الفطر بالثوم والبقدونس",
+        "bn": "আলুর রস্টি ও স্মোকড টফু, রসুন ও পার্সলি দেওয়া মাশরুমসহ",
+        "pt": "Rösti de batata e tofu fumado com cogumelos, alho e salsa",
+        "ru": "Картофельный рёшти и копчёный тофу с грибами, чесноком и петрушкой",
+        "ur": "آلو روسٹی اور اسموکڈ ٹوفو، لہسن اور پارسلے والے مشروم کے ساتھ",
+        "lb": "Gromperen-Rösti a gefëmmten Tofu mat Champignonen, Knuewelek a Péiterséileg"
+    },
+    "Salade Tagliata au boeuf mariné": {
+        "en": "Tagliata salad with marinated beef",
+        "zh": "腌牛肉片沙拉（Tagliata）",
+        "hi": "मैरिनेट किए बीफ़ के साथ टैलियाटा सलाद",
+        "es": "Ensalada tagliata con ternera marinada",
+        "fr": "Salade Tagliata au boeuf mariné",
+        "ar": "سلطة تالياتا بلحم بقري متبل",
+        "bn": "মেরিনেট করা গরুর মাংসসহ তালিয়াতা সালাদ",
+        "pt": "Salada tagliata com vaca marinada",
+        "ru": "Салат тальята с маринованной говядиной",
+        "ur": "میرینیٹ کیے ہوئے بیف کے ساتھ ٹیلیاٹا سلاد",
+        "lb": "Tagliata-Zalot mat marinéiertem Rëndfleesch"
+    },
+    "Salade de pâtes à la mozzarella et tomates": {
+        "en": "Pasta salad with mozzarella and tomatoes",
+        "zh": "马苏里拉番茄意面沙拉",
+        "hi": "मोज़ेरेला और टमाटर वाला पास्ता सलाद",
+        "es": "Ensalada de pasta con mozzarella y tomate",
+        "fr": "Salade de pâtes à la mozzarella et tomates",
+        "ar": "سلطة المعكرونة بالموزاريلا والطماطم",
+        "bn": "মোজারেলা ও টমেটোসহ পাস্তা সালাদ",
+        "pt": "Salada de massa com mozzarella e tomate",
+        "ru": "Салат из пасты с моцареллой и помидорами",
+        "ur": "موزاریلا اور ٹماٹر والا پاستا سلاد",
+        "lb": "Nuddelzalot mat Mozzarella an Tomaten"
+    },
+    "Samossas aux lentilles et citrouille": {
+        "en": "Lentil and pumpkin samosas",
+        "zh": "扁豆南瓜萨莫萨",
+        "hi": "दाल और कद्दू के समोसे",
+        "es": "Samosas de lentejas y calabaza",
+        "fr": "Samossas aux lentilles et citrouille",
+        "ar": "سمبوسة العدس والقرع",
+        "bn": "মসুর ডাল ও কুমড়োর সমোসা",
+        "pt": "Samosas de lentilhas e abóbora",
+        "ru": "Самосы с чечевицей и тыквой",
+        "ur": "مسور اور کدو کے سموسے",
+        "lb": "Samosas mat Lënsen a Kürbis"
+    },
+    "Soupe aux champignons": {
+        "en": "Mushroom soup",
+        "zh": "蘑菇汤",
+        "hi": "मशरूम सूप",
+        "es": "Sopa de champiñones",
+        "fr": "Soupe aux champignons",
+        "ar": "حساء الفطر",
+        "bn": "মাশরুম স্যুপ",
+        "pt": "Sopa de cogumelos",
+        "ru": "Грибной суп",
+        "ur": "مشروم سوپ",
+        "lb": "Champignonszopp"
+    },
+    "Spaghetti bolognaise au seitan haché": {
+        "en": "Spaghetti bolognese with minced seitan",
+        "zh": "面筋碎博洛尼亚意面",
+        "hi": "कीमा सीटन बोलोनीज़ के साथ स्पेगेटी",
+        "es": "Espaguetis a la boloñesa de seitán picado",
+        "fr": "Spaghetti bolognaise au seitan haché",
+        "ar": "سباغيتي بولونيز بالسيتان المفروم",
+        "bn": "কিমা সেইটান বোলোনিজসহ স্প্যাগেটি",
+        "pt": "Esparguete à bolonhesa de seitan picado",
+        "ru": "Спагетти болоньезе с рубленым сейтаном",
+        "ur": "قیمہ سیٹن بولونیز کے ساتھ اسپگیٹی",
+        "lb": "Spaghetti Bolognese mat gehaktem Seitan"
+    },
+    "Spaghetti à la carbonara": {
+        "en": "Spaghetti carbonara",
+        "zh": "卡邦尼意面",
+        "hi": "स्पेगेटी कार्बोनारा",
+        "es": "Espaguetis a la carbonara",
+        "fr": "Spaghetti à la carbonara",
+        "ar": "سباغيتي كاربونارا",
+        "bn": "স্প্যাগেটি কার্বোনারা",
+        "pt": "Esparguete à carbonara",
+        "ru": "Спагетти карбонара",
+        "ur": "اسپگیٹی کاربونارا",
+        "lb": "Spaghetti Carbonara"
+    },
+    "Spirelli aux mini boulettes de viande": {
+        "en": "Spirelli with mini meatballs",
+        "zh": "螺旋面配迷你肉丸",
+        "hi": "मिनी मीटबॉल्स वाली स्पिरेली",
+        "es": "Spirelli con mini albóndigas de carne",
+        "fr": "Spirelli aux mini boulettes de viande",
+        "ar": "سبيريلي مع كرات اللحم الصغيرة",
+        "bn": "মিনি মিটবলসহ স্পিরেলি",
+        "pt": "Spirelli com mini almôndegas de carne",
+        "ru": "Спирелли с мини-фрикадельками",
+        "ur": "منی میٹ بالز والی اسپیریلی",
+        "lb": "Spirelli mat Mini-Fleeschbäll"
+    },
+    "Tagliatelle à l'épeautre": {
+        "en": "Spelt tagliatelle",
+        "zh": "斯佩尔特小麦宽面",
+        "hi": "स्पेल्ट टैग्लिएटेल",
+        "es": "Tagliatelle de espelta",
+        "fr": "Tagliatelle à l'épeautre",
+        "ar": "تالياتيلي من حبوب السبلت",
+        "bn": "স্পেল্ট ট্যাগলিয়াতেলে",
+        "pt": "Tagliatelle de espelta",
+        "ru": "Тальятелле из полбы",
+        "ur": "سپیلٹ ٹیگلیاتیلے",
+        "lb": "Spelz-Tagliatelle"
+    },
+    "Tarte flambée": {
+        "en": "Tarte flambée",
+        "zh": "火焰薄饼",
+        "hi": "टार्ट फ़्लैम्बे",
+        "es": "Tarta flambeada",
+        "fr": "Tarte flambée",
+        "ar": "تارت فلامبيه",
+        "bn": "টার্ট ফ্লাম্বে",
+        "pt": "Tarte flambée",
+        "ru": "Тарт фламбе",
+        "ur": "ٹارٹ فلامبے",
+        "lb": "Flammekuch"
+    },
+    "Velouté aux haricots verts": {
+        "en": "Cream of green bean soup",
+        "zh": "四季豆奶油浓汤",
+        "hi": "हरी बीन्स की क्रीमी सूप",
+        "es": "Crema de judías verdes",
+        "fr": "Velouté aux haricots verts",
+        "ar": "حساء الفاصولياء الخضراء الكريمي",
+        "bn": "সবুজ বিনের ক্রিমি স্যুপ",
+        "pt": "Creme de feijão-verde",
+        "ru": "Крем-суп из стручковой фасоли",
+        "ur": "ہری پھلیوں کا کریمی سوپ",
+        "lb": "Gréng-Bounen-Crèmezopp"
+    },
+    "Waterzooï de poulet": {
+        "en": "Chicken waterzooi (Flemish creamy stew)",
+        "zh": "佛兰德奶油炖鸡（Waterzooi）",
+        "hi": "चिकन वाटरज़ूई (फ़्लेमिश क्रीमी स्टू)",
+        "es": "Waterzooi de pollo (guiso flamenco cremoso)",
+        "fr": "Waterzooï de poulet",
+        "ar": "واترزوي الدجاج (يخنة فلمنكية كريمية)",
+        "bn": "চিকেন ওয়াটারজুই (ফ্লেমিশ ক্রিমি স্টু)",
+        "pt": "Waterzooi de frango (guisado flamengo cremoso)",
+        "ru": "Ватерзой из курицы (фламандское сливочное рагу)",
+        "ur": "چکن واٹرزوئی (فلیمش کریمی اسٹو)",
+        "lb": "Poulet-Waterzooi (flämesche crèmege Ragout)"
+    },
+    "Wok façon riz sauté aux oeufs brouillés, potiron, poireaux et oignons fanes": {
+        "en": "Fried-rice-style wok with scrambled eggs, pumpkin, leeks and spring onions",
+        "zh": "炒饭风味炒锅配炒蛋、南瓜、韭葱和葱",
+        "hi": "तले चावल-शैली का वोक, भुर्जी अंडे, कद्दू, लीक और हरी प्याज़ के साथ",
+        "es": "Wok estilo arroz salteado con huevos revueltos, calabaza, puerros y cebolletas",
+        "fr": "Wok façon riz sauté aux oeufs brouillés, potiron, poireaux et oignons fanes",
+        "ar": "ووك على طريقة الأرز المقلي مع البيض المخفوق والقرع والكراث والبصل الأخضر",
+        "bn": "ভাজা ভাত-স্টাইলের ওক, ডিমের ভুর্জি, কুমড়ো, লিক ও পেঁয়াজকলিসহ",
+        "pt": "Wok estilo arroz salteado com ovos mexidos, abóbora, alho-porro e cebolas novas",
+        "ru": "Вок в стиле жареного риса с яичницей-болтуньей, тыквой, луком-пореем и зелёным луком",
+        "ur": "تلے ہوئے چاول کے انداز کا ووک، انڈے کی بھرجی، کدو، لیک اور ہری پیاز کے ساتھ",
+        "lb": "Wok am Stil vu gebrodenem Räis mat Rühreeër, Kürbis, Porett a Fréijoerszwiwwelen"
+    },
+    "Yaourt grec, pommes au four": {
+        "en": "Greek yoghurt, baked apples",
+        "zh": "希腊酸奶，烤苹果",
+        "hi": "ग्रीक दही, बेक्ड सेब",
+        "es": "Yogur griego, manzanas al horno",
+        "fr": "Yaourt grec, pommes au four",
+        "ar": "زبادي يوناني مع تفاح مخبوز",
+        "bn": "গ্রিক দই, বেকড আপেল",
+        "pt": "Iogurte grego, maçãs assadas",
+        "ru": "Греческий йогурт, печёные яблоки",
+        "ur": "یونانی دہی، بیک کیے ہوئے سیب",
+        "lb": "Griichesche Joghurt, gebaken Äppel"
+    },
+    "Épinards à l'ail": {
+        "en": "Spinach with garlic",
+        "zh": "蒜香菠菜",
+        "hi": "लहसुन वाला पालक",
+        "es": "Espinacas al ajo",
+        "fr": "Épinards à l'ail",
+        "ar": "سبانخ بالثوم",
+        "bn": "রসুন দিয়ে পালংশাক",
+        "pt": "Espinafres com alho",
+        "ru": "Шпинат с чесноком",
+        "ur": "لہسن والا پالک",
+        "lb": "Spinat mam Knuewelek"
     }
 }
 
