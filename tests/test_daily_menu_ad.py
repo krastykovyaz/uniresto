@@ -60,3 +60,39 @@ def test_the_photo_note_lists_the_dishes_still_without_a_photo():
     note = daily.gaps_message(date(2026, 10, 26), {"Altius": ["Soupe aux poireaux"], "Brasserie John's": ["Curry de poulet", "Soupe aux poireaux"]})
     assert "Monday 26 October" in note and "Altius" in note and "• Curry de poulet" in note
     assert daily.gaps_message(date(2026, 10, 26), {}) is None  # nothing to say when every dish has a photo
+
+
+def test_a_closed_restaurant_does_not_empty_the_advert(monkeypatch):
+    # Brasserie John's had no menu for a whole week: the pastries sold at Altius must still fill the page.
+    croissant = {"category": "02. Viennoiseries", "name": "Croissant 50 g"}
+    soup = {"category": "Entrée", "name": "Velouté aux épinards"}
+
+    def fake_get(path):
+        if "/dish-photos" in path:
+            return {"photos": {"02. Viennoiseries": {"Croissant 50 g": "c.jpg"}} if "/altius/" in path else {}}
+        if "/altius/menu/" in path:
+            return {"items": [croissant, soup]}
+        raise OSError("409")  # the closed restaurant
+
+    monkeypatch.setattr(menu_ad, "_get", fake_get)
+    monkeypatch.setattr(menu_ad, "_photos", {})
+    assert list(menu_ad.day_menus("2026-11-06")) == ["altius"]
+    assert menu_ad.picks_for("2026-11-06", menu_ad.TEXT["en"]) == [("altius", "02. Viennoiseries", "Croissant 50 g", "Altius")]
+
+    # Both open: only what both sell, labelled with both names.
+    monkeypatch.setattr(menu_ad, "_get", lambda path: {"photos": {"02. Viennoiseries": {"Croissant 50 g": "c.jpg"}}} if "/dish-photos" in path else {"items": [croissant] if "/altius/" in path else [croissant, soup]})
+    monkeypatch.setattr(menu_ad, "_photos", {})
+    assert menu_ad.picks_for("2026-11-06", menu_ad.TEXT["en"]) == [("altius", "02. Viennoiseries", "Croissant 50 g", "Altius & Brasserie John's")]
+
+
+def test_memory_watch_warns_only_when_swap_is_full_and_ram_is_low():
+    mw = _load("memory_watch")
+    info = lambda swap_free, avail: {"SwapTotal": 2048 * 1024, "SwapFree": swap_free * 1024, "MemAvailable": avail * 1024}  # noqa: E731
+    assert mw.is_short(info(swap_free=40, avail=100))
+    assert not mw.is_short(info(swap_free=40, avail=900))  # swap full but plenty of RAM: fine
+    assert not mw.is_short(info(swap_free=1500, avail=100))  # RAM low but swap has room: fine
+    assert not mw.is_short({"SwapTotal": 0, "SwapFree": 0, "MemAvailable": 10})  # no swap configured
+    assert mw.meminfo("SwapTotal:  2048 kB\nSwapFree:  1024 kB\n") == {"SwapTotal": 2048, "SwapFree": 1024}
+    text = mw.message(info(40, 100), [(300 * 1024, "/opt/x/python3 main.py")])
+    assert "2008 of 2048 MB" in text and "300 MB  /opt/x/python3 main.py" in text
+    assert mw.describe("/usr/bin/python run.py --token=abc SECRET=1") == "/usr/bin/python run.py"

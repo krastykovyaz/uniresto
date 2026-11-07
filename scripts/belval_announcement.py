@@ -1,4 +1,4 @@
-"""The "Food House opens in Belval on 1 November 2026" announcement, as an A4 PDF: a poster with a QR code to UniResto's
+"""The "Food House opens in Belval on 15 November 2026" announcement, as an A4 PDF: a poster with a QR code to UniResto's
 main page, and a twin without the QR code (the web address instead) for places where QR codes are not allowed.
 
     /root/menu-ads-venv/bin/python scripts/belval_announcement.py [en|fr] [out_dir]
@@ -29,21 +29,21 @@ PHOTOS = [
 TEXT = {
     "en": dict(
         brand="UniResto · Campus Belval", eyebrow="The restaurant you voted for", h1="Food House opens in Belval",
-        date="From 1 November 2026", sub="Order your lunch from the new Campus Belval restaurant, right in the app.",
+        date="From 15 November 2026", sub="Order your lunch from the new Campus Belval restaurant, right in the app.",
         where_h="Where", where="Food House · Maison du Savoir", hours_h="Service", hours="11:00–16:00", order_h="Order", order="Before 13:00 on the day",
         s1="Pick the day and your dishes", s2="Order before 13:00 — no account, just your university email",
         s3="A fellow student can bring it to your building on Campus Belval",
-        photos="A daily hot menu, sandwiches, pastries, salads and more", first="First menu day: Monday 2 November.",
+        photos="A daily hot menu, sandwiches, pastries, salads and more", first="First menu day: Monday 16 November.",
         scan="Scan to open UniResto", link="Open this address in your phone's browser",
         fine="UniResto is an independent student project. It is not an official service of the University of Luxembourg.",
     ),
     "fr": dict(
         brand="UniResto · Campus Belval", eyebrow="Le restaurant pour lequel vous avez voté", h1="Food House ouvre à Belval",
-        date="À partir du 1er novembre 2026", sub="Commandez votre déjeuner au nouveau restaurant du Campus Belval, directement dans l'appli.",
+        date="À partir du 15 novembre 2026", sub="Commandez votre déjeuner au nouveau restaurant du Campus Belval, directement dans l'appli.",
         where_h="Où", where="Food House · Maison du Savoir", hours_h="Service", hours="11h00–16h00", order_h="Commande", order="Avant 13h00 le jour même",
         s1="Choisissez le jour et vos plats", s2="Commandez avant 13h00 — sans compte, seulement avec votre e-mail universitaire",
         s3="Un autre étudiant peut vous l'apporter dans votre bâtiment du Campus Belval",
-        photos="Un menu chaud du jour, sandwichs, viennoiseries, salades et plus encore", first="Premier jour de menu : lundi 2 novembre.",
+        photos="Un menu chaud du jour, sandwichs, viennoiseries, salades et plus encore", first="Premier jour de menu : lundi 16 novembre.",
         scan="Scannez pour ouvrir UniResto", link="Ouvrez cette adresse dans le navigateur de votre téléphone",
         fine="UniResto est un projet étudiant indépendant. Ce n'est pas un service officiel de l'Université du Luxembourg.",
     ),

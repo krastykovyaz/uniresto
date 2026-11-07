@@ -2115,7 +2115,7 @@ const DISCOUNT_BANNER_DISMISSED_KEY = "uniresto.discountBanner.dismissed.v1";
 // (it appears by itself at midnight Luxembourg time, see opens_on in restaurants.yaml) until FOOD_HOUSE_BANNER_UNTIL.
 // Closing it is remembered on this device only.
 const FOOD_HOUSE_SLUG = "udl-cbv-fh";
-const FOOD_HOUSE_BANNER_UNTIL = "2026-11-08"; // last day shown, Luxembourg date
+const FOOD_HOUSE_BANNER_UNTIL = "2026-11-22"; // last day shown, Luxembourg date
 const FOOD_HOUSE_BANNER_DISMISSED_KEY = "uniresto.foodHouseBanner.dismissed.v1";
 
 function luxembourgToday() {

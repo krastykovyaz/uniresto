@@ -247,7 +247,7 @@ DELIVERED_UNPRICED_GRACE_DAYS = 7
 # the whole day counts), and the winning restaurant opens on the second date. Shown in the app next to
 # the live results; once the day is over, taps are no longer recorded.
 COMING_SOON_VOTING_ENDS = date(2026, 10, 20)
-COMING_SOON_OPENS_ON = date(2026, 11, 1)
+COMING_SOON_OPENS_ON = date(2026, 11, 15)
 
 
 def _percentages(counts: list[int]) -> list[int]:

@@ -1,0 +1,8 @@
+[Unit]
+Description=Warn the admin on Telegram when the server is short of memory
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/uniresto
+EnvironmentFile=-/root/uniresto/.env
+ExecStart=/root/menu-ads-venv/bin/python /root/uniresto/scripts/memory_watch.py

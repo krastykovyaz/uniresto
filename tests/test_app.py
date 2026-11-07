@@ -4784,7 +4784,7 @@ def test_results_list_every_option_with_votes_and_percent(client):
     assert [o["location"] for o in body["options"]] == ["Food House", "Food Café", "Food Lab", "Food Zone"]
     assert {o["location"]: (o["votes"], o["percent"]) for o in body["options"]} == {"Food House": (1, 25), "Food Café": (0, 0), "Food Lab": (3, 75), "Food Zone": (0, 0)}
     assert body["total"] == 4 and sum(o["percent"] for o in body["options"]) == 100
-    assert (body["voting_ends"], body["opens_on"]) == ("2099-01-01", "2026-11-01")  # the end date _voting_stays_open sets
+    assert (body["voting_ends"], body["opens_on"]) == ("2099-01-01", "2026-11-15")  # the end date _voting_stays_open sets
 
 
 def test_results_with_no_votes_are_all_zero(client):
@@ -5009,7 +5009,7 @@ def test_food_house_is_not_listed_or_reachable_before_it_opens(client):
 
 
 def test_food_house_appears_on_belval_from_its_opening_day(client):
-    client.application.config["ORDERABILITY_SERVICE"]._now_override = datetime.datetime(2026, 11, 1, 0, 5, tzinfo=TZINFO)
+    client.application.config["ORDERABILITY_SERVICE"]._now_override = datetime.datetime(2026, 11, 15, 0, 5, tzinfo=TZINFO)
     listed = {r["slug"]: r for r in client.get("/api/restaurants").get_json()}
     assert listed["udl-cbv-fh"]["campus"] == "belval"
     assert listed["udl-cbv-fh"]["display_name"] == "Food House"
@@ -5018,7 +5018,7 @@ def test_food_house_appears_on_belval_from_its_opening_day(client):
 
 
 def test_the_day_before_opening_it_is_still_hidden(client):
-    client.application.config["ORDERABILITY_SERVICE"]._now_override = datetime.datetime(2026, 10, 31, 23, 59, tzinfo=TZINFO)
+    client.application.config["ORDERABILITY_SERVICE"]._now_override = datetime.datetime(2026, 11, 14, 23, 59, tzinfo=TZINFO)
     assert "udl-cbv-fh" not in _restaurant_slugs(client)
 
 

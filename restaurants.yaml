@@ -57,7 +57,8 @@ restaurants:
   # link gives pRestaurantSelection=147 (site 31394), and selecting it sets the SelectedService
   # cookie to 53 (its one service tab is "Service 11:00 - 16:00"). Same page structure as the
   # others -- daily "Menu" (with Pasta) plus the shared "Constant products". The app lists it from
-  # opens_on; its menus are collected from now on, so Monday 2 November is ready on the 1st.
+  # opens_on (moved from 1 to 15 November 2026); its menus are collected from now on, so Monday
+  # 16 November is ready on the 15th.
   - code: UDL-CBV-FH
     name: "UDL-CBV-FH - Restaurant Food House"
     site_name: "Université de Luxembourg Campus Belval Food House"
@@ -67,4 +68,4 @@ restaurants:
     building: "Maison du Savoir"
     display_name: "Food House"
     campus: belval
-    opens_on: 2026-11-01
+    opens_on: 2026-11-15

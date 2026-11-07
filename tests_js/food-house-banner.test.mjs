@@ -14,12 +14,12 @@ const withFoodHouse = [{ slug: "altius" }, { slug: "udl-cbv-fh" }];
 const without = [{ slug: "altius" }];
 
 test("the banner shows while Food House is listed, through the last banner day", () => {
-  assert.equal(visible(withFoodHouse, "2026-11-01"), true);
-  assert.equal(visible(withFoodHouse, "2026-11-08"), true);
+  assert.equal(visible(withFoodHouse, "2026-11-15"), true);
+  assert.equal(visible(withFoodHouse, "2026-11-22"), true);
 });
 
 test("the banner is gone after its last day, and never shows before Food House is listed", () => {
-  assert.equal(visible(withFoodHouse, "2026-11-09"), false);
+  assert.equal(visible(withFoodHouse, "2026-11-23"), false);
   assert.equal(visible(without, "2026-11-02"), false);
   assert.equal(visible(undefined, "2026-11-02"), false);
 });

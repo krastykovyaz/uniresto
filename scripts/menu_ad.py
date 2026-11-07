@@ -29,7 +29,6 @@ APP = "http://127.0.0.1:5050"
 PHOTO_DIR = Path("/root/uniresto/static/dish_photos")
 CHROME = "/root/.cache/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-linux64/chrome-headless-shell"
 RESTAURANTS = [("altius", "Altius", "adv-altius"), ("brasserie-johns", "Brasserie John's", "adv-brasserie")]
-BOTH = "Altius & Brasserie John's"
 DAILY = ("Entrée", "Végétarien", "Végan", "Pasta", "Non-végétarien", "Féculents", "Légumes", "Dessert")
 # The takeaway salads and wraps change from day to day too: when one has a photo it counts as a dish of the day.
 OF_THE_DAY = DAILY + ("Snack à emporter",)
@@ -180,19 +179,30 @@ def photo_gaps(date: str) -> dict[str, list[str]]:
     return gaps
 
 
-def picks_for(date: str, text: dict) -> list[tuple]:
+def day_menus(date: str) -> dict[str, list]:
+    """The menu of each restaurant that is open on `date` (a restaurant with no menu that day is left out)."""
+    menus: dict = {}
+    for slug, _, _ in RESTAURANTS:
+        try:
+            items = _get(f"/api/restaurants/{slug}/menu/{date}")["items"]
+        except Exception:  # noqa: BLE001 -- closed that day: no menu to read
+            continue
+        if items:
+            menus[slug] = items
+    return menus
+
+
+def picks_for(date: str, text: dict, menus: dict | None = None) -> list[tuple]:
     """12 cards: the day's photographed hot dishes first, then the always-available foods."""
     names = {slug: label for slug, label, _ in RESTAURANTS}
     seen: dict = {}
     picks: list = []
-    menus: dict = {}
-    for slug, _, _ in RESTAURANTS:
-        try:
-            menus[slug] = _get(f"/api/restaurants/{slug}/menu/{date}")["items"]
-        except Exception:  # noqa: BLE001
-            menus[slug] = []
-    on_menu = {(it["category"], it["name"]) for it in menus.get("altius", [])} & {(it["category"], it["name"]) for it in menus.get("brasserie-johns", [])}
-    for slug, _, _ in RESTAURANTS:
+    menus = day_menus(date) if menus is None else menus
+    # Sold at every restaurant that is open that day (one of them can be closed for a whole week).
+    sold = [{(it["category"], it["name"]) for it in items} for items in menus.values()]
+    on_menu = set.intersection(*sold) if sold else set()
+    everywhere = " & ".join(names[slug] for slug in menus)
+    for slug in menus:
         items = menus[slug]
         for it in items:
             if it["category"] in OF_THE_DAY and photos(slug).get(it["category"], {}).get(it["name"]):
@@ -210,14 +220,18 @@ def picks_for(date: str, text: dict) -> list[tuple]:
         # Only what is really on that day's menu at both restaurants: a wrap or a pastry that is not sold that day
         # must not be on the poster.
         if (cat, name) not in used and (cat, name) in on_menu:
-            out.append(("altius", cat, name, BOTH))
+            # The photo can be filed under either restaurant.
+            holder = next((slug for slug, _, _ in RESTAURANTS if photos(slug).get(cat, {}).get(name)), None)
+            if holder:
+                out.append((holder, cat, name, everywhere))
     return out
 
 
 def page_html(date: str, lang: str, with_qr: bool) -> str:
     text = TEXT[lang]
     cards = ""
-    for slug, cat, name, where in picks_for(date, text):
+    menus = day_menus(date)
+    for slug, cat, name, where in picks_for(date, text, menus):
         label = SHORTER_EN.get(name) if lang == "en" and name in SHORTER_EN else dish_name_label(name, lang)
         cards += (
             f'<div class="card"><img src="{photo_uri(slug, cat, name)}"><div class="nm">{html.escape(label)}</div>'
@@ -227,6 +241,7 @@ def page_html(date: str, lang: str, with_qr: bool) -> str:
         boxes = "".join(
             f'<div class="qrbox"><img class="qr" src="{qr_uri(slug, src, lang)}"><div class="scan">{html.escape(label)}</div></div>'
             for slug, label, src in RESTAURANTS
+            if slug in menus  # no code for a restaurant that is closed that day
         )
         action, hint = f'<div class="qrs">{boxes}</div>', text["scan"]
     else:
